@@ -1,0 +1,34 @@
+---
+description: Testing and code quality rules for FinShield AI
+alwaysApply: true
+---
+
+Testing philosophy:
+- Write production-quality code with tests for critical behavior.
+- Prefer deterministic unit tests for business logic.
+- Add integration tests for APIs, repositories, pipelines, and workflows crossing boundaries.
+- Mock external services, cloud dependencies, and ML model inference where appropriate.
+
+Testing Stack:
+- Backend: pytest, pytest-asyncio, httpx
+- Frontend: Vitest, React Testing Library, Playwright
+- Load Testing: Locust
+
+Testing expectations:
+- Backend Unit Tests (80% coverage): Services, ML pipeline, rules engine, feature engineering.
+- Backend Integration Tests (70% coverage): API endpoints, database operations, full transaction flow.
+- Frontend Unit Tests (75% coverage): Components, hooks, utilities.
+- Frontend E2E Tests: Auth flow, dashboard, transaction list, alert management, rule builder.
+- Cover validation, failure, and edge cases.
+- Keep tests readable and isolated. Use fixtures (`conftest.py`) for test DB, client, and auth.
+
+Code quality:
+- Use linting and formatting (ruff for Python, eslint/prettier for TypeScript).
+- Use strict types wherever the stack supports them (mypy, tsc).
+- Keep functions focused.
+- Refactor repeated logic into shared utilities when justified.
+
+Do not:
+- Add major logic without at least basic tests.
+- Create brittle tests tied to unstable implementation details.
+- Depend on live external APIs in normal test flows.

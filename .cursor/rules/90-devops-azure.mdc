@@ -1,0 +1,36 @@
+---
+description: DevOps, Docker, and Azure infrastructure rules for FinShield AI
+globs: infrastructure/**, docker-compose.yml, Dockerfile, .github/workflows/**
+---
+
+DevOps & Infrastructure Stack:
+- Docker
+- Azure Container Apps
+- Terraform
+- GitHub Actions
+- Azure Monitor + Application Insights
+
+Docker rules:
+- Use multi-stage builds to minimize image size.
+- Do not run containers as root.
+- Optimize layer caching by copying dependency files first.
+- Keep images minimal and secure (scan with Trivy).
+
+Azure Infrastructure (Terraform) rules:
+- Use Terraform for all infrastructure provisioning (`infrastructure/terraform/`).
+- Organize Terraform into reusable modules (networking, database, compute, etc.).
+- Store Terraform state securely in Azure Blob Storage.
+- Enforce private endpoints and VNet integration for all data stores (PostgreSQL, Redis, Key Vault).
+- Use Azure Front Door for WAF and CDN.
+
+CI/CD rules (GitHub Actions):
+- CI pipeline must run on every PR (lint, test, build).
+- CD Staging pipeline runs automatically on merge to `main`.
+- CD Production pipeline requires manual approval and uses blue-green deployment.
+- ML Pipeline handles model training, evaluation, and pushing to Azure ML Registry.
+- Enforce security scans (Dependabot, Snyk, Semgrep) in CI.
+
+Do not:
+- Hardcode environment-specific values in Dockerfiles or Terraform modules (use variables).
+- Commit `.tfstate` files or secrets to version control.
+- Expose databases or cache directly to the public internet.
