@@ -1,6 +1,6 @@
 # CLAUDE.md — AI Financial Intelligence & Fraud Detection Engine
 
-## Project Overview
+## Project Overview 
 
 **Project Name:** FinShield AI — AI Financial Intelligence & Fraud Detection Engine
 **Version:** 1.0.0
