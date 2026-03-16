@@ -14,6 +14,7 @@ Frontend stack:
 - NextAuth.js (Auth)
 - Recharts + D3.js (Charts)
 - React Hook Form + Zod (Forms)
+- TanStack Table v8 (Tables/Data Grids)
 
 Frontend rules:
 - Strict TypeScript (no `any` unless absolutely necessary).
@@ -46,6 +47,11 @@ State/data rules:
 - Use Zustand for global client state (e.g., UI toggles, active filters).
 - Centralize API calls in `lib/api-client.ts`.
 - Manage WebSockets via `hooks/use-socket.ts`.
+
+Testing 
+- Vitest (unit and integration tests)
+- React Testing Library (component testing)
+- Playwright (E2E tests)
 
 Do not:
 - Mix many responsibilities into one component.
