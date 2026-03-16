@@ -1,0 +1,32 @@
+---
+description: Security rules for FinShield AI
+alwaysApply: true
+---
+
+Security rules:
+- Never hardcode secrets, API keys, tokens, credentials, or private URLs.
+- Never log passwords, tokens, raw secrets, or sensitive user content (PII).
+- Validate and sanitize all user inputs using Pydantic (Backend) and Zod (Frontend).
+- Enforce authentication and authorization checks on protected resources using JWT and RBAC.
+- Use least-privilege access patterns.
+- Add rate limiting to sensitive or expensive endpoints (e.g., 100 req/min for auth, 1000 req/min for data).
+- Use secure defaults.
+- Encrypt data at rest (AES-256) and in transit (TLS 1.3).
+
+FinShield-specific security:
+- Implement Role-Based Access Control (RBAC) with roles: Admin, Analyst, Investigator, Viewer.
+- Mask PII (e.g., SSN, card numbers) in logs and UI unless explicitly requested by authorized roles.
+- Maintain an immutable audit trail for all user actions and system decisions.
+- Use Azure Key Vault for all secrets (DB credentials, API keys, JWT secrets).
+- Use Managed Identities for service-to-service auth (no stored credentials).
+
+Infra/security hygiene:
+- Avoid broad wildcard permissions in cloud configs.
+- Do not expose internal services publicly unless required (use VNet integration and private endpoints).
+- Prevent SQL injection via parameterized queries (SQLAlchemy ORM).
+- Prevent XSS via React's default escaping + CSP headers.
+
+Do not:
+- Assume client-side validation is enough.
+- Return internal exception details to users.
+- Log sensitive transaction details or PII.

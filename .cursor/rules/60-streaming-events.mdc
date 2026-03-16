@@ -1,0 +1,25 @@
+---
+description: Real-Time Streaming and Events rules for FinShield AI
+globs: backend/app/streaming/**, frontend/src/hooks/use-socket.ts, backend/app/api/v1/webhooks.py
+---
+
+Streaming Stack:
+- Azure Event Hubs (Kafka-compatible)
+- Socket.IO (python-socketio on backend, socket.io-client on frontend)
+- Webhooks
+
+Streaming & Event rules:
+- High-throughput transaction ingestion must be handled via Azure Event Hubs.
+- Stream processors must handle partitions and maintain offsets reliably.
+- Use Dead Letter Queues (DLQ) for failed event processing after 3 retries.
+- WebSockets are strictly for pushing real-time updates (alerts, live transactions, metrics) to the frontend.
+- Emit specific events to namespaces (e.g., `/alerts`, `/transactions`, `/dashboard`).
+
+Webhook expectations:
+- Webhooks must support HMAC signature verification for security.
+- Implement exponential backoff for webhook delivery retries (max 5 retries).
+
+Do not:
+- Block the main event loop while waiting for Event Hub messages.
+- Use WebSockets for standard CRUD operations (use REST API instead).
+- Send sensitive PII over WebSockets without encryption or masking.

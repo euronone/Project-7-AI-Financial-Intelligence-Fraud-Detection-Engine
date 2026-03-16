@@ -1,0 +1,55 @@
+---
+description: FastAPI backend rules for FinShield AI
+globs: backend/**/*.py
+---
+
+Backend stack:
+- FastAPI (Python 3.12)
+- Pydantic v2
+- SQLAlchemy 2.0 (async)
+- Alembic for migrations
+- Celery + Redis for task queues
+- Socket.IO (python-socketio) for WebSockets
+
+Backend rules:
+- Use clean architecture and service layer pattern.
+- Routes/controllers should only handle HTTP concerns and dependency injection.
+- Business logic must live in the `services/` layer.
+- Database access must live in `models/` (SQLAlchemy) and be accessed via async sessions.
+- Validation must be done using Pydantic v2 schemas (`schemas/`).
+- Use dependency injection (`Depends()`) for DB sessions, current user, and external clients.
+- Use `async/await` for all I/O operations (DB, Redis, HTTP).
+- Use pagination for list endpoints.
+- Use consistent response models and centralized exception handling.
+- Structured logging with correlation IDs using `structlog`.
+
+API conventions:
+- Follow RESTful naming.
+- Base URL: `/api/v1/`.
+- Use proper HTTP status codes.
+- Do not leak internal stack traces or raw database errors.
+
+Preferred backend structure:
+- `backend/app/api/v1/` - API routers
+- `backend/app/core/` - Security, config, exceptions, middleware
+- `backend/app/models/` - SQLAlchemy ORM models
+- `backend/app/schemas/` - Pydantic schemas (request/response)
+- `backend/app/services/` - Business logic layer
+- `backend/app/ml/` - ML inference pipeline and models
+- `backend/app/rules/` - Rules Engine
+- `backend/app/streaming/` - Real-time processing (Event Hub, WebSockets)
+- `backend/app/db/` - DB session and migrations
+- `backend/tests/` - pytest suite
+
+Coding expectations:
+- Follow PEP 8 via `ruff`.
+- Add type hints to all function signatures.
+- Add Google style docstrings for public functions.
+- Keep routes thin and declarative.
+- Keep service methods focused and testable.
+
+Do not:
+- Put SQL or ORM-heavy logic inside route files.
+- Put business logic inside Pydantic schemas.
+- Put environment variables directly across many files; centralize in `core/config.py` using `pydantic-settings`.
+- Mix unrelated domains in the same service file.
