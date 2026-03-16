@@ -1,0 +1,15 @@
+---
+description: AI agents and chatbot — not in scope for FinShield AI
+globs: backend/**, frontend/**
+---
+
+FinShield AI is a **fraud detection and risk platform**. It does not use conversational AI agents, chatbot, or agent copilot for customer or analyst chat. Decision-making is driven by **ML models**, **rules engine**, and **behavioral/network analytics** (see .cursor/rules/35-ml-fraud-rules-engine.mdc).
+
+No GenAI/RAG chatbot, no intent/sentiment NLP for chat, no tool-calling agents in the current product scope.
+
+If future work adds AI assistants (e.g. natural-language investigation summaries or suggested actions):
+- Keep agent logic separate from the real-time fraud pipeline.
+- Use a defined tool layer and validation; do not let agents perform unrestricted actions.
+- Use config for model/API endpoints; do not hardcode secrets.
+
+Until then: do not implement or assume chatbot, agent copilot, or multi-agent orchestration; focus on ML inference, rules, alerts, cases, and analytics per PRD.

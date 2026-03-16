@@ -1,0 +1,38 @@
+---
+description: ML fraud detection pipeline, rules engine, and risk scoring
+globs: backend/app/ml/**, backend/app/rules/**, backend/app/services/fraud_detection_service.py, backend/app/services/risk_scoring_service.py, backend/app/services/rules_engine_service.py
+---
+
+This rule covers the core fraud detection and risk logic for FinShield AI. Align with docs/PRD.md (F1–F5), CLAUDE.md ML Pipeline, and docs/ARCHITECTURE.md.
+
+## ML pipeline
+
+- **Feature engineering:** Extract 200+ features per transaction (transaction, temporal, velocity 1h/24h/7d/30d, entity, geographic, device, behavioral, network, derived). Implement in app/ml/feature_engineering.py; keep transforms deterministic and testable.
+- **Models:** Fraud classifier (XGBoost/neural ensemble), anomaly detector (Isolation Forest / Autoencoder), behavioral profiler, risk scorer. Serve via **ONNX Runtime** in production (sub-10ms per model); training in app/ml/training/.
+- **Pipeline flow:** Ingest → feature engineering → rules engine (parallel) → ML inference (parallel) → risk aggregation → decision engine (PASS / FLAG / ALERT / BLOCK) → post-processing (alert creation, notifications, WebSocket, audit).
+- **Explainability:** SHAP (or LIME) for predictions; expose top contributing features on alert detail and in API.
+- **Model registry:** Version, promote, retire; store artifacts in Azure Blob; metrics (accuracy, precision, recall, F1, AUC) in DB and API. Graceful degradation: if ML unavailable, fall back to rules-only scoring.
+
+## Rules engine
+
+- **Location:** app/rules/ (engine.py, conditions.py, actions.py, templates.py).
+- **Condition types:** Amount, velocity, geography, time, entity (KYC, risk score), device/IP, pattern, custom. Support AND/OR grouping.
+- **Actions:** Block, flag, adjust risk score, create alert, notify, trigger webhook. Execution order by priority; no side effects in condition evaluation.
+- **Templates:** Pre-built rules for card testing, account takeover, money mules, first-party fraud. Rule test endpoint: dry-run against sample/historical transactions for hit rate and false positive estimate.
+- **Performance:** Track hit_count, false_positive_rate; expose in API and analytics.
+
+## Risk scoring
+
+- **Composite score (0.0–1.0):** Combine ML output, rule triggers, behavioral deviation, entity history, watchlist. Configurable thresholds for low/medium/high/critical.
+- **Component breakdown:** ML score, rule score, velocity score, behavioral score, network score; persist and return in API for transparency.
+
+## Rules
+
+- Keep pipeline stages separate (features → rules → ML → aggregation → decision); avoid coupling in a single monolithic function.
+- Do not put ML or rule logic in route handlers; use services and app/ml/, app/rules/.
+- All model and rule config from DB or config; no hardcoded thresholds in code unless they are constants documented in PRD.
+- Use type hints and docstrings; add unit tests for feature engineering, rule conditions/actions, and risk aggregation.
+
+Do not:
+- Trust unvalidated external scores in the decision engine.
+- Run blocking or slow operations in the hot path; keep P95 latency <200ms for the full pipeline per PRD.

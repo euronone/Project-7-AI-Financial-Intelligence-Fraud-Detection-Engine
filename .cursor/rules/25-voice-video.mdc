@@ -1,0 +1,14 @@
+---
+description: Voice and video — not in scope for FinShield AI
+globs: frontend/**, backend/**
+---
+
+FinShield AI is a fraud detection and risk platform. **Voice AI and video call features are not in scope** for the current product (no customer support calls, no voice bot, no WebRTC agent video).
+
+If future work adds voice/video (e.g. analyst briefings, call recording for investigations):
+- Keep voice/video pipeline separate from transaction and alert pipelines.
+- Use config/env for any external service credentials; do not hardcode.
+- Store recordings and transcripts with proper access control and retention; comply with PII and GDPR.
+- Do not mix voice/video logic with core fraud detection or rules engine code.
+
+Until then: do not implement or assume voice/video features in the codebase; focus on transaction monitoring, ML fraud detection, rules engine, alerts, cases, and analytics per PRD.

@@ -1,0 +1,26 @@
+---
+description: Transaction and alert ingestion channels (API, Event Hubs, Webhooks)
+globs: backend/integrations/**, backend/app/streaming/**, backend/app/api/**/transactions*
+---
+
+This project is a fraud detection platform, not a customer support chat system. “Channels” here mean **ingestion and notification channels** for transactions and alerts.
+
+Ingestion channels:
+- **REST API:** Transaction ingest (single and batch), webhook receivers for external systems.
+- **Azure Event Hubs:** Kafka-compatible streaming for high-throughput transaction ingestion.
+- **Webhooks:** Outbound webhooks for fraud alerts, case updates (Slack, PagerDuty, SIEM); inbound webhooks only where required for partner integrations.
+
+Notification channels (outbound):
+- **In-app:** Real-time via Socket.IO (alerts, dashboard metrics).
+- **Email:** SendGrid or Azure for alert/case notifications (configurable).
+- **SMS:** Twilio for critical alerts (configurable).
+
+Rules:
+- Isolate ingestion adapters (REST handler, Event Hub consumer) behind a single processing pipeline that runs fraud detection and persistence.
+- All transaction and alert state is canonical in PostgreSQL; real-time clients consume via WebSocket/Socket.IO.
+- Do not hardcode Event Hub connection strings, Twilio credentials, or email API keys; use configuration and env/Key Vault.
+- Webhook outbound: retry with exponential backoff, HMAC signature; document payload schemas in API_SPEC.
+
+Do not:
+- Mix ingestion logic with core fraud detection logic; keep pipeline stages separate.
+- Assume a single ingestion source; design for both REST and Event Hubs from the start.

@@ -1,0 +1,21 @@
+---
+description: Case management and alert workflow (replaces “ticketing” for FinShield AI)
+globs: backend/app/services/case_service.py, backend/app/services/fraud_detection_service.py, backend/app/api/v1/cases.py, backend/app/api/v1/fraud_alerts.py
+---
+
+FinShield AI does not use “tickets” in the support-desk sense. It uses **fraud alerts** and **investigation cases**.
+
+Case and alert features (docs/PRD.md):
+- **Fraud alerts:** Created by ML, rules, watchlist match, or manual; workflow: Open → Investigating → Escalated → Resolved (Confirmed Fraud / False Positive) / Dismissed. Assignment, bulk actions, escalation, resolution notes.
+- **Cases:** Created from one or more alerts (or manually); link alerts, transactions, entities, evidence. Workflow: Open → In Progress → Pending Review → Escalated → Closed (Confirmed Fraud / False Positive). Timeline, assignment, findings.
+- **Automation:** Auto-assignment rules, notification on severity (email, SMS, in-app), webhook on alert/case events. SLA-style metrics (resolution time, confirmed fraud rate) for reporting.
+
+Rules:
+- Alerts and cases are first-class entities in the data model (docs/DB_SCHEMA.md); link to transactions, entities, rules, models.
+- Workflow and assignment logic in services, not in route handlers; support async (e.g. Celery) for notifications and report generation.
+- Audit trail for status changes, assignments, and resolutions.
+- Idempotency and clear audit trail for automated actions (e.g. webhook triggers).
+
+Do not:
+- Put alert/case creation or assignment logic only in HTTP handlers; support Event Hub and batch flows.
+- Trigger notifications or webhooks without retry and audit.

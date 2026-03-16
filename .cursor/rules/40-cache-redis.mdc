@@ -1,0 +1,27 @@
+---
+description: Redis caching, Celery broker, and coordination rules
+globs: backend/**, app/**, workers/**, queue/**, cache/**
+---
+
+Redis usage (FinShield AI):
+- **Azure Cache for Redis** (or Redis 7 locally). Use Redis for: caching, rate limiting, session-like ephemeral state, **Celery broker** for async tasks, and short-lived coordination.
+- Choose TTLs intentionally; cache only what has clear performance benefit (e.g. entity risk cache, rule metadata, rate-limit counters).
+- Make cache invalidation explicit when risk scores, rules, or config change.
+
+Rules:
+- Wrap Redis access in dedicated utilities/services; do not scatter raw Redis calls.
+- Use stable key naming conventions (e.g. by entity_id, user_id, rate-limit key).
+- Document key patterns when introducing new key families.
+- Celery: use for notifications, report generation, batch screening, model retraining triggers; prefer idempotent task behavior; use retries carefully and avoid infinite retry loops.
+
+Caching expectations:
+- Cache expensive reads and repeated metadata where appropriate.
+- Do not cache highly sensitive data unless encrypted and justified.
+- Do not rely on cache as the only source of truth for persistent state (transactions, alerts, cases).
+
+Event streaming (Azure Event Hubs):
+- Use Event Hubs for high-throughput transaction ingestion and stream processing; keep Redis for low-latency coordination and Celery queues per ARCHITECTURE.md.
+
+Do not:
+- Store large unbounded payloads in Redis without TTL or cleanup.
+- Mix queue semantics and cache semantics without clarity.
