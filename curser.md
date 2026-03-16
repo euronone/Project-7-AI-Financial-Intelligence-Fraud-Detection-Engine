@@ -6,7 +6,7 @@
 **Version:** 1.0.0
 **Type:** Full-Stack Real-Time Fraud Detection Platform
 **Target Users:** Banks, Fintechs, Payment Gateways, Financial Institutions
-**Deployment Target:** Microsoft Azure (Fully Autonomous, Zero Human Intervention)
+**Deployment Target:** Microsoft Azure (Fully Autonomous, Zero Human Intervention) 
 
 FinShield AI is a production-grade, real-time system that detects fraud, assesses risk, and identifies anomalies in financial transactions. It combines machine learning models, rule-based engines, and behavioral analytics to provide sub-second fraud scoring on every transaction flowing through the system.
 
