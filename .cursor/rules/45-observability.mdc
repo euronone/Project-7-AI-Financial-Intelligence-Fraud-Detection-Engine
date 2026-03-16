@@ -1,0 +1,24 @@
+---
+description: Observability, monitoring, and analytics for FinShield AI
+globs: backend/app/core/**, backend/logging/**, infra/monitoring/**, frontend/**/analytics/**
+---
+
+Observability scope (FinShield AI):
+- **Structured logging:** structlog → JSON with correlation IDs (request_id, transaction_id, entity_id) to Azure Log Analytics.
+- **Metrics:** Transactions processed, fraud rate, alert volume, model latency, rule hit counts, API latency. Expose to Azure Monitor / Application Insights.
+- **Distributed tracing:** OpenTelemetry → Application Insights.
+- **Alerting:** Error rate >1%, latency P95 >500ms, fraud rate anomaly, model drift, container/DB/Redis health per DEPLOYMENT.md.
+
+Dashboard and reporting:
+- Analytics: fraud trends, transaction volume, risk distribution, model performance, rule effectiveness, geographic heatmap, custom reports (see PRD F7).
+- Instrument critical paths: fraud pipeline, ML inference, rules engine, alert creation, webhook delivery, Event Hub consumer.
+- Do not log PII, passwords, or raw tokens; mask in log pipelines if needed.
+
+Rules:
+- Use consistent log fields: request_id, user_id, level, message, duration_ms, and domain-specific (transaction_id, alert_id, entity_id) where relevant.
+- Alerts for critical failures (ingestion down, ML service errors above threshold); avoid alert fatigue.
+- Do not expose internal error details or stack traces to end-users; keep detailed errors in logs only.
+- Include logging and metrics in new features by default.
+
+Do not:
+- Rely on ad-hoc print statements for production diagnostics.

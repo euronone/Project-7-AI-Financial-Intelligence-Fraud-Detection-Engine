@@ -1,0 +1,23 @@
+---
+description: External integrations (webhooks, sanctions, email, SMS) for FinShield AI
+globs: backend/app/integrations/**, backend/app/api/**/webhooks*
+---
+
+Integration scope (FinShield AI, docs/PRD.md):
+- **Outbound webhooks:** Fraud alerts, case updates, model/rule events for external systems (Slack, PagerDuty, SIEM). Retry with exponential backoff (max 5); HMAC signature verification; document payload schemas in API_SPEC.
+- **Sanctions / watchlist:** External sanctions list APIs (OFAC, UN, EU) via adapter; internal watchlist management; fuzzy matching with configurable threshold.
+- **Notifications:** Email (SendGrid or Azure) and SMS (Twilio) for alert/case notifications; configurable per severity and user preferences.
+- **Azure:** Blob Storage (models, reports, exports), Key Vault (secrets), optional Azure ML for training/registry. Use managed identities and config; no hardcoded keys.
+
+Developer APIs:
+- REST and Socket.IO per API_SPEC.md; secure with JWT or API keys. Versioned, stable contract.
+
+Rules:
+- Each integration behind an adapter interface; credentials and provider-specific logic in one place (config/env/Key Vault).
+- Idempotency for webhook consumers where applicable; rate limits and backoff.
+- Audit log for integration actions (webhook delivery, screening calls) for compliance and debugging.
+
+Do not:
+- Couple core fraud or alert logic to a single external provider; support multiple webhook/notification configs via configuration.
+- Expose internal IDs or sensitive data in webhook payloads beyond what is necessary; support filtering/scoping.
+- Change webhook or public API contract without versioning and documentation.

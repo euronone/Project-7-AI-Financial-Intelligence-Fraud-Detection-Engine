@@ -1,0 +1,17 @@
+---
+description: RAG and knowledge base — not in scope for FinShield AI
+globs: backend/**, frontend/**
+---
+
+FinShield AI is a **fraud detection and risk platform**, not a conversational support or knowledge-base chatbot. **RAG (retrieval-augmented generation), embeddings, and knowledge base ingestion are not in scope** for the current product.
+
+The system uses:
+- **ML models** for fraud classification, anomaly detection, behavioral profiling, and risk scoring (see .cursor/rules/35-ml-fraud-rules-engine.mdc).
+- **Rules engine** for deterministic rule evaluation.
+- **Structured data** (transactions, entities, alerts, cases) in PostgreSQL; no vector store or document RAG.
+
+If future work adds RAG (e.g. for policy docs or investigation assistance):
+- Keep ingestion, retrieval, and generation separate; use config for embedding/LLM endpoints.
+- Do not mix RAG pipelines with the real-time fraud detection pipeline.
+
+Until then: do not implement or assume RAG, vector search, or knowledge base features; focus on transaction monitoring, ML fraud detection, rules, alerts, and analytics per PRD.
