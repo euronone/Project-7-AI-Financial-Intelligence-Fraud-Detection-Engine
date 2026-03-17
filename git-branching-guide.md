@@ -6,7 +6,7 @@
 
 ## 📋 Overview
 
-This guide will help you set up a professional Git branching workflow for your project with separate **development** and **testing** branches, protecting your main branch from direct changes.
+    This guide will help you set up a professional Git branching workflow for your project with separate **development** and **testing** branches, protecting your main branch from direct changes.
 
 ---
 
