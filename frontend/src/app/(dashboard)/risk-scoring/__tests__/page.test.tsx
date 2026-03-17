@@ -293,9 +293,13 @@ describe("RiskScoringPage", () => {
 
   it("shows rank numbers for entities", () => {
     renderWithQuery(<RiskScoringPage />);
-    expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    // Rank badges are <span> elements; use getAllByText to handle ambiguity
+    const ones = screen.getAllByText("1");
+    const twos = screen.getAllByText("2");
+    const threes = screen.getAllByText("3");
+    expect(ones.some((el) => el.tagName === "SPAN")).toBe(true);
+    expect(twos.some((el) => el.tagName === "SPAN")).toBe(true);
+    expect(threes.some((el) => el.tagName === "SPAN")).toBe(true);
   });
 
   it("shows loading spinner for top risk when loading", () => {
@@ -312,7 +316,8 @@ describe("RiskScoringPage", () => {
   it("renders the calculate form", () => {
     renderWithQuery(<RiskScoringPage />);
     expect(screen.getByText("Calculate Risk Score")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("e.g. ent-001")).toBeInTheDocument();
+    // Two inputs share this placeholder (calculate form + auto-update form)
+    expect(screen.getAllByPlaceholderText("e.g. ent-001").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("button", { name: "Calculate" })).toBeInTheDocument();
   });
 
@@ -324,7 +329,8 @@ describe("RiskScoringPage", () => {
 
   it("calculate button enabled after entering entity ID", () => {
     renderWithQuery(<RiskScoringPage />);
-    const input = screen.getByPlaceholderText("e.g. ent-001");
+    // First placeholder match is the calculate-form input
+    const input = screen.getAllByPlaceholderText("e.g. ent-001")[0];
     fireEvent.change(input, { target: { value: "ent-test" } });
     expect(screen.getByRole("button", { name: "Calculate" })).not.toBeDisabled();
   });
@@ -338,7 +344,8 @@ describe("RiskScoringPage", () => {
       data: undefined,
     } as never);
     renderWithQuery(<RiskScoringPage />);
-    fireEvent.change(screen.getByPlaceholderText("e.g. ent-001"), {
+    // First placeholder match is the calculate-form input
+    fireEvent.change(screen.getAllByPlaceholderText("e.g. ent-001")[0], {
       target: { value: "ent-test" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Calculate" }));
@@ -382,7 +389,8 @@ describe("RiskScoringPage", () => {
       data: mockHistory,
     } as never);
     renderWithQuery(<RiskScoringPage />);
-    expect(screen.getByText("0.8200")).toBeInTheDocument();
+    // "0.8200" appears in the large score <p> AND the ml_score ScoreBar <span>
+    expect(screen.getAllByText("0.8200").some((el) => el.tagName === "P")).toBe(true);
     expect(screen.getByText("ML Score")).toBeInTheDocument();
     expect(screen.getByText("Rule Score")).toBeInTheDocument();
     expect(screen.getByText("Velocity Score")).toBeInTheDocument();
