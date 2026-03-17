@@ -1,0 +1,39 @@
+---
+description: External integrations and third-party service rules for FinShield AI
+globs: backend/app/integrations/**
+---
+
+Integration stack:
+- Azure ML (model registry, training compute)
+- Azure Blob Storage (model artifacts, reports, exports)
+- Azure Key Vault (secret management)
+- SendGrid / Azure Communication Services (email)
+- Twilio (SMS)
+- External sanctions APIs (OFAC, UN, EU)
+
+Integration rules:
+- Wrap every external call in a dedicated client class under `integrations/`.
+- Use async HTTP clients (httpx) for all outbound calls.
+- Apply timeouts on every external request (default: 10s connect, 30s read).
+- Implement the circuit breaker pattern for unreliable external services (open after 5 consecutive failures, half-open after 30s).
+- Use exponential backoff for retries (max 3 retries, base 1s, max 16s).
+- Return well-defined fallback responses or raise domain exceptions on failure — never propagate raw HTTP errors.
+- Log every outbound call with correlation ID, target service, latency, and response status.
+- Inject integration clients via FastAPI `Depends()` so they are mockable in tests.
+- Use Azure Managed Identities for authentication wherever possible (no stored credentials).
+- Pull secrets exclusively from Azure Key Vault (via `integrations/azure_keyvault.py`); never pass secrets through environment variables in production.
+
+Resilience expectations:
+- If Azure ML is unavailable, the fraud pipeline must degrade gracefully to rules-only scoring.
+- If email/SMS service is unavailable, queue the notification via Celery for retry.
+- If a sanctions API is unavailable, log a warning and skip screening (do not block the transaction pipeline).
+
+Testing expectations:
+- Mock all external services in unit and integration tests.
+- Use `respx` or `httpx` mock transport for HTTP-based integrations.
+- Test timeout, retry, and circuit-breaker behavior explicitly.
+
+Do not:
+- Call external services directly from route handlers or service methods — always go through the integration layer.
+- Hardcode external URLs; centralize them in `core/config.py`.
+- Silently swallow integration failures without logging.

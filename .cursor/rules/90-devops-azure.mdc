@@ -1,6 +1,6 @@
 ---
 description: DevOps, Docker, and Azure infrastructure rules for FinShield AI
-globs: infrastructure/**, docker-compose.yml, Dockerfile, .github/workflows/**
+globs: infrastructure/**, docker-compose.yml, docker-compose.override.yml, **/Dockerfile, .github/workflows/**, Makefile
 ---
 
 DevOps & Infrastructure Stack:

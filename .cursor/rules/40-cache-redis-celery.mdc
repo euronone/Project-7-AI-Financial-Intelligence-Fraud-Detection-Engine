@@ -1,6 +1,6 @@
 ---
 description: Redis caching and Celery queue rules for FinShield AI
-globs: backend/app/core/rate_limiter.py, backend/worker.py, backend/app/services/**
+globs: backend/app/core/rate_limiter.py, backend/worker.py, backend/app/services/**, backend/app/integrations/**
 ---
 
 Redis & Celery usage:

@@ -1,0 +1,48 @@
+---
+description: Rules Engine module rules for FinShield AI
+globs: backend/app/rules/**
+---
+
+Rules Engine stack:
+- Custom Python rule evaluation engine
+- JSONB-based condition and action definitions (stored in PostgreSQL)
+- Pydantic v2 for condition/action schema validation
+
+Rules Engine architecture:
+- `engine.py` — Core evaluator: loads active rules, evaluates conditions against a transaction, and executes matched actions.
+- `conditions.py` — Condition types, operators, and comparison logic.
+- `actions.py` — Action handlers (block, flag, adjust risk score, create alert, notify, trigger webhook).
+- `templates.py` — Pre-built rule templates for common fraud patterns.
+
+Design rules:
+- Rules must be evaluated in priority order (lower `priority` number = higher precedence).
+- Rule evaluation must be deterministic — same transaction + same active rules = same result every time.
+- Condition evaluation must be safe: never execute arbitrary code, use only whitelisted operators and field paths.
+- Support AND/OR grouping of conditions (nested condition trees stored as JSONB).
+- Each rule evaluation must complete in <5ms to keep total rules-engine time under 50ms for up to 100 active rules.
+- Keep rule evaluation stateless within a single invocation — velocity/aggregate lookups should be pre-computed as features before rule evaluation begins.
+
+Action execution:
+- Actions must be idempotent where possible (e.g., creating a duplicate alert for the same transaction+rule should be prevented).
+- Side-effect actions (send notification, trigger webhook) must be dispatched via Celery, not executed inline during transaction scoring.
+- The `adjust_risk_score` action adds a configurable delta to the composite risk score; it does not replace it.
+
+Rule testing (dry-run):
+- `POST /rules/{id}/test` must evaluate a rule against a sample transaction without persisting any side effects.
+- Return: matched (bool), conditions evaluated (with pass/fail per condition), and actions that would have fired.
+- Dry-run must use the same evaluation path as production to ensure fidelity.
+
+Template rules:
+- Provide templates for: card testing, account takeover, money mule detection, first-party fraud, velocity abuse, geographic anomaly.
+- Templates should be clonable and customizable by users.
+
+Performance tracking:
+- Increment `hit_count` on every rule match (atomic update).
+- Track false positive rate per rule using feedback from resolved alerts.
+- Expose performance stats via `GET /rules/{id}/performance`.
+
+Do not:
+- Allow eval(), exec(), or dynamic code execution in condition evaluation.
+- Evaluate rules inside the API route handler — delegate to `rules_engine_service.py`.
+- Store rule evaluation results in the rules table itself; use `fraud_alerts` and `risk_scores` for outputs.
+- Skip priority ordering during evaluation.
