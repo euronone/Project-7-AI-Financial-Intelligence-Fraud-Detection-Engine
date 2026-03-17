@@ -2,7 +2,6 @@ FinShield AI — Team Task Poll (8 independent options)
 How to use: paste this into your group chat and ask everyone to vote ONE option (A–H).
 Rule: one option per person. Each option is an end-to-end slice (Backend + Frontend + Tests).
 
-
 A) Transactions — List + Detail (end-to-end)
 - Backend:
   - Implement GET /api/v1/transactions (pagination + filters: status, risk_level, amount range, date range)

@@ -1,5 +1,6 @@
 ---
 description: FastAPI backend rules for FinShield AI
+<<<<<<< HEAD
 globs: backend/**/*.py
 ---
 
@@ -53,3 +54,56 @@ Do not:
 - Put business logic inside Pydantic schemas.
 - Put environment variables directly across many files; centralize in `core/config.py` using `pydantic-settings`.
 - Mix unrelated domains in the same service file.
+=======
+globs: backend/**, app/**, api/**, server/**, **/*.py
+---
+
+Backend stack (FinShield AI):
+- Python 3.12
+- FastAPI
+- Pydantic v2
+- SQLAlchemy 2.0 (async) with Alembic migrations
+- PostgreSQL 16 (Azure Database for PostgreSQL) — no Supabase
+- Redis 7 (Azure Cache for Redis) for cache, Celery broker, rate limiting, session state
+- Celery for async tasks (notifications, report generation, batch jobs)
+- Azure Event Hubs (Kafka-compatible) for transaction streaming
+- Socket.IO (python-socketio) for real-time alerts and dashboard updates
+- ML: scikit-learn, XGBoost, PyTorch; ONNX Runtime for inference
+- Azure Blob Storage for model artifacts, reports, exports
+- Azure Key Vault for secrets (via config/env; never hardcode)
+- Email (SendGrid/Azure) and SMS (Twilio) for alert notifications — configurable
+
+Backend rules:
+- Use clean architecture: routes → services → repositories/models.
+- Routes/controllers handle only HTTP/WebSocket concerns.
+- Business logic lives in services (fraud_detection, risk_scoring, rules_engine, case, entity, watchlist, analytics, notification, audit).
+- Database access via repositories or async SQLAlchemy session; no raw SQL in routes.
+- Validation via Pydantic schemas; centralized exception handling.
+- Use async I/O for DB, Redis, and external calls where applicable.
+- Pagination and consistent response models for list endpoints.
+- Support WebSocket/Socket.IO for real-time alerts and transaction feed per API_SPEC.md.
+
+Preferred backend structure (per CLAUDE.md):
+- app/api/v1/              (HTTP routes: auth, transactions, fraud_alerts, risk_scoring, rules, cases, entities, models, watchlists, audit, settings, users, webhooks, network, health)
+- app/core/                (config, security, permissions, rate_limiter, middleware, exceptions, events)
+- app/models/              (SQLAlchemy ORM: user, transaction, fraud_alert, rule, case, entity, risk_score, watchlist, audit_log, ml_model, notification, webhook)
+- app/schemas/             (Pydantic request/response)
+- app/services/            (business logic)
+- app/ml/                  (pipeline, feature_engineering, model_registry, anomaly_detector, fraud_classifier, risk_scorer, behavioral_profiler, network_analyzer, explainability, training/)
+- app/rules/               (engine, conditions, actions, templates)
+- app/streaming/           (Event Hub consumer, producer, processor, websocket_manager)
+- app/integrations/        (azure_ml, azure_storage, azure_keyvault, email_service, sms_service, sanctions_api)
+- app/db/                  (session, migrations, seed)
+
+Coding expectations:
+- Type hints on all function signatures.
+- Docstrings for non-trivial service methods.
+- Keep routes thin and declarative.
+- Isolate integrations (Azure, email, SMS) behind interfaces; use config/env for credentials.
+
+Do not:
+- Put SQL or ORM-heavy logic in route files.
+- Put business logic in Pydantic schemas.
+- Hardcode database URLs, Redis URLs, Event Hub connection, or API keys; centralize in config.
+- Mix unrelated domains in the same service file.
+>>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66

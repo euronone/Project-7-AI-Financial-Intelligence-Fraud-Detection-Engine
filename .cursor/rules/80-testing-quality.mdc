@@ -5,6 +5,7 @@ alwaysApply: true
 
 Testing philosophy:
 - Write production-quality code with tests for critical behavior.
+<<<<<<< HEAD
 - Prefer deterministic unit tests for business logic.
 - Add integration tests for APIs, repositories, pipelines, and workflows crossing boundaries.
 - Mock external services, cloud dependencies, and ML model inference where appropriate.
@@ -27,8 +28,28 @@ Code quality:
 - Use strict types wherever the stack supports them (mypy, tsc).
 - Keep functions focused.
 - Refactor repeated logic into shared utilities when justified.
+=======
+- Prefer deterministic unit tests for business logic: fraud detection pipeline, rules engine, risk scoring, feature engineering, case/alert workflow.
+- Add integration tests for APIs, DB, Redis, and full transaction/alert flow.
+- Mock external services: Event Hubs (or use test container), SendGrid, Twilio, Azure Blob/Key Vault (or local emulators); do not depend on live external APIs in normal test runs.
+
+Testing expectations:
+- Add tests for non-trivial service methods (fraud_detection_service, rules_engine_service, risk_scoring_service, case_service).
+- Add tests for auth and RBAC (admin, analyst, investigator, viewer).
+- Test rules engine conditions and actions; test ML pipeline with fixed fixtures or mocked model inference.
+- Cover validation, failure, and edge cases (missing entity, rule timeout, model unavailable — graceful degradation to rules-only).
+- Keep tests readable and isolated; use pytest + pytest-asyncio + httpx for backend; Vitest + RTL + Playwright for frontend per CLAUDE.md.
+
+Code quality:
+- Linting and formatting (ruff for Python; ESLint/Prettier for frontend); type hints / TypeScript types.
+- Keep functions focused; refactor repeated logic into shared utilities when justified.
+>>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66
 
 Do not:
 - Add major logic without at least basic tests.
 - Create brittle tests tied to unstable implementation details.
+<<<<<<< HEAD
 - Depend on live external APIs in normal test flows.
+=======
+- Depend on live Azure, Twilio, or email in normal test runs.
+>>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66

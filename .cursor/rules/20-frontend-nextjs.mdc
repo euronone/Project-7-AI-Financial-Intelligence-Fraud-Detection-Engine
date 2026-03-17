@@ -1,4 +1,5 @@
 ---
+<<<<<<< HEAD
 description: Next.js frontend rules for FinShield AI
 globs: frontend/**/*.ts, frontend/**/*.tsx
 ---
@@ -51,3 +52,47 @@ Do not:
 - Mix many responsibilities into one component.
 - Hardcode API URLs (use `NEXT_PUBLIC_API_URL`).
 - Duplicate UI patterns that should be shared.
+=======
+description: Next.js frontend rules (web — Admin + Analyst/Operator UI; native mobile is separate)
+globs: frontend/**, src/**, app/**, components/**, pages/**, lib/**, hooks/**
+---
+
+This rule applies to the **web** frontend only. The project also has a **native mobile app** (separate codebase); see .cursor/rules/12-interfaces-admin-user-mobile.mdc.
+
+Frontend stack (FinShield AI):
+- Next.js 14 (App Router), React 18, TypeScript 5
+- Tailwind CSS 3, Zustand, TanStack Query v5, Recharts + D3.js
+- Socket.IO client for real-time alerts and transaction feed
+- React Hook Form + Zod, TanStack Table v8
+- NextAuth.js (Azure AD provider) for auth
+- Vitest, React Testing Library, Playwright for tests
+
+Frontend rules:
+- Prefer TypeScript for all frontend logic; strict types.
+- Keep components small, reusable, and focused.
+- Keep presentation separate from data-fetching logic (hooks, API client).
+- Handle loading, error, and empty states explicitly.
+- Support real-time updates (Socket.IO) for live alerts, transaction feed, and dashboard metrics.
+- **Two UIs in one app:** **Admin** (e.g. `/admin/*`, settings, rules, ML models, watchlists) and **Analyst/Operator** (dashboard, transactions, fraud-alerts, cases, analytics, entities, network-graph); use role-based routing and layout; shared design system and API client.
+
+Product-area alignment (docs/PRD.md, CLAUDE.md):
+- **Admin (web only):** Rules engine, ML model registry, watchlist/sanctions config, system settings, API keys, team management, audit log.
+- **Analyst/Operator (web):** Dashboard, transactions (list/detail + fraud analysis), fraud alerts (list/detail, assign, resolve, escalate), case management, risk scoring, analytics/reports, entity 360, network graph, notifications.
+- **Native mobile app:** Separate codebase; not covered by this rule.
+
+Preferred frontend structure (per CLAUDE.md):
+- frontend/src/app/              (App Router: (auth), (dashboard) with dashboard/, transactions/, fraud-alerts/, risk-scoring/, analytics/, rules-engine/, case-management/, ml-models/, entities/, watchlists/, audit-log/, settings/, network-graph/)
+- frontend/src/components/       (ui/, layout/, charts/, dashboard/, transactions/, fraud/, rules/, network/, shared/)
+- frontend/src/hooks/, lib/, stores/, types/
+- frontend/tests/unit/, e2e/
+
+UI/UX rules:
+- Accessible markup and semantic HTML.
+- Reusable design system components; avoid oversized page components.
+- State/data: centralized API client, normalized API patterns, careful auth state; validate critical inputs client- and server-side.
+
+Do not:
+- Mix many responsibilities into one component.
+- Hardcode API URLs in components.
+- Put admin-only flows in the mobile app codebase (admin is web only).
+>>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66

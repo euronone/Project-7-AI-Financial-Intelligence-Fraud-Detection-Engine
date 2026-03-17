@@ -1,9 +1,14 @@
 ---
+<<<<<<< HEAD
 description: Security rules for FinShield AI
+=======
+description: Security, compliance, and PII rules for FinShield AI
+>>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66
 alwaysApply: true
 ---
 
 Security rules:
+<<<<<<< HEAD
 - Never hardcode secrets, API keys, tokens, credentials, or private URLs.
 - Never log passwords, tokens, raw secrets, or sensitive user content (PII).
 - Validate and sanitize all user inputs using Pydantic (Backend) and Zod (Frontend).
@@ -30,3 +35,32 @@ Do not:
 - Assume client-side validation is enough.
 - Return internal exception details to users.
 - Log sensitive transaction details or PII.
+=======
+- Never hardcode secrets, API keys, tokens, credentials, or private URLs (database, Redis, Event Hubs, Azure Key Vault, SendGrid, Twilio, etc.).
+- Never log passwords, tokens, raw secrets, or sensitive user/transaction content.
+- Validate and sanitize all inputs (transaction payloads, API params, webhooks).
+- Treat uploads, URLs, and external content as untrusted.
+- Enforce authentication and authorization on protected resources; RBAC (admin, analyst, investigator, viewer) per PRD.
+- Least-privilege access; rate limiting on auth and sensitive endpoints (100 req/min auth, 1000 req/min data per CLAUDE.md).
+- Secure defaults; use Azure Key Vault for secrets in production.
+
+Compliance and PII (PRD Security & Compliance):
+- **PCI DSS:** Cardholder data handling; PII encryption at field level where required.
+- **Audit logs:** Tamper-proof, append-only; log user and system actions (data access, config changes, API key usage, alert/case actions).
+- **GDPR:** Data subject access, right to erasure (soft delete with anonymization) where applicable.
+- **SOC 2:** Audit trail and access control requirements.
+- API authentication: JWT (access 15min, refresh 7d), API keys for system-to-system, optional Azure AD SSO.
+
+AI/ML security:
+- Validate model inputs and outputs in the fraud pipeline; do not trust external scores without validation.
+- Protect rule and model config from unauthorized modification; restrict by role.
+
+Infra:
+- Prefer managed identities and Key Vault; no broad wildcard permissions in Azure configs.
+- Do not expose internal services publicly unless required (use Front Door/WAF for public endpoints).
+
+Do not:
+- Assume client-side validation is enough.
+- Return internal exception details or stack traces to users.
+- Trust unvalidated data in critical fraud/risk decisions.
+>>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66

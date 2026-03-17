@@ -1,0 +1,32 @@
+---
+description: PostgreSQL and persistence rules (Azure Database for PostgreSQL; no Supabase)
+globs: backend/app/models/**, backend/app/db/**, backend/repositories/**, db/**, **/migrations/**
+---
+
+Database stack (FinShield AI):
+- **PostgreSQL 16** (Azure Database for PostgreSQL Flexible Server) as the source of truth. Supabase is not used.
+- **Alembic** for schema migrations; all schema changes via migration files.
+- **SQLAlchemy 2.0 (async)** for ORM and session management.
+
+Database rules:
+- Design tables with clear ownership, timestamps (created_at, updated_at), and constraints.
+- Add indexes for common filters and joins (transactions: source_entity, processed_at, fraud_score, status, external_id; fraud_alerts: transaction_id, status, severity; audit_logs: created_at; etc.).
+- Use foreign keys; prefer soft-delete only where product requires it.
+- Align entity design with docs/DB_SCHEMA.md (users, transactions, entities, fraud_alerts, rules, cases, risk_scores, ml_models, watchlists, audit_logs, notifications, webhooks).
+- **Partitioning:** Range partition transactions by processed_at (monthly), audit_logs by created_at (monthly) per CLAUDE.md.
+
+Schema expectations:
+- Every core entity: id, created_at, updated_at where applicable.
+- Use enums or constrained fields for finite states (transaction status, risk_level, alert status, case status, etc.).
+- Keep schemas normalized unless denormalization is justified by performance.
+- No tenant/organization isolation unless PRD explicitly requires multi-tenancy.
+
+Repository / data access:
+- All DB access via repositories or dedicated data-access layer (async SQLAlchemy session).
+- Keep query logic out of routes and services (except trivial, already-patterned cases).
+- Parameterized queries; avoid N+1; use transactions for multi-write operations.
+- Do not use raw SQL in controllers/routes.
+
+Do not:
+- Make schema changes without Alembic migration files.
+- Hardcode database URL or credentials; use environment configuration (e.g. from Azure Key Vault in production).

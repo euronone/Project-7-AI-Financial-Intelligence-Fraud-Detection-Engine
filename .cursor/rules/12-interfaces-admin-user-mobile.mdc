@@ -1,0 +1,41 @@
+---
+description: Three interfaces — Admin (web), Analyst/Operator (web), Native mobile app
+alwaysApply: true
+---
+
+This project has exactly three user-facing interfaces. All features, APIs, and docs must account for them. FinShield AI targets internal users (admins, analysts, investigators, viewers) at banks/fintechs — not end consumers for chat support.
+
+## 1. Admin (Web)
+
+- **Purpose:** Internal users (admins) configure and monitor the fraud detection system.
+- **Stack:** Next.js + TypeScript (same web app as Analyst UI, with role-based routes and layout).
+- **Scope:** ML model config, rules engine management, watchlist/sanctions config, system settings, API key management, team/role management, audit log, integrations, notifications config.
+- **Access:** RBAC; admin role only.
+- **Where:** Same Next.js app under routes reserved for admin (e.g. `/admin/*` or `/settings` for admin-only sections).
+
+## 2. Analyst / Operator Interface (Web)
+
+- **Purpose:** Analysts and investigators work fraud alerts, cases, transactions, risk scoring, and analytics.
+- **Stack:** Next.js + TypeScript.
+- **Scope:** Dashboard, transactions (list/detail), fraud alerts (list/detail, assign, resolve), case management, risk scoring, analytics/reports, entity 360, watchlists view, network graph, in-app notifications.
+- **Access:** RBAC (analyst, investigator, viewer); same backend APIs as mobile.
+- **Where:** Same Next.js app (e.g. `/`, `/dashboard`, `/transactions`, `/fraud-alerts`, `/cases`, `/analytics`, `/entities`, etc.).
+
+## 3. Native Mobile App
+
+- **Purpose:** Analysts/operators (optional) use support on iOS and Android for alerts and key actions.
+- **Stack:** Native mobile; consumes the same FastAPI backend via REST and WebSocket/Socket.IO.
+- **Scope:** Feature parity where applicable: dashboard summary, alerts, case list/detail, notifications, push for critical alerts. No admin configuration in the mobile app; admin is web-only.
+- **Access:** Same auth as web (JWT, optional Azure AD); support device/push tokens for notifications.
+- **Where:** Separate codebase (e.g. `mobile/` or dedicated repos); distribution via App Store and Google Play.
+
+## Rules
+
+- **Backend:** One API surface serves all three; use RBAC to distinguish admin vs analyst vs mobile. Do not create separate APIs per interface unless justified (e.g. mobile push or deep-link endpoints).
+- **Web (Next.js):** Single app hosting both Admin and Analyst UI; separate routes/layouts and role checks; shared design system and API client.
+- **Mobile:** Native app(s) consume docs/API_SPEC.md; document mobile-specific needs (push, offline, app version header) in API_SPEC and DEPLOYMENT.
+- **Docs and rules:** PRD, ARCHITECTURE, API_SPEC, DB_SCHEMA, and DEPLOYMENT must reference Admin, Analyst/Operator web, and Native mobile app where relevant.
+
+Do not:
+- Build admin-only flows in the mobile app.
+- Assume only one “frontend”; there are two delivery surfaces (web app and native app) and three logical interfaces (admin, analyst web, analyst mobile).

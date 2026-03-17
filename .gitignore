@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Dependencies
 node_modules/
 backend/venv/
@@ -35,3 +36,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+=======
+git-branching-guide.md
+>>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66
