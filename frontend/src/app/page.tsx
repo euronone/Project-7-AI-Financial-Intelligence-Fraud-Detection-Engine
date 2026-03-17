@@ -9,6 +9,9 @@ export default function Home() {
         <a href="/ml-models" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
           View ML Models
         </a>
+        <a href="/risk-scoring" className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+          Risk Scoring
+        </a>
       </div>
     </main>
   );

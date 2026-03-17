@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.risk_scoring import router as risk_scoring_router
+
 app = FastAPI(
     title="FinShield AI API",
     description="AI Financial Intelligence & Fraud Detection Engine",
@@ -15,6 +17,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# F5 — Risk Scoring
+app.include_router(risk_scoring_router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
