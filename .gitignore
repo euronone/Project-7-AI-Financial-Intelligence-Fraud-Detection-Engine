@@ -1,41 +1,173 @@
-<<<<<<< HEAD
-# Dependencies
-node_modules/
-backend/venv/
-.pnp
-.pnp.*
+# =============================================================================
+# FinShield AI — .gitignore
+# Stack: Next.js 14 · FastAPI · PostgreSQL · Redis · Terraform · Azure
+# =============================================================================
 
-# Build / cache
+# -----------------------------------------------------------------------------
+# Node / Frontend
+# -----------------------------------------------------------------------------
+node_modules/
+frontend/node_modules/
 frontend/.next/
 frontend/out/
+frontend/.turbo/
+.pnp
+.pnp.*
 *.tsbuildinfo
+frontend/.vercel/
 
-# Python
+# -----------------------------------------------------------------------------
+# Python / Backend
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *.pyo
-.pytest_cache/
+*.pyd
+.Python
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+env/
 *.egg-info/
 .eggs/
+dist/
+build/
+*.so
+*.whl
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+.pyre/
 
-# Env and secrets
+# -----------------------------------------------------------------------------
+# Testing & Coverage
+# -----------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage/
+htmlcov/
+.tox/
+nosetests.xml
+test-results/
+playwright-report/
+test-results.xml
+
+# -----------------------------------------------------------------------------
+# ML Models & Large Artifacts
+# -----------------------------------------------------------------------------
+backend/app/ml/models/*.onnx
+backend/app/ml/models/*.pkl
+backend/app/ml/models/*.joblib
+backend/app/ml/models/*.pt
+backend/app/ml/models/*.bin
+# Keep the .gitkeep placeholder
+!backend/app/ml/models/.gitkeep
+
+# -----------------------------------------------------------------------------
+# Environment & Secrets  ← NEVER commit these
+# -----------------------------------------------------------------------------
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+backend/.env
+frontend/.env.local
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
 
+# -----------------------------------------------------------------------------
+# Terraform / Infrastructure
+# -----------------------------------------------------------------------------
+infrastructure/terraform/.terraform/
+infrastructure/terraform/.terraform.lock.hcl
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.*
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/terraform.tfvars
+infrastructure/terraform/environments/*.tfvars
+# Keep the examples
+!infrastructure/terraform/terraform.tfvars.example
+!infrastructure/terraform/environments/*.tfvars.example
+infrastructure/terraform/tfplan
+infrastructure/terraform/tfplan.*
+infrastructure/terraform/crash.log
+infrastructure/terraform/override.tf
+infrastructure/terraform/override.tf.json
+infrastructure/terraform/*_override.tf
+infrastructure/terraform/*_override.tf.json
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+.docker/
+docker-compose.override.yml.local
+
+# -----------------------------------------------------------------------------
+# Database / Migrations artifacts
+# -----------------------------------------------------------------------------
+*.sqlite
+*.sqlite3
+*.db
+pgdata/
+
+# -----------------------------------------------------------------------------
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# -----------------------------------------------------------------------------
 # OS
+# -----------------------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
 
-# IDE
+# -----------------------------------------------------------------------------
+# IDE / Editor
+# -----------------------------------------------------------------------------
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
 
-# Logs
-*.log
-npm-debug.log*
-=======
-git-branching-guide.md
->>>>>>> 4ecd489eaf599472f34a30b56d623fbfeb2f4a66
+# -----------------------------------------------------------------------------
+# Misc
+# -----------------------------------------------------------------------------
+*.tgz
+*.tar.gz
+*.zip
+*.bak
+*.tmp
+.cache/
+tmp/
+temp/
+generated/
+reports/output/
+exports/output/

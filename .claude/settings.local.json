@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell.exe -Command \"Set-Location 'E:\\\\EURON_AI_PRODUCT_ENG\\\\Project-7-AI-Financial-Intelligence-Fraud-Detection-Engine\\\\backend'; & 'C:\\\\Users\\\\Anu\\\\AppData\\\\Roaming\\\\Python\\\\Scripts\\\\poetry.exe' run python scripts/seed_data.py 2>&1\")",
+      "Bash(powershell.exe -Command \"Set-Location 'E:\\\\EURON_AI_PRODUCT_ENG\\\\Project-7-AI-Financial-Intelligence-Fraud-Detection-Engine\\\\frontend'; npm run build 2>&1\")",
+      "Bash(powershell.exe -Command \"Set-Location 'E:\\\\EURON_AI_PRODUCT_ENG\\\\Project-7-AI-Financial-Intelligence-Fraud-Detection-Engine\\\\backend'; & 'C:\\\\Users\\\\Anu\\\\AppData\\\\Roaming\\\\Python\\\\Scripts\\\\poetry.exe' add 'pydantic[email]' 2>&1 | tail -5\")"
+    ]
+  }
+}

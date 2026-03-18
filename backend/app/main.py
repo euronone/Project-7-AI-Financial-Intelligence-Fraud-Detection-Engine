@@ -1,35 +1,65 @@
+"""FastAPI application entry point — FinShield AI backend."""
+from contextlib import asynccontextmanager
+
+import socketio
+import structlog
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import ORJSONResponse
 
-app = FastAPI(
-    title="FinShield AI API",
-    description="AI Financial Intelligence & Fraud Detection Engine",
-    version="1.0.0",
-)
+from app.api.router import api_router
+from app.config import get_settings
+from app.core.exceptions import register_exception_handlers
+from app.core.middleware import configure_structlog, register_middleware
+from app.streaming.websocket_manager import sio
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins, adjust for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+logger = structlog.get_logger(__name__)
+settings = get_settings()
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to FinShield AI API"}
+# Configure structured logging at startup
+configure_structlog()
 
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
 
-@app.get("/api/v1/ml/models")
-async def get_ml_models():
-    # Mock data for now, would typically come from DB or registry
-    return [
-        {"id": "xgb_fraud", "name": "XGBoost Fraud Classifier", "version": "v1.2.0", "status": "Active", "accuracy": 0.95, "type": "Classification"},
-        {"id": "if_anomaly", "name": "Isolation Forest Anomaly Detector", "version": "v1.0.1", "status": "Active", "accuracy": 0.89, "type": "Anomaly Detection"},
-        {"id": "nn_behavioral", "name": "Neural Net Behavioral Profiler", "version": "v2.0.0", "status": "Shadow", "accuracy": 0.92, "type": "Profiling"},
-        {"id": "graph_network", "name": "Network Analyzer", "version": "v1.0.0", "status": "Active", "accuracy": 0.91, "type": "Graph Analysis"},
-    ]
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown with the modern lifespan API."""
+    # Startup
+    logger.info("app_startup", env=settings.app_env, version="1.0.0")
+    from app.streaming.producer import producer
+    await producer.start()
+    yield
+    # Shutdown
+    logger.info("app_shutdown")
+    from app.streaming.producer import producer
+    await producer.stop()
+
+
+def create_app() -> FastAPI:
+    """Application factory — creates and configures the FastAPI instance."""
+    application = FastAPI(
+        title="FinShield AI API",
+        description="AI Financial Intelligence & Fraud Detection Engine",
+        version="1.0.0",
+        docs_url="/docs" if settings.is_development else None,
+        redoc_url="/redoc" if settings.is_development else None,
+        default_response_class=ORJSONResponse,
+        lifespan=lifespan,
+    )
+
+    # Middleware (order matters — CORS is innermost, timing is outermost)
+    register_middleware(application)
+
+    # Exception handlers
+    register_exception_handlers(application)
+
+    # API routers
+    application.include_router(api_router)
+
+    return application
+
+
+# Build the FastAPI app
+_fastapi_app = create_app()
+
+# Mount Socket.IO ASGI app — WebSocket connections are handled by Socket.IO,
+# regular HTTP requests fall through to FastAPI.
+app = socketio.ASGIApp(sio, other_asgi_app=_fastapi_app)

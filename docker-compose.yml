@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finshield-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: finshield
+      POSTGRES_USER: finshield
+      POSTGRES_PASSWORD: localdev123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finshield -d finshield"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: finshield-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: finshield-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+
+volumes:
+  pgdata:
+  redisdata:

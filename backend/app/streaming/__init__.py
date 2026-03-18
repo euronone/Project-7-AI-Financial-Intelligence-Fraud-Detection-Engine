@@ -1,0 +1,1 @@
+"""Streaming package — Event Hub consumer/producer and WebSocket manager."""
