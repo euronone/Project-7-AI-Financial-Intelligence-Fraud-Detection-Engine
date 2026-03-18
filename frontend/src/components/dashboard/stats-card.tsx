@@ -74,16 +74,20 @@ export const StatsCard = memo(function StatsCard({
   const isPositive = change >= 0;
 
   const colorMap: Record<string, string> = {
-    blue: "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400",
-    green: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400",
-    red: "bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400",
-    amber: "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400",
-    purple: "bg-purple-50 text-purple-600 dark:bg-purple-950 dark:text-purple-400",
-    cyan: "bg-cyan-50 text-cyan-600 dark:bg-cyan-950 dark:text-cyan-400",
+    blue: "bg-blue-50 text-blue-600",
+    green: "bg-emerald-50 text-emerald-600",
+    red: "bg-red-50 text-red-600",
+    amber: "bg-amber-50 text-amber-600",
+    purple: "bg-purple-50 text-purple-600",
+    cyan: "bg-cyan-50 text-cyan-600",
+    primary: "bg-primary-50 text-primary-600",
+    danger: "bg-danger-50 text-danger-600",
+    warning: "bg-warning-50 text-warning-600",
+    success: "bg-success-50 text-success-600",
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-soft transition-all duration-200 hover:shadow-soft-lg">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
           {title}
@@ -99,7 +103,7 @@ export const StatsCard = memo(function StatsCard({
       </div>
 
       <div className="mt-3">
-        <p className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+        <p className="text-2xl font-bold tracking-tight text-slate-900">
           {value}
         </p>
       </div>
@@ -108,19 +112,16 @@ export const StatsCard = memo(function StatsCard({
         <span
           className={cn(
             "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold",
-            trend === "up" &&
-              "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
-            trend === "down" &&
-              "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400",
-            trend === "stable" &&
-              "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+            trend === "up" && "bg-success-50 text-success-700",
+            trend === "down" && "bg-danger-50 text-danger-700",
+            trend === "stable" && "bg-slate-100 text-slate-600"
           )}
         >
           <TrendIcon trend={trend} />
           {isPositive ? "+" : ""}
           {change.toFixed(1)}%
         </span>
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-slate-500">
           vs last period
         </span>
       </div>

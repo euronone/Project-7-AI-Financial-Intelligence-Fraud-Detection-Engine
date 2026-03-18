@@ -110,7 +110,7 @@ async def get_overview_stats(db: AsyncSession) -> OverviewStats:
 async def get_fraud_trends(
     db: AsyncSession, period: str = "30d"
 ) -> FraudTrendsResponse:
-    """Group fraud alerts by day for the requested period."""
+    """Group fraud alerts by day for the requested period. Falls back to flagged transactions if no alerts."""
     start = _period_start(period)
 
     date_col = func.date_trunc("day", FraudAlert.created_at).label("day")
@@ -128,7 +128,6 @@ async def get_fraud_trends(
     )
 
     rows = (await db.execute(stmt)).all()
-
     data_points = [
         FraudTrendPoint(
             date=row.day.strftime("%Y-%m-%d"),
@@ -138,6 +137,34 @@ async def get_fraud_trends(
         )
         for row in rows
     ]
+
+    # Fallback: if no alert-based trends, use flagged transactions by day
+    if not data_points:
+        tx_date_col = func.date_trunc("day", Transaction.processed_at).label("day")
+        tx_stmt = (
+            select(
+                tx_date_col,
+                func.count().label("cnt"),
+                func.coalesce(func.sum(Transaction.amount), 0).label("total_amount"),
+                func.coalesce(func.avg(Transaction.fraud_score), 0).label("avg_conf"),
+            )
+            .where(
+                Transaction.processed_at >= start,
+                Transaction.status.in_([TransactionStatus.FLAGGED, TransactionStatus.BLOCKED]),
+            )
+            .group_by(tx_date_col)
+            .order_by(tx_date_col)
+        )
+        tx_rows = (await db.execute(tx_stmt)).all()
+        data_points = [
+            FraudTrendPoint(
+                date=row.day.strftime("%Y-%m-%d"),
+                count=row.cnt,
+                amount=float(row.total_amount),
+                avg_score=round(float(row.avg_conf or 0), 4),
+            )
+            for row in tx_rows
+        ]
 
     return FraudTrendsResponse(period=period, data_points=data_points)
 

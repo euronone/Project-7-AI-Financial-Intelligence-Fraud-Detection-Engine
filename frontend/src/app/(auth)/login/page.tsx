@@ -22,16 +22,16 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="rounded-2xl bg-white p-8 shadow-2xl">
+    <div className="rounded-2xl border border-white/10 bg-white/95 p-8 shadow-soft-lg backdrop-blur-sm">
       {/* Header */}
       <div className="mb-8 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary-600">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary-600 shadow-lg shadow-primary-500/30">
           <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-gray-900">FinShield AI</h1>
-        <p className="mt-1 text-sm text-gray-500">Sign in to the Fraud Detection Engine</p>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">FinShield AI</h1>
+        <p className="mt-1 text-sm text-slate-500">Sign in to the Fraud Detection Engine</p>
       </div>
 
       {/* Error Banner */}
@@ -44,7 +44,7 @@ export default function LoginPage() {
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div>
-          <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
             Email address
           </label>
           <input
@@ -52,8 +52,8 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             autoFocus
-            className={`w-full rounded-lg border px-3.5 py-2.5 text-sm transition-colors placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-              errors.email ? "border-danger-500" : "border-gray-300"
+            className={`w-full rounded-lg border px-3.5 py-2.5 text-sm transition-colors placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 ${
+              errors.email ? "border-danger-500" : "border-slate-300"
             }`}
             placeholder="admin@finshield.dev"
             {...register("email")}
@@ -64,15 +64,15 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-gray-700">
+          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
             Password
           </label>
           <input
             id="password"
             type="password"
             autoComplete="current-password"
-            className={`w-full rounded-lg border px-3.5 py-2.5 text-sm transition-colors placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-              errors.password ? "border-danger-500" : "border-gray-300"
+            className={`w-full rounded-lg border px-3.5 py-2.5 text-sm transition-colors placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 ${
+              errors.password ? "border-danger-500" : "border-slate-300"
             }`}
             placeholder="Enter your password"
             {...register("password")}
@@ -102,8 +102,8 @@ export default function LoginPage() {
       </form>
 
       {/* Dev credentials hint */}
-      <div className="mt-6 rounded-lg bg-gray-50 p-3 text-center text-xs text-gray-500">
-        <p className="font-medium text-gray-600">Dev credentials</p>
+      <div className="mt-6 rounded-lg bg-slate-50/80 p-3 text-center text-xs text-slate-500">
+        <p className="font-medium text-slate-600">Dev credentials</p>
         <p className="mt-0.5">admin@finshield.dev / Admin123!@#</p>
       </div>
     </div>

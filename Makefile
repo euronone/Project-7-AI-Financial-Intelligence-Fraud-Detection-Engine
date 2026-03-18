@@ -23,6 +23,9 @@ db-migrate:
 db-seed:
 	cd backend && poetry run python scripts/seed_data.py
 
+db-seed-trends:
+	cd backend && poetry run python scripts/seed_trend_scenario.py
+
 # Testing
 test: test-backend test-frontend
 

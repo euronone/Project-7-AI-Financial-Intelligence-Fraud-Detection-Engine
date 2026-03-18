@@ -33,8 +33,8 @@ export default function DashboardPage() {
       <Breadcrumbs />
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Dashboard</h1>
+        <p className="mt-1 text-sm text-slate-500">
           Welcome back, {user?.first_name}. Here&apos;s your fraud detection overview.
         </p>
       </div>
@@ -103,7 +103,7 @@ export default function DashboardPage() {
         {/* Fraud Trends Chart */}
         <Card className="lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Fraud Trends (30 Days)</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Fraud Trends (30 Days)</h2>
             <Link href="/analytics/trends" className="text-sm text-primary-600 hover:text-primary-700">
               View Details
             </Link>
@@ -113,13 +113,13 @@ export default function DashboardPage() {
           ) : trends?.data_points ? (
             <FraudTrendChart data={trends.data_points} height={280} />
           ) : (
-            <div className="flex h-64 items-center justify-center text-sm text-gray-400">No trend data available</div>
+            <div className="flex h-64 items-center justify-center text-sm text-slate-400">No trend data available</div>
           )}
         </Card>
 
         {/* Risk Overview */}
         <Card>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Risk Overview</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">Risk Overview</h2>
           {riskLoading || statsLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : (
@@ -141,9 +141,9 @@ export default function DashboardPage() {
                     <div key={level.label} className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <div className={`h-2.5 w-2.5 rounded-full ${level.color}`} />
-                        <span className="text-gray-600">{level.label}</span>
+                        <span className="text-slate-600">{level.label}</span>
                       </div>
-                      <span className="font-semibold text-gray-900">{level.value}</span>
+                      <span className="font-semibold text-slate-900">{level.value}</span>
                     </div>
                   ))}
                 </div>
@@ -167,29 +167,29 @@ export default function DashboardPage() {
               <>
                 <div>
                   <div className="mb-1 flex justify-between text-sm">
-                    <span className="text-gray-600">Fraud Rate</span>
-                    <span className="font-medium text-gray-900">{((stats?.fraud_rate ?? 0) * 100).toFixed(1)}%</span>
+                    <span className="text-slate-600">Fraud Rate</span>
+                    <span className="font-medium text-slate-900">{((stats?.fraud_rate ?? 0) * 100).toFixed(1)}%</span>
                   </div>
                   <Progress value={(stats?.fraud_rate ?? 0) * 100} color="danger" size="sm" />
                 </div>
                 <div>
                   <div className="mb-1 flex justify-between text-sm">
-                    <span className="text-gray-600">Amount Processed</span>
-                    <span className="font-medium text-gray-900">{formatCurrency(stats?.total_amount_processed ?? 0)}</span>
+                    <span className="text-slate-600">Amount Processed</span>
+                    <span className="font-medium text-slate-900">{formatCurrency(stats?.total_amount_processed ?? 0)}</span>
                   </div>
                   <Progress value={65} color="primary" size="sm" />
                 </div>
                 <div>
                   <div className="mb-1 flex justify-between text-sm">
-                    <span className="text-gray-600">Entity Coverage</span>
-                    <span className="font-medium text-gray-900">{formatNumber(stats?.total_entities ?? 0)} entities</span>
+                    <span className="text-slate-600">Entity Coverage</span>
+                    <span className="font-medium text-slate-900">{formatNumber(stats?.total_entities ?? 0)} entities</span>
                   </div>
                   <Progress value={80} color="success" size="sm" />
                 </div>
                 <div>
                   <div className="mb-1 flex justify-between text-sm">
-                    <span className="text-gray-600">Alert Resolution</span>
-                    <span className="font-medium text-gray-900">64%</span>
+                    <span className="text-slate-600">Alert Resolution</span>
+                    <span className="font-medium text-slate-900">64%</span>
                   </div>
                   <Progress value={64} color="warning" size="sm" />
                 </div>
@@ -199,7 +199,7 @@ export default function DashboardPage() {
         </Card>
 
         <Card>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Quick Actions</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">Quick Actions</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {[
               { label: "View Transactions", href: "/transactions", color: "bg-blue-50 text-blue-700 hover:bg-blue-100" },

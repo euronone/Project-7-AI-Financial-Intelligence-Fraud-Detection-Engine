@@ -10,7 +10,11 @@ interface CardProps {
 export function Card({ children, className, padding = true, onClick }: CardProps) {
   return (
     <div
-      className={cn("rounded-xl border border-gray-200 bg-white shadow-sm", padding && "p-6", className)}
+      className={cn(
+        "rounded-xl border border-slate-200/80 bg-white shadow-soft transition-all duration-200 hover:shadow-soft-lg",
+        padding && "p-6",
+        className
+      )}
       onClick={onClick}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -26,11 +30,11 @@ export function CardHeader({ children, className }: { children: React.ReactNode;
 }
 
 export function CardTitle({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <h3 className={cn("text-lg font-semibold text-gray-900", className)}>{children}</h3>;
+  return <h3 className={cn("text-lg font-semibold text-slate-900", className)}>{children}</h3>;
 }
 
 export function CardDescription({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <p className={cn("text-sm text-gray-500", className)}>{children}</p>;
+  return <p className={cn("text-sm text-slate-500", className)}>{children}</p>;
 }
 
 export function CardContent({ children, className }: { children: React.ReactNode; className?: string }) {

@@ -46,7 +46,7 @@ const navigation: NavGroup[] = [
       },
       {
         label: "Fraud Alerts",
-        href: "/alerts",
+        href: "/fraud-alerts",
         icon: (
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
@@ -55,7 +55,7 @@ const navigation: NavGroup[] = [
       },
       {
         label: "Cases",
-        href: "/cases",
+        href: "/case-management",
         icon: (
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 0 0 .75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 0 0-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0 1 12 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 0 1-.673-.38m0 0A2.18 2.18 0 0 1 3 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 0 1 3.413-.387m7.5 0V5.25A2.25 2.25 0 0 0 13.5 3h-3a2.25 2.25 0 0 0-2.25 2.25v.894m7.5 0a48.667 48.667 0 0 0-7.5 0M12 12.75h.008v.008H12v-.008Z" />
@@ -142,7 +142,7 @@ const navigation: NavGroup[] = [
       },
       {
         label: "Audit Log",
-        href: "/audit",
+        href: "/audit-log",
         icon: (
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -170,8 +170,8 @@ export function Sidebar() {
   const navContent = (
     <>
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b px-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600">
+      <div className="flex h-16 items-center gap-3 border-b border-slate-200/80 px-4">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 shadow-sm">
           <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
           </svg>
@@ -184,7 +184,7 @@ export function Sidebar() {
         {navigation.map((group) => (
           <div key={group.title} className="mb-6">
             {!sidebarCollapsed && (
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
                 {group.title}
               </p>
             )}
@@ -200,7 +200,7 @@ export function Sidebar() {
                         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                         active
                           ? "bg-primary-50 text-primary-700"
-                          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                         sidebarCollapsed && "justify-center",
                       )}
                     >
@@ -224,7 +224,7 @@ export function Sidebar() {
       <div className="border-t p-3">
         <button
           onClick={toggleSidebar}
-          className="flex w-full items-center justify-center rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          className="flex w-full items-center justify-center rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
         >
           <svg
             className={cn("h-5 w-5 transition-transform", sidebarCollapsed && "rotate-180")}
@@ -245,7 +245,7 @@ export function Sidebar() {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "hidden h-screen flex-col border-r bg-white transition-all duration-300 lg:flex",
+          "hidden h-screen flex-col border-r border-slate-200/80 bg-white transition-all duration-300 lg:flex",
           sidebarCollapsed ? "w-[72px]" : "w-64",
         )}
       >

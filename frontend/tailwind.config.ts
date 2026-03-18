@@ -8,6 +8,11 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      boxShadow: {
+        "soft": "0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)",
+        "soft-lg": "0 10px 40px -15px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+        "glow": "0 0 40px -10px rgba(59, 130, 246, 0.25)",
+      },
       colors: {
         primary: {
           50: "#eff6ff",
@@ -60,7 +65,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "Plus Jakarta Sans", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
       },
       keyframes: {

@@ -12,12 +12,12 @@ export function Topbar() {
   const fullName = user ? `${user.first_name} ${user.last_name}` : "User";
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b bg-white px-4 lg:px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur-sm lg:px-6">
       {/* Left: mobile menu + search */}
       <div className="flex items-center gap-3">
         <button
           onClick={toggleMobileSidebar}
-          className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 lg:hidden"
+          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
@@ -38,7 +38,7 @@ export function Topbar() {
             <input
               type="text"
               placeholder="Search transactions, entities, alerts..."
-              className="w-80 rounded-lg border border-gray-300 bg-gray-50 py-2 pl-10 pr-4 text-sm placeholder:text-gray-400 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-80 rounded-lg border border-slate-200 bg-slate-50/80 py-2 pl-10 pr-4 text-sm placeholder:text-slate-400 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500/20"
             />
           </div>
         </div>
@@ -57,21 +57,21 @@ export function Topbar() {
         {/* User dropdown */}
         <DropdownMenu
           trigger={
-            <button className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-gray-100">
+            <button className="flex items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-slate-100">
               <Avatar name={fullName} size="sm" />
               <div className="hidden text-left md:block">
-                <p className="text-sm font-medium text-gray-900">{fullName}</p>
-                <p className="text-xs capitalize text-gray-500">{user?.role}</p>
+                <p className="text-sm font-medium text-slate-900">{fullName}</p>
+                <p className="text-xs capitalize text-slate-500">{user?.role}</p>
               </div>
-              <svg className="hidden h-4 w-4 text-gray-400 md:block" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg className="hidden h-4 w-4 text-slate-400 md:block" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
               </svg>
             </button>
           }
         >
           <div className="px-3 py-2 text-sm md:hidden">
-            <p className="font-medium text-gray-900">{fullName}</p>
-            <p className="capitalize text-gray-500">{user?.role}</p>
+            <p className="font-medium text-slate-900">{fullName}</p>
+            <p className="capitalize text-slate-500">{user?.role}</p>
           </div>
           <DropdownSeparator />
           <DropdownItem onClick={() => {}}>Profile</DropdownItem>
