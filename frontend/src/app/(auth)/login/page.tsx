@@ -106,6 +106,14 @@ export default function LoginPage() {
         <p className="font-medium text-slate-600">Dev credentials</p>
         <p className="mt-0.5">admin@finshield.dev /Admin123!@#</p>
       </div>
+
+      {/* Sign up link */}
+      <div className="mt-6 text-center text-sm">
+        <span className="text-slate-500">Don't have an account? </span>
+        <a href="/signup" className="font-semibold text-primary-600 hover:text-primary-500">
+          Sign up
+        </a>
+      </div>
     </div>
   );
 }

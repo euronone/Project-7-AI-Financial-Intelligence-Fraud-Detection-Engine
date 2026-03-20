@@ -14,10 +14,46 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
+from app.models.user import User, UserRole
+from app.schemas.auth import LoginRequest, RefreshRequest, SignupRequest, TokenResponse
 
 logger = structlog.get_logger()
+
+
+async def register_user(db: AsyncSession, data: SignupRequest) -> TokenResponse:
+    """Registers a new user and returns access + refresh tokens."""
+    settings = get_settings()
+    result = await db.execute(select(User).where(User.email == data.email))
+    if result.scalar_one_or_none():
+        raise BadRequestException("Email already registered")
+
+    try:
+        role = UserRole(data.role.lower())
+    except ValueError:
+        role = UserRole.VIEWER
+
+    user = User(
+        email=data.email,
+        password_hash=hash_password(data.password),
+        first_name=data.first_name,
+        last_name=data.last_name,
+        role=role,
+        is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    token_data = {"sub": str(user.id), "role": user.role.value, "email": user.email}
+    access_token = create_access_token(token_data)
+    refresh_token = create_refresh_token(token_data)
+
+    logger.info("user_registered", user_id=str(user.id), role=user.role.value)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=settings.jwt_access_token_expire_minutes * 60,
+    )
 
 
 async def authenticate_user(db: AsyncSession, credentials: LoginRequest) -> TokenResponse:
