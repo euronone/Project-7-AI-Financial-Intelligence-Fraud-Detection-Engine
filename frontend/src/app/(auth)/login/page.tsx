@@ -104,7 +104,7 @@ export default function LoginPage() {
       {/* Dev credentials hint */}
       <div className="mt-6 rounded-lg bg-slate-50/80 p-3 text-center text-xs text-slate-500">
         <p className="font-medium text-slate-600">Dev credentials</p>
-        <p className="mt-0.5">admin@finshield.dev / Admin123!@#</p>
+        <p className="mt-0.5">admin@finshield.dev /Admin123!@#</p>
       </div>
     </div>
   );
