@@ -1,0 +1,37 @@
+---
+description: PostgreSQL and persistence rules for FinShield AI
+globs: backend/app/models/**, backend/app/db/**, backend/alembic/**
+---
+
+Database stack:
+- PostgreSQL 16
+- SQLAlchemy 2.0 (async)
+- Alembic (Migrations)
+
+Database rules:
+- PostgreSQL is the source of truth for structured application data.
+- Use Alembic migrations for all schema changes (`alembic upgrade head`).
+- Design tables with clear ownership, timestamps, and constraints.
+- Add indexes for common filters and joins (e.g., `idx_transactions_processed_at`).
+- Use foreign keys where appropriate.
+- Implement table partitioning for high-volume tables (e.g., `transactions` and `audit_logs` partitioned by month).
+
+Schema design expectations:
+- Every core entity should have:
+  - `id` (UUID, default `gen_random_uuid()`)
+  - `created_at` (TIMESTAMPTZ, default `NOW()`)
+  - `updated_at` (TIMESTAMPTZ, default `NOW()`)
+- Use ENUMs for finite states (e.g., `status`, `risk_level`, `alert_type`).
+- Keep schemas normalized unless denormalization is justified by performance needs.
+
+Repository/ORM rules:
+- All DB access must go through SQLAlchemy async sessions.
+- Keep query code out of routes.
+- Parameterize queries (handled by SQLAlchemy).
+- Avoid N+1 query patterns (use `selectinload` or `joinedload` for relationships).
+- Use transactions when multiple writes must succeed together.
+
+Do not:
+- Write raw SQL inside controllers/routes.
+- Make schema changes without Alembic migration files.
+- Perform synchronous DB calls in the async FastAPI application.

@@ -1,4 +1,5 @@
 ---
+<<<<<<< HEAD
 description: Next.js frontend rules (web — Admin + Analyst/Operator UI; native mobile is separate)
 globs: frontend/**, src/**, app/**, components/**, pages/**, lib/**, hooks/**
 ---
@@ -41,3 +42,63 @@ Do not:
 - Mix many responsibilities into one component.
 - Hardcode API URLs in components.
 - Put admin-only flows in the mobile app codebase (admin is web only).
+=======
+description: Next.js frontend rules for FinShield AI
+globs: frontend/**/*.ts, frontend/**/*.tsx
+---
+
+Frontend stack:
+- Next.js 14 (App Router)
+- React 18
+- Tailwind CSS 3
+- TypeScript 5
+- Zustand (State Management)
+- TanStack Query v5 (React Query)
+- Socket.IO Client (Real-Time)
+- NextAuth.js (Auth)
+- Recharts + D3.js (Charts)
+- React Hook Form + Zod (Forms)
+- TanStack Table v8 (Tables/Data Grids)
+
+Frontend rules:
+- Strict TypeScript (no `any` unless absolutely necessary).
+- Functional components only (no class components).
+- Server components by default, client components only when needed (`"use client"`).
+- Prefer server-side data fetching in page components.
+- Use custom hooks for reusable logic.
+- Colocate components with their types and tests.
+- Use `cn()` utility for conditional Tailwind classes.
+- Use Zod schemas that mirror backend Pydantic schemas.
+
+Preferred frontend structure:
+- `frontend/src/app/` - Next.js App Router pages and layouts
+- `frontend/src/components/ui/` - Base UI primitives (Tailwind)
+- `frontend/src/components/layout/` - Shell, sidebar, topbar
+- `frontend/src/components/shared/` - Shared business components
+- `frontend/src/hooks/` - Custom React hooks
+- `frontend/src/lib/` - API clients, socket setup, utils
+- `frontend/src/stores/` - Zustand stores
+- `frontend/src/types/` - TypeScript interfaces and types
+- `frontend/tests/` - Vitest and Playwright tests
+
+UI/UX rules:
+- Handle loading, error, and empty states explicitly.
+- Use accessible markup and semantic HTML.
+- Avoid oversized page components. Extract logic to hooks and UI to smaller components.
+
+State/data rules:
+- Use TanStack Query v5 for server state and caching.
+- Use Zustand for global client state (e.g., UI toggles, active filters).
+- Centralize API calls in `lib/api-client.ts`.
+- Manage WebSockets via `hooks/use-socket.ts`.
+
+Testing 
+- Vitest (unit and integration tests)
+- React Testing Library (component testing)
+- Playwright (E2E tests)
+
+Do not:
+- Mix many responsibilities into one component.
+- Hardcode API URLs (use `NEXT_PUBLIC_API_URL`).
+- Duplicate UI patterns that should be shared.
+>>>>>>> contributor/main

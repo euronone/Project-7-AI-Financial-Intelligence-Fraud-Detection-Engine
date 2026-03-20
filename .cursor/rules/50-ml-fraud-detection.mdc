@@ -1,0 +1,34 @@
+---
+description: ML Pipeline and Fraud Detection rules for FinShield AI
+globs: backend/app/ml/**, backend/scripts/train_models.py
+---
+
+ML Stack:
+- scikit-learn
+- XGBoost
+- PyTorch
+- ONNX Runtime
+- SHAP (Explainability)
+
+ML Pipeline rules:
+- Extract and engineer features (200+) systematically in `feature_engineering.py`.
+- Ensure feature calculation is identical between training and real-time inference.
+- Use ONNX Runtime for production serving to ensure sub-10ms inference latency.
+- Models must be versioned and tracked in a Model Registry (Azure ML).
+- Support shadow mode scoring for new models before promotion.
+
+Fraud Detection expectations:
+- Fraud Classifier (XGBoost + NN) outputs a probability (0.0 - 1.0).
+- Anomaly Detector (Isolation Forest/Autoencoder) flags statistical outliers.
+- Behavioral Profiler builds per-entity baselines and flags deviations.
+- Network Analyzer detects fraud rings via graph analysis.
+- Provide SHAP values for model explainability on every prediction.
+
+Risk Scoring:
+- Combine ML model output, rule triggers, behavioral deviation, and entity history into a composite risk score.
+- Map composite scores to risk levels: Low (0.0-0.3), Medium (0.3-0.6), High (0.6-0.8), Critical (0.8-1.0).
+
+Do not:
+- Train models in the main FastAPI event loop.
+- Hardcode model paths or versions in the code; use environment variables or DB configuration.
+- Serve heavy PyTorch models directly via Python in the critical path without ONNX optimization.
