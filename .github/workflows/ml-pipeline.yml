@@ -64,7 +64,7 @@ jobs:
         if: steps.evaluate.outputs.passed != 'true'
         run: echo "::warning::Model metrics did not meet threshold — skipping registration"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: training-artifacts
