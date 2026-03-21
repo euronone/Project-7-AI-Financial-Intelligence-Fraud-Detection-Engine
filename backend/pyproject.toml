@@ -7,7 +7,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
-fastapi = {extras = ["standard"], version = "^0.115"}
+fastapi = {extras = ["standard"], version = "^0.135"}
 uvicorn = {extras = ["standard"], version = "^0.34"}
 sqlalchemy = {extras = ["asyncio"], version = "^2.0"}
 asyncpg = "^0.30"
