@@ -363,7 +363,7 @@ export default function LandingPage() {
       <section className="py-24 bg-white relative overflow-hidden">
         <div className="absolute inset-0 bg-blue-50/50"></div>
         <div className="max-w-4xl mx-auto px-4 relative z-10 text-center">
-          <h2 className="text-4xl font-bold mb-6">Ready to secure your transactions?</h2>
+            <h2 className="text-4xl font-bold mb-6">Ready to secure your transactions?</h2>
           <p className="text-xl text-slate-600 mb-10">
             Join leading financial institutions using FinShield AI to stop fraud before it happens.
           </p>
