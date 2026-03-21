@@ -1,9 +1,22 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    analytics, audit, auth, cases, entities, fraud_alerts, health,
-    models, network, risk_scoring, rules, settings, transactions, users,
-    watchlists, webhooks,
+    analytics,
+    audit,
+    auth,
+    cases,
+    entities,
+    fraud_alerts,
+    health,
+    models,
+    network,
+    risk_scoring,
+    rules,
+    settings,
+    transactions,
+    users,
+    watchlists,
+    webhooks,
 )
 
 api_router = APIRouter()

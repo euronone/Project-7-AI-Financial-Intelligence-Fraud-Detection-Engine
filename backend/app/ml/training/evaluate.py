@@ -12,7 +12,7 @@ def evaluate_model(predictions: list[float], labels: list[int], threshold: float
         return _empty_metrics()
 
     tp = fp = tn = fn = 0
-    for pred, label in zip(predictions, labels):
+    for pred, label in zip(predictions, labels, strict=False):
         pred_label = 1 if pred >= threshold else 0
         if pred_label == 1 and label == 1:
             tp += 1
@@ -48,8 +48,8 @@ def evaluate_model(predictions: list[float], labels: list[int], threshold: float
 
 def _auc_proxy(predictions: list[float], labels: list[int]) -> float:
     """Approximate AUC-ROC using the Mann-Whitney U statistic."""
-    pos_scores = [p for p, l in zip(predictions, labels) if l == 1]
-    neg_scores = [p for p, l in zip(predictions, labels) if l == 0]
+    pos_scores = [p for p, l in zip(predictions, labels, strict=False) if l == 1]
+    neg_scores = [p for p, l in zip(predictions, labels, strict=False) if l == 0]
 
     if not pos_scores or not neg_scores:
         return 0.5

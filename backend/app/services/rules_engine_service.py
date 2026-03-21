@@ -5,9 +5,9 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundError
 from app.models.rule import Rule
-from app.rules.engine import evaluate_single_rule, evaluate_transaction
+from app.rules.engine import evaluate_single_rule
 from app.rules.templates import get_templates
 from app.schemas.rule import (
     RuleCreate,
@@ -59,7 +59,7 @@ async def get_rule(db: AsyncSession, rule_id: uuid.UUID) -> Rule:
     result = await db.execute(select(Rule).where(Rule.id == rule_id))
     rule = result.scalar_one_or_none()
     if rule is None:
-        raise NotFoundException("Rule", str(rule_id))
+        raise NotFoundError("Rule", str(rule_id))
     return rule
 
 

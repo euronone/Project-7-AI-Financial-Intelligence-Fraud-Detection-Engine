@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from fastapi import APIRouter, Depends
@@ -74,7 +74,7 @@ async def create_api_key(
     """Stub: generate a mock API key. In production, persist and hash the key."""
     key_id = str(uuid.uuid4())
     raw_key = f"fsk_{uuid.uuid4().hex}"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + timedelta(days=body.expires_in_days)
 
     logger.info("api_key_created", key_id=key_id, name=body.name)

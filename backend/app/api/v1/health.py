@@ -26,9 +26,9 @@ async def detailed_health_check() -> dict[str, Any]:
 
     # Database check
     try:
-        from app.db.session import async_engine
-
         from sqlalchemy import text
+
+        from app.db.session import async_engine
 
         async with async_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))

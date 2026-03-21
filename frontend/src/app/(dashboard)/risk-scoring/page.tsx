@@ -3,7 +3,6 @@
 import { useRiskDistribution, useTopRiskEntities } from "@/hooks/use-risk-scores";
 import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RiskDistributionChart } from "@/components/charts/risk-distribution-chart";

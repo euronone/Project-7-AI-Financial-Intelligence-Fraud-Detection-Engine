@@ -2,13 +2,13 @@
 
 import math
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundError
 from app.models.case import Case, CasePriority, CaseStatus
 from app.schemas.case import (
     CaseAssign,
@@ -67,7 +67,7 @@ async def get_case(db: AsyncSession, case_id: uuid.UUID) -> Case:
     result = await db.execute(select(Case).where(Case.id == case_id))
     case = result.scalar_one_or_none()
     if case is None:
-        raise NotFoundException("Case", str(case_id))
+        raise NotFoundError("Case", str(case_id))
     return case
 
 
@@ -85,7 +85,7 @@ async def create_case(db: AsyncSession, data: CaseCreate, user_id: uuid.UUID) ->
         created_by=user_id,
         timeline={"events": [{
             "type": "created",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "user_id": str(user_id),
             "notes": "Case created",
         }]},
@@ -118,12 +118,12 @@ async def update_case_status(
     case.status = data.status
 
     if data.status in (CaseStatus.CLOSED_CONFIRMED_FRAUD, CaseStatus.CLOSED_FALSE_POSITIVE):
-        case.closed_at = datetime.now(timezone.utc)
+        case.closed_at = datetime.now(UTC)
 
     timeline = case.timeline or {"events": []}
     timeline["events"].append({
         "type": "status_change",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "user_id": str(user_id),
         "new_status": data.status.value,
         "notes": data.notes,
@@ -145,7 +145,7 @@ async def assign_case(db: AsyncSession, case_id: uuid.UUID, data: CaseAssign, us
     timeline = case.timeline or {"events": []}
     timeline["events"].append({
         "type": "assigned",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "user_id": str(user_id),
         "assigned_to": str(data.assigned_to),
     })

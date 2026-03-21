@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAlerts, useAlertStatistics } from "@/hooks/use-alerts";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { Pagination } from "@/components/ui/pagination";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";

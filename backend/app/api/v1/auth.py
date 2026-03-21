@@ -1,4 +1,3 @@
-import uuid
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +7,6 @@ from app.core.rate_limiter import rate_limit_auth
 from app.dependencies import get_db
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RefreshRequest, SignupRequest, TokenResponse
-from app.schemas.common import MessageResponse
 from app.schemas.user import UserProfileUpdate, UserResponse
 from app.services import audit_service, auth_service
 

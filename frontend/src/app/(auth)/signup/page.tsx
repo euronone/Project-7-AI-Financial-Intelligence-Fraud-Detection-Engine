@@ -20,12 +20,6 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect if already authenticated
-  if (isAuthenticated) {
-    router.replace("/dashboard");
-    return null;
-  }
-
   const {
     register,
     handleSubmit,
@@ -39,6 +33,12 @@ export default function SignupPage() {
       role: "viewer",
     },
   });
+
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    router.replace("/dashboard");
+    return null;
+  }
 
   const onSubmit = (data: SignupFormData) => {
     setError(null);

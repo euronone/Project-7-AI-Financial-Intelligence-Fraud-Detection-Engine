@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { cn, formatNumber, formatCurrency, formatPercent } from "@/lib/utils";
+import { cn, formatNumber, formatPercent } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";

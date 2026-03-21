@@ -1,11 +1,11 @@
 import time
 
 import structlog
-from fastapi import Request, Response
+from fastapi import Request
 from redis.asyncio import from_url as redis_from_url
 
 from app.config import get_settings
-from app.core.exceptions import RateLimitException
+from app.core.exceptions import RateLimitError
 
 logger = structlog.get_logger()
 
@@ -23,7 +23,7 @@ async def get_redis():
 async def check_rate_limit(key: str, max_requests: int, window_seconds: int = 60) -> None:
     """Sliding window rate limiter backed by Redis.
 
-    Raises RateLimitException if the limit is exceeded.
+    Raises RateLimitError if the limit is exceeded.
     """
     redis = await get_redis()
     now = time.time()
@@ -40,7 +40,7 @@ async def check_rate_limit(key: str, max_requests: int, window_seconds: int = 60
     current_count = results[2]
     if current_count > max_requests:
         logger.warning("rate_limit_exceeded", key=key, count=current_count, limit=max_requests)
-        raise RateLimitException(f"Rate limit exceeded: {max_requests} requests per {window_seconds}s")
+        raise RateLimitError(f"Rate limit exceeded: {max_requests} requests per {window_seconds}s")
 
 
 async def rate_limit_auth(request: Request) -> None:

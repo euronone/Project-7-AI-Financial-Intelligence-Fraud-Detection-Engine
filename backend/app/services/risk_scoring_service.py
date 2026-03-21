@@ -1,13 +1,12 @@
 """Service layer for risk scoring and ML pipeline execution."""
 
-import math
 import uuid
 
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundError
 from app.ml.pipeline import run_pipeline
 from app.models.entity import Entity
 from app.models.risk_score import RiskScore
@@ -31,7 +30,7 @@ async def score_transaction(
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     txn = result.scalar_one_or_none()
     if txn is None:
-        raise NotFoundException("Transaction", str(transaction_id))
+        raise NotFoundError("Transaction", str(transaction_id))
 
     txn_dict = _txn_to_dict(txn)
 
@@ -80,7 +79,7 @@ async def calculate_entity_risk(db: AsyncSession, entity_id: uuid.UUID) -> Pipel
     )
     txn = result.scalar_one_or_none()
     if txn is None:
-        raise NotFoundException("Transaction for entity", str(entity_id))
+        raise NotFoundError("Transaction for entity", str(entity_id))
 
     return await score_transaction(db, txn.id)
 

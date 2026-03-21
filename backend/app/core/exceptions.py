@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 logger = structlog.get_logger()
 
 
-class AppException(Exception):
+class AppError(Exception):
     """Base exception for all application-level errors."""
 
     def __init__(
@@ -22,7 +22,7 @@ class AppException(Exception):
         super().__init__(self.message)
 
 
-class NotFoundException(AppException):
+class NotFoundError(AppError):
     def __init__(self, resource: str = "Resource", resource_id: str = "") -> None:
         detail = f"{resource} not found"
         if resource_id:
@@ -30,34 +30,34 @@ class NotFoundException(AppException):
         super().__init__(message=detail, status_code=status.HTTP_404_NOT_FOUND)
 
 
-class BadRequestException(AppException):
+class BadRequestError(AppError):
     def __init__(self, message: str = "Bad request") -> None:
         super().__init__(message=message, status_code=status.HTTP_400_BAD_REQUEST)
 
 
-class UnauthorizedException(AppException):
+class UnauthorizedError(AppError):
     def __init__(self, message: str = "Not authenticated") -> None:
         super().__init__(message=message, status_code=status.HTTP_401_UNAUTHORIZED)
 
 
-class ForbiddenException(AppException):
+class ForbiddenError(AppError):
     def __init__(self, message: str = "Insufficient permissions") -> None:
         super().__init__(message=message, status_code=status.HTTP_403_FORBIDDEN)
 
 
-class ConflictException(AppException):
+class ConflictError(AppError):
     def __init__(self, message: str = "Resource conflict") -> None:
         super().__init__(message=message, status_code=status.HTTP_409_CONFLICT)
 
 
-class RateLimitException(AppException):
+class RateLimitError(AppError):
     def __init__(self, message: str = "Rate limit exceeded") -> None:
         super().__init__(message=message, status_code=status.HTTP_429_TOO_MANY_REQUESTS)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    @app.exception_handler(AppException)
-    async def app_exception_handler(_request: Request, exc: AppException) -> JSONResponse:
+    @app.exception_handler(AppError)
+    async def app_exception_handler(_request: Request, exc: AppError) -> JSONResponse:
         logger.warning("app_exception", message=exc.message, status_code=exc.status_code, details=exc.details)
         return JSONResponse(
             status_code=exc.status_code,

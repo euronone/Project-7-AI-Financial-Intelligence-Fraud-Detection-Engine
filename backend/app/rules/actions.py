@@ -5,7 +5,6 @@ be dispatched via Celery in production — here they are stubbed as log entries.
 """
 
 import uuid
-from typing import Any
 
 import structlog
 

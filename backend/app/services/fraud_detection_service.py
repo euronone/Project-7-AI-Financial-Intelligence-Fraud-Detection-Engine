@@ -2,13 +2,13 @@
 
 import math
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundError
 from app.models.fraud_alert import AlertSeverity, AlertStatus, AlertType, FraudAlert
 from app.schemas.fraud_alert import (
     AlertAssign,
@@ -108,7 +108,7 @@ async def get_alert(db: AsyncSession, alert_id: uuid.UUID) -> FraudAlert:
     result = await db.execute(select(FraudAlert).where(FraudAlert.id == alert_id))
     alert = result.scalar_one_or_none()
     if alert is None:
-        raise NotFoundException("FraudAlert", str(alert_id))
+        raise NotFoundError("FraudAlert", str(alert_id))
     return alert
 
 
@@ -123,7 +123,7 @@ async def update_alert_status(
 
     if data.status in (AlertStatus.RESOLVED_FRAUD, AlertStatus.RESOLVED_FALSE_POSITIVE, AlertStatus.DISMISSED):
         alert.resolved_by = user_id
-        alert.resolved_at = datetime.now(timezone.utc)
+        alert.resolved_at = datetime.now(UTC)
         if data.resolution_notes:
             alert.resolution_notes = data.resolution_notes
 

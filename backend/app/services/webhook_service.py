@@ -5,14 +5,14 @@ import hmac
 import json
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import BadRequestException, NotFoundException
+from app.core.exceptions import BadRequestError
 from app.models.webhook import Webhook
 from app.schemas.webhook import (
     VALID_WEBHOOK_EVENTS,
@@ -64,11 +64,11 @@ async def list_webhooks(
 
 
 async def get_webhook(db: AsyncSession, webhook_id: uuid.UUID) -> Webhook:
-    """Fetch a single webhook by ID or raise NotFoundException."""
+    """Fetch a single webhook by ID or raise NotFoundError."""
     result = await db.execute(select(Webhook).where(Webhook.id == webhook_id))
     webhook = result.scalar_one_or_none()
     if webhook is None:
-        raise NotFoundException("Webhook", str(webhook_id))
+        raise NotFoundError("Webhook", str(webhook_id))
     return webhook
 
 
@@ -132,13 +132,13 @@ async def test_webhook(
     webhook = await get_webhook(db, webhook_id)
 
     if test_request.event_type not in VALID_WEBHOOK_EVENTS:
-        raise BadRequestException(f"Invalid event type: {test_request.event_type}")
+        raise BadRequestError(f"Invalid event type: {test_request.event_type}")
 
     payload = json.dumps({
         "event": test_request.event_type,
         "data": test_request.sample_data or {},
         "test": True,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }).encode()
 
     signature = _sign_payload(payload, webhook.secret)
@@ -193,7 +193,7 @@ async def trigger_webhooks(
     body = json.dumps({
         "event": event_type,
         "data": payload,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }).encode()
 
     async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT_SECONDS) as client:
@@ -208,7 +208,7 @@ async def trigger_webhooks(
                         FINSHIELD_SIGNATURE_HEADER: signature,
                     },
                 )
-                webhook.last_triggered_at = datetime.now(timezone.utc)
+                webhook.last_triggered_at = datetime.now(UTC)
                 if response.status_code >= 400:
                     webhook.failure_count += 1
                     logger.warning(

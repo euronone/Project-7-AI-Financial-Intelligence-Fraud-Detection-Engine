@@ -1,11 +1,11 @@
-import uuid
 import math
+import uuid
 
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictException, NotFoundException
+from app.core.exceptions import ConflictError, NotFoundError
 from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user import UserCreate, UserListResponse, UserResponse, UserUpdate
@@ -17,7 +17,7 @@ async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise NotFoundException("User", str(user_id))
+        raise NotFoundError("User", str(user_id))
     return user
 
 
@@ -46,7 +46,7 @@ async def list_users(
 async def create_user(db: AsyncSession, data: UserCreate) -> User:
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
-        raise ConflictException(f"User with email '{data.email}' already exists")
+        raise ConflictError(f"User with email '{data.email}' already exists")
 
     user = User(
         email=data.email,

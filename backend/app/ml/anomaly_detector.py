@@ -4,7 +4,6 @@ In production this would use trained sklearn/PyTorch models. The dev
 implementation uses a z-score-based heuristic that highlights outliers.
 """
 
-import math
 from typing import Any
 
 import structlog

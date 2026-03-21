@@ -1,6 +1,5 @@
 """In-app notification service."""
 
-import math
 import uuid
 
 import structlog

@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   Lock,
   Cpu,
-  BarChart3,
   Globe,
   Database,
   Server
