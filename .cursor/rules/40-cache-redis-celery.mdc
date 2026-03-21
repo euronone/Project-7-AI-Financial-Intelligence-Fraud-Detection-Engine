@@ -1,0 +1,28 @@
+---
+description: Redis caching and Celery queue rules for FinShield AI
+globs: backend/app/core/rate_limiter.py, backend/worker.py, backend/app/services/**, backend/app/integrations/**
+---
+
+Redis & Celery usage:
+- Use Redis 7 for caching, rate limiting, session-like ephemeral state, and as a Celery broker.
+- Use Celery for background tasks, asynchronous processing, and scheduled jobs.
+- Choose TTLs intentionally for cached data.
+- Cache only what has a clear performance benefit.
+- Make cache invalidation explicit.
+
+Rules:
+- Wrap Redis access in dedicated utilities/services.
+- Use stable key naming conventions (e.g., `rate_limit:{user_id}:{endpoint}`).
+- Document key patterns if introducing new families of keys.
+- Prefer idempotent worker/job behavior in Celery tasks.
+- Use retries carefully and avoid infinite retry loops. Implement dead letter queues (DLQ) where appropriate.
+
+Caching expectations:
+- Cache expensive reads and repeated metadata lookups where appropriate.
+- Do not cache highly sensitive data unless encrypted and justified.
+- Do not rely on cache as the only source of truth for critical persistent state.
+
+Do not:
+- Scatter raw Redis calls across the codebase.
+- Store large unbounded payloads without TTL or cleanup strategy.
+- Mix queue semantics and cache semantics without clarity.

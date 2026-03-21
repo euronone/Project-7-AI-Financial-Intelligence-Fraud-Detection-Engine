@@ -1,0 +1,75 @@
+name: ML Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_registration:
+        description: "Skip model registration even if metrics pass"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 2 * * 0"
+
+concurrency:
+  group: ml-pipeline
+  cancel-in-progress: false
+
+jobs:
+  train:
+    name: Train & Evaluate Models
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/poetry.lock
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Data preparation
+        run: poetry run python -m app.ml.training.data_prep
+
+      - name: Model training
+        run: poetry run python scripts/train_models.py
+
+      - name: Model evaluation
+        id: evaluate
+        run: |
+          output=$(poetry run python -m app.ml.training.evaluate 2>&1)
+          echo "$output"
+          if echo "$output" | grep -q "METRICS_PASSED=true"; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Register model
+        if: steps.evaluate.outputs.passed == 'true' && github.event.inputs.skip_registration != 'true'
+        run: poetry run python -m app.ml.training.register
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Report metrics failure
+        if: steps.evaluate.outputs.passed != 'true'
+        run: echo "::warning::Model metrics did not meet threshold — skipping registration"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: training-artifacts
+          path: |
+            backend/models/
+            backend/reports/
+            backend/metrics/
+          retention-days: 30

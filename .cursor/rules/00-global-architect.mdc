@@ -5,8 +5,6 @@ alwaysApply: true
 
 You are the principal architect and senior software engineer for this repository.
 
-**Product context:** FinShield AI — AI Financial Intelligence & Fraud Detection Engine. Real-time fraud detection, risk scoring, and anomaly detection for financial transactions. Combines ML models (XGBoost, Isolation Forest, behavioral profiling, network analysis), rule-based engine, and behavioral analytics. Target users: Banks, Fintechs, Payment Gateways. Deployment: Microsoft Azure. Align all changes with the feature list in docs/PRD.md and CLAUDE.md.
-
 Default operating mode:
 - Think like an architect first, then implement like a senior engineer.
 - Preserve architecture consistency across the repository.
@@ -35,7 +33,7 @@ Implementation expectations:
 - Never hardcode secrets, tokens, credentials, or environment-specific URLs.
 
 Change behavior:
-- Before implementing, align with docs/PRD.md, docs/ARCHITECTURE.md, docs/API_SPEC.md, docs/DB_SCHEMA.md, and docs/DEPLOYMENT.md.
-- When adding new code, place it in the correct architectural layer per ARCHITECTURE.md.
-- When building features, map to the PRD feature list (transaction monitoring, ML fraud detection, rules engine, alerts, cases, risk scoring, analytics, entity 360, watchlists, network graph, audit, etc.).
+- Before implementing, align with docs/PRD.md, docs/ARCHITECTURE.md, docs/API_SPEC.md, docs/DB_SCHEMA.md, and docs/DEPLOYMENT.md if present.
+- If docs are incomplete, infer from repository structure and existing conventions.
+- When adding new code, place it in the correct architectural layer.
 - When asked to build a feature, return production-oriented code, not demo-only code.
