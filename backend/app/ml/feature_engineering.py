@@ -4,9 +4,8 @@ Extracts 50+ features from raw transaction data for model consumption.
 Features span amount, velocity, geography, temporal, device, and entity categories.
 """
 
-import hashlib
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -81,11 +80,11 @@ def _temporal_features(txn: dict, features: dict[str, float]) -> None:
         try:
             dt = datetime.fromisoformat(ts)
         except ValueError:
-            dt = datetime.now(timezone.utc)
+            dt = datetime.now(UTC)
     elif isinstance(ts, datetime):
         dt = ts
     else:
-        dt = datetime.now(timezone.utc)
+        dt = datetime.now(UTC)
 
     features["hour_of_day"] = float(dt.hour)
     features["day_of_week"] = float(dt.weekday())

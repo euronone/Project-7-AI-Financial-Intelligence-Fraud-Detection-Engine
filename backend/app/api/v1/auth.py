@@ -1,4 +1,3 @@
-import uuid
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,12 +6,30 @@ from app.core.permissions import get_current_user
 from app.core.rate_limiter import rate_limit_auth
 from app.dependencies import get_db
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
-from app.schemas.common import MessageResponse
+from app.schemas.auth import LoginRequest, RefreshRequest, SignupRequest, TokenResponse
 from app.schemas.user import UserProfileUpdate, UserResponse
 from app.services import audit_service, auth_service
 
 router = APIRouter()
+
+
+@router.post("/signup", response_model=TokenResponse, dependencies=[Depends(rate_limit_auth)])
+async def signup(
+    request: Request,
+    data: SignupRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Register a new user and return JWT tokens."""
+    tokens = await auth_service.register_user(db, data)
+    await audit_service.log_action(
+        db,
+        action="signup",
+        resource_type="auth",
+        details={"email": data.email, "role": data.role},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return tokens
 
 
 @router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit_auth)])

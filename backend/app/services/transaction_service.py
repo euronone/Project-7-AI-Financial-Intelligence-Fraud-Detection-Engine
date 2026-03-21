@@ -1,13 +1,12 @@
 import math
 import uuid
-from datetime import datetime, timezone
-from decimal import Decimal
+from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import func, select, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictException, NotFoundException
+from app.core.exceptions import ConflictError, NotFoundError
 from app.models.transaction import Transaction, TransactionStatus
 from app.schemas.transaction import (
     TransactionCreate,
@@ -23,7 +22,7 @@ async def get_transaction(db: AsyncSession, transaction_id: uuid.UUID) -> Transa
     result = await db.execute(select(Transaction).where(Transaction.id == transaction_id))
     txn = result.scalar_one_or_none()
     if txn is None:
-        raise NotFoundException("Transaction", str(transaction_id))
+        raise NotFoundError("Transaction", str(transaction_id))
     return txn
 
 
@@ -67,7 +66,7 @@ async def ingest_transaction(db: AsyncSession, data: TransactionCreate) -> Trans
         select(Transaction).where(Transaction.external_id == data.external_id)
     )
     if existing.scalar_one_or_none():
-        raise ConflictException(f"Transaction '{data.external_id}' already exists")
+        raise ConflictError(f"Transaction '{data.external_id}' already exists")
 
     txn = Transaction(
         external_id=data.external_id,
@@ -84,7 +83,7 @@ async def ingest_transaction(db: AsyncSession, data: TransactionCreate) -> Trans
         device_fingerprint=data.device_fingerprint,
         country_code=data.country_code,
         card_present=data.card_present,
-        processed_at=datetime.now(timezone.utc),
+        processed_at=datetime.now(UTC),
     )
     db.add(txn)
     await db.flush()
@@ -110,7 +109,7 @@ async def batch_ingest(db: AsyncSession, items: list[TransactionCreate]) -> list
             device_fingerprint=data.device_fingerprint,
             country_code=data.country_code,
             card_present=data.card_present,
-            processed_at=datetime.now(timezone.utc),
+            processed_at=datetime.now(UTC),
         )
         db.add(txn)
         transactions.append(txn)

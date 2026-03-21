@@ -8,11 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.permissions import require_admin, require_viewer
 from app.dependencies import get_db
 from app.models.audit_log import AuditLog
-from app.models.notification import Notification
 from app.models.user import User
 from app.schemas.audit import AuditLogListResponse, AuditLogResponse, NotificationListResponse
-from app.services import notification_service
 from app.schemas.common import MessageResponse
+from app.services import notification_service
 
 router = APIRouter()
 

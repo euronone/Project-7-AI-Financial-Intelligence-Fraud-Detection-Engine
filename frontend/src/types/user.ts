@@ -18,6 +18,13 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface SignupRequest {
+  email: string;
+  password: string;
+  full_name: string;
+  role: UserRole;
+}
+
 export interface TokenResponse {
   access_token: string;
   refresh_token: string;

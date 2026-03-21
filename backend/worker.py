@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import structlog
 from celery import Celery
 from celery.schedules import crontab
-
-import structlog
 
 from app.config import get_settings
 

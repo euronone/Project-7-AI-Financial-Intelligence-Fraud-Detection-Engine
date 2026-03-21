@@ -12,11 +12,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from datetime import UTC
+
 from sqlalchemy import select
-from app.config import get_settings
+
 from app.db.session import async_session_factory
 from app.models.ml_model import MLModel, ModelStatus, ModelType
-
 
 SEED_MODELS = [
     {
@@ -107,7 +108,7 @@ async def seed_models() -> None:
             print(f"  {len(existing)} models already exist — skipping seed.")
             return
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         for m in SEED_MODELS:
             model = MLModel(
@@ -119,7 +120,7 @@ async def seed_models() -> None:
                 metrics=m["metrics"],
                 parameters=m.get("parameters"),
                 artifact_path=m["artifact_path"],
-                promoted_at=datetime.now(timezone.utc) if m["status"] == ModelStatus.ACTIVE else None,
+                promoted_at=datetime.now(UTC) if m["status"] == ModelStatus.ACTIVE else None,
             )
             session.add(model)
             print(f"  + {m['name']} v{m['version']} ({m['model_type'].value})")

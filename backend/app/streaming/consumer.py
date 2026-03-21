@@ -45,7 +45,6 @@ class EventConsumer:
         In production this would iterate over Event Hub partitions, commit
         offsets, and route events to `process_event`.
         """
-        from app.streaming.processor import stream_processor
 
         retry_delay = 1.0
         max_delay = 30.0

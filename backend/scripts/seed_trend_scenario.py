@@ -13,7 +13,7 @@ Usage: poetry run python scripts/seed_trend_scenario.py
 import asyncio
 import random
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,7 +26,7 @@ from app.config import get_settings
 from app.models import FraudAlert, MLModel, Rule, Transaction, User
 
 settings = get_settings()
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 async def main():

@@ -3,10 +3,10 @@ import uuid
 from difflib import SequenceMatcher
 
 import structlog
-from sqlalchemy import func, select, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundError
 from app.models.watchlist import Watchlist
 from app.schemas.watchlist import (
     ScreeningMatch,
@@ -25,7 +25,7 @@ async def get_watchlist_entry(db: AsyncSession, entry_id: uuid.UUID) -> Watchlis
     result = await db.execute(select(Watchlist).where(Watchlist.id == entry_id))
     entry = result.scalar_one_or_none()
     if entry is None:
-        raise NotFoundException("Watchlist entry", str(entry_id))
+        raise NotFoundError("Watchlist entry", str(entry_id))
     return entry
 
 

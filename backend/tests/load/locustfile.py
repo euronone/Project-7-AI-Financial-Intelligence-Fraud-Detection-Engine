@@ -11,15 +11,11 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import random
 import string
-import time
 import uuid
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 
 from locust import HttpUser, between, events, task
 
@@ -294,7 +290,7 @@ def _print_percentiles(environment, **_kwargs):
     """Print P50–P99 response times when Locust finishes."""
     stats = environment.runner.stats
     print("\n" + "=" * 80)
-    print(f"  FinShield Load Test — Percentile Report")
+    print("  FinShield Load Test — Percentile Report")
     print("=" * 80)
     print(f"  {'Endpoint':<40} {'P50':>7} {'P75':>7} {'P90':>7} {'P95':>7} {'P99':>7}  {'Reqs':>7}")
     print("-" * 80)

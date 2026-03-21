@@ -5,14 +5,13 @@ and executes matched actions. Designed to be called by the service layer.
 """
 
 import uuid
-from typing import Any
 
 import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rule import Rule
-from app.rules.actions import ActionResult, execute_actions
+from app.rules.actions import execute_actions
 from app.rules.conditions import evaluate_condition_tree
 
 logger = structlog.get_logger()
@@ -118,6 +117,6 @@ async def evaluate_single_rule(
     """Dry-run a single rule against a sample transaction (for rule testing)."""
     results = await evaluate_transaction(db, transaction, dry_run=True, rule_ids=[rule_id])
     if not results:
-        from app.core.exceptions import NotFoundException
-        raise NotFoundException("Rule", str(rule_id))
+        from app.core.exceptions import NotFoundError
+        raise NotFoundError("Rule", str(rule_id))
     return results[0]

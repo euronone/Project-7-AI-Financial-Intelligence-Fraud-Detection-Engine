@@ -3,14 +3,13 @@ import uuid
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import func, select, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictException, NotFoundException
+from app.core.exceptions import ConflictError, NotFoundError
 from app.models.entity import Entity
 from app.models.fraud_alert import FraudAlert
 from app.models.transaction import Transaction
-from app.models.case import Case
 from app.schemas.entity import (
     EntityCreate,
     EntityDetailResponse,
@@ -27,7 +26,7 @@ async def get_entity(db: AsyncSession, entity_id: uuid.UUID) -> Entity:
     result = await db.execute(select(Entity).where(Entity.id == entity_id))
     entity = result.scalar_one_or_none()
     if entity is None:
-        raise NotFoundException("Entity", str(entity_id))
+        raise NotFoundError("Entity", str(entity_id))
     return entity
 
 
@@ -102,7 +101,7 @@ async def create_entity(db: AsyncSession, data: EntityCreate) -> Entity:
         select(Entity).where(Entity.external_id == data.external_id)
     )
     if existing.scalar_one_or_none():
-        raise ConflictException(f"Entity '{data.external_id}' already exists")
+        raise ConflictError(f"Entity '{data.external_id}' already exists")
 
     entity = Entity(
         external_id=data.external_id,

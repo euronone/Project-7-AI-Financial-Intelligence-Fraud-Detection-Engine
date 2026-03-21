@@ -17,8 +17,7 @@ Usage: poetry run python scripts/seed_data.py
 import asyncio
 import random
 import sys
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -30,12 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import get_settings
 from app.models import (
-    AuditLog,
     Case,
     Entity,
     FraudAlert,
     MLModel,
-    Notification,
     RiskScore,
     Rule,
     Transaction,
@@ -61,7 +58,7 @@ BUSINESS_NAMES = ["Acme Corp", "Global Trade LLC", "Swift Payments Inc", "Nexus 
 MERCHANT_NAMES = ["Amazon", "Walmart", "Target", "Best Buy", "Costco", "Home Depot", "Starbucks", "McDonald's",
                   "Shell Gas", "Uber", "Netflix", "Apple Store", "Nike", "Zara", "Whole Foods"]
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 def random_ip() -> str:
@@ -361,7 +358,7 @@ async def main():
 
         await session.commit()
         print("\nSeed complete!")
-        print(f"  Default login: admin@finshield.dev / Admin123!@#")
+        print("  Default login: admin@finshield.dev / Admin123!@#")
 
     await engine.dispose()
 

@@ -1,12 +1,10 @@
 import uuid
-from functools import wraps
-from typing import Any
 
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ForbiddenException, UnauthorizedException
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import get_current_user_id
 from app.dependencies import get_db
 from app.models.user import User, UserRole
@@ -20,9 +18,9 @@ async def get_current_user(
     result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
     user = result.scalar_one_or_none()
     if user is None:
-        raise UnauthorizedException("User not found")
+        raise UnauthorizedError("User not found")
     if not user.is_active:
-        raise UnauthorizedException("User account is deactivated")
+        raise UnauthorizedError("User account is deactivated")
     return user
 
 
@@ -47,7 +45,7 @@ class RequireRole:
 
     async def __call__(self, current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in self.allowed_roles:
-            raise ForbiddenException(
+            raise ForbiddenError(
                 f"Role '{current_user.role.value}' is not authorized for this resource"
             )
         return current_user

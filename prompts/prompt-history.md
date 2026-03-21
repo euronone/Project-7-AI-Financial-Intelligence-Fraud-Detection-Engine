@@ -3,3 +3,54 @@
 [Prompt:]
 You have acess to the @CLAUDE.md file. these are the features which I am trying to build and which I have listed down. Now I don't want you to start the project, so I just want you to change or adopt a rule as per this particular requirement in each and every file that we have inside .cursor/rule folder. Just try to modify that one, not just that. I have a docs folder as well. Inside the docs folder I have an API specification, architecture, DB schema, deployment, and PRD- Just try to build each and everything for me for this particular project, Make sure that you are not starting with the development. So try to add some new rules file if it is required as per my requirements given in the @CLAUDE.md file ,now, just try to modify all f my rules as per the instruction which I have given to you. Do not start the development.
 ---
+# # #   2 0 2 6 - 0 3 - 2 0   1 8 : 5 8   U T C \ n [ T i m e s t a m p :   2 0 2 6 - 0 3 - 2 0 T 1 8 : 5 8 : 0 0 Z ] \ n [ P r o m p t : ] \ n E n h a n c e d   P r o m p t   f o r   C l a u d e   C o d e   -   V i d e o   I n t e l l i g e n c e   C o n t e n t   M o d e r a t i o n   P l a t f o r m   L a n d i n g   P a g e \ n C o n t e x t   &   S e t u p \ n Y o u   h a v e   a c c e s s   t o   t h e   f o l l o w i n g   d o c u m e n t a t i o n : \ n \ n @ C L A U D E . m d   -   C o r e   p r o d u c t   d o c u m e n t a t i o n \ n @ t a s k . m d   -   C u r r e n t   t a s k   s p e c i f i c a t i o n s \ n @ . c u r s o r / r u l e s / *   -   D e v e l o p m e n t   r u l e s   a n d   g u i d e l i n e s \ n @ d o c s / * . m d   -   A d d i t i o n a l   d o c u m e n t a t i o n   f i l e s \ n \ n O b j e c t i v e \ n C r e a t e   a   c o m p r e h e n s i v e ,   p r o d u c t i o n - r e a d y   l a n d i n g   p a g e   f o r   o u r   V i d e o   I n t e l l i g e n c e   C o n t e n t   M o d e r a t i o n   P l a t f o r m .   T h i s   l a n d i n g   p a g e   m u s t   s e r v e   a s   t h e   p r i m a r y   m a r k e t i n g   a n d   i n f o r m a t i o n a l   h u b   f o r   t h e   p r o d u c t ,   w i t h   c r y s t a l - c l e a r   p r o b l e m   s t a t e m e n t   a n d   m u l t i p l e   s t r a t e g i c   C T A s   t h r o u g h o u t . \ n \ n [ . . . ] \ n - - -  
+ ### 2026-03-20 18:59:00 UTC
+[Timestamp: 2026-03-20T18:59:00Z]
+[Prompt:]
+Enhanced Prompt for Claude Code - Video Intelligence Content Moderation Platform Landing Page
+Context & Setup...
+---
+### 2026-03-20 19:03:00 UTC
+[Timestamp: 2026-03-20T19:03:00Z]
+[Prompt:]
+we have to create this landing page for AI Financial Intelligence & Fraud Detection Engine not Video Intelligence Content Moderation Platform Landing Page and start creating that and run the code in file so  that i can see this and also integate with the frontend and backend code of mine you have to complete eveything from planning to integration
+---
+### 2026-03-21 07:41:00 UTC
+[Timestamp: 2026-03-21T07:41:00Z]
+[Prompt:]
+Master Debug Prompt (Use This)
+
+You can copy this into ChatGPT (or use yourself while debugging):
+
+Writing
+
+I have a failed CI/CD pipeline with the following checks:
+
+Backend Tests & Lint → failing
+Frontend Build & Lint → failing
+Terraform plan → failing
+Dependency Audit → failing
+Container Scan (Trivy) → failing/cancelled
+
+Help me debug step-by-step.
+
+Here is what I will provide:
+
+Error logs from each failing job
+Relevant files:
+backend/package.json or requirements.txt
+frontend/package.json
+Terraform files
+Dockerfiles
+Recent changes in this branch
+
+For each failure:
+
+Identify root cause
+Explain why it failed
+Provide exact fix (code/config changes)
+Suggest commands to test locally
+Prevent future failures
+
+Start with Backend Tests & Lint.
+---

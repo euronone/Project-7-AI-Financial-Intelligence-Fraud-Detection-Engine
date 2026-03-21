@@ -16,11 +16,11 @@ class Settings(BaseSettings):
     debug: bool = True
     log_level: str = "DEBUG"
 
-    # Database
-    database_url: str = "postgresql+asyncpg://finshield:localdev123@localhost:5432/finshield"
+    # Database - simplified for demo
+    database_url: str = "sqlite+aiosqlite:///./finshield_demo.db"
 
-    # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    # Redis - simplified for demo
+    redis_url: str = "memory://"
 
     # JWT
     jwt_secret: str = "local-dev-secret-change-in-prod"
@@ -35,9 +35,9 @@ class Settings(BaseSettings):
     ml_model_path: str = "app/ml/models"
     ml_fraud_model_version: str = "latest"
 
-    # Rate Limiting
-    rate_limit_auth: int = 100
-    rate_limit_data: int = 1000
+    # Rate Limiting - disabled for demo
+    rate_limit_auth: int = 1000
+    rate_limit_data: int = 10000
 
 
 @lru_cache

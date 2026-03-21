@@ -1,13 +1,13 @@
 """Model registry for versioning, loading, promoting, and retiring ML models."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundError
 from app.models.ml_model import MLModel, ModelStatus, ModelType
 
 logger = structlog.get_logger()
@@ -32,7 +32,7 @@ async def get_model(db: AsyncSession, model_id: uuid.UUID) -> MLModel:
     result = await db.execute(select(MLModel).where(MLModel.id == model_id))
     model = result.scalar_one_or_none()
     if model is None:
-        raise NotFoundException("MLModel", str(model_id))
+        raise NotFoundError("MLModel", str(model_id))
     return model
 
 
@@ -91,7 +91,7 @@ async def promote_model(
     )
 
     model.status = ModelStatus.ACTIVE
-    model.promoted_at = datetime.now(timezone.utc)
+    model.promoted_at = datetime.now(UTC)
     model.promoted_by = user_id
     await db.flush()
     logger.info("model_promoted", model_id=str(model.id), name=model.name)

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.case import Case
@@ -41,7 +41,7 @@ _PERIOD_DAYS: dict[str, int] = {
 
 def _period_start(period: str) -> datetime:
     days = _PERIOD_DAYS.get(period, 30)
-    return datetime.now(timezone.utc) - timedelta(days=days)
+    return datetime.now(UTC) - timedelta(days=days)
 
 
 async def get_overview_stats(db: AsyncSession) -> OverviewStats:
@@ -338,7 +338,7 @@ async def generate_report(
     this returns the initial tracking record.
     """
     report_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     logger.info(
         "report_requested",

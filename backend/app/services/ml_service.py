@@ -6,7 +6,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ml import model_registry
-from app.models.ml_model import MLModel, ModelType
+from app.models.ml_model import MLModel
 from app.schemas.ml_model import MLModelListResponse, MLModelResponse, ModelCompareResponse
 
 logger = structlog.get_logger()
