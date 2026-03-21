@@ -17,7 +17,7 @@ pydantic-settings = "^2.7"
 python-jose = {extras = ["cryptography"], version = "^3.3"}
 passlib = {extras = ["bcrypt"], version = "^1.7"}
 python-multipart = "^0.0.20"
-structlog = "^24.4"
+structlog = "^25.5"
 celery = {extras = ["redis"], version = "^5.4"}
 redis = "^5.2"
 httpx = "^0.28"
