@@ -22,7 +22,7 @@
     "react-hook-form": "^7.54",
     "@hookform/resolvers": "^3.9",
     "zod": "^3.24",
-    "recharts": "^2.15",
+    "recharts": "^3.8",
     "socket.io-client": "^4.8",
     "clsx": "^2.1",
     "tailwind-merge": "^2.6",
