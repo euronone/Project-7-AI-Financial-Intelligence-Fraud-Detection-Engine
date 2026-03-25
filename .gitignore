@@ -1,0 +1,270 @@
+# ===========================================
+# FinShield AI - Git Ignore
+# ===========================================
+
+# ===========================================
+# PYTHON
+# ===========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+conda/
+env*/
+
+# Poetry
+poetry.lock
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# ===========================================
+# NODE.JS / FRONTEND
+# ===========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Next.js
+.next/
+out/
+.next-env.d.ts
+
+# Nuxt.js
+.nuxt
+.nuxtrc
+
+# Vuepress
+.vuepress/dist
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# ===========================================
+# ENVIRONMENT FILES
+# ===========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# ===========================================
+# IDE / EDITOR
+# ===========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.metadata
+.classpath
+.c9/
+*.launch
+.settings/
+.vscode/
+.history/
+
+# ===========================================
+# OS GENERATED FILES
+# ===========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ===========================================
+# LOGS
+# ===========================================
+*.log
+logs/
+log/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ===========================================
+# RUNTIME DATA
+# ===========================================
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ===========================================
+# COVERAGE DIRECTORY USED BY TOOLS LIKE istanbul
+# ===========================================
+coverage/
+*.lcov
+
+# ===========================================
+# DEPENDENCY DIRECTORIES
+# ===========================================
+jspm_packages/
+
+# ===========================================
+# OPTIONAL npm cache directory
+# ===========================================
+.npm
+
+# ===========================================
+# OPTIONAL eslint cache
+# ===========================================
+.eslintcache
+
+# ===========================================
+# MICROSOFT AZURE
+# ===========================================
+# Azure Functions
+bin
+obj
+appsettings.json
+local.settings.json
+
+# ===========================================
+# DOCKER
+# ===========================================
+.dockerignore
+docker-compose.override.yml
+docker-compose.*.yml
+
+# ===========================================
+# TERRAFORM
+# ===========================================
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform.lock.hcl
+
+# ===========================================
+# AZURE SPECIFIC
+# ===========================================
+.azure/
+azds.yaml
+
+# ===========================================
+# MACHINE LEARNING
+# ===========================================
+backend/app/ml/models/*.onnx
+backend/app/ml/models/*.pkl
+backend/app/ml/models/*.h5
+backend/app/ml/models/*.joblib
+backend/app/ml/models/*.pytorch
+backend/app/ml/models/*.pt
+
+# Model artifacts and data
+models/
+data/
+artifacts/
+
+# ===========================================
+# TEMPORARY FILES
+# ===========================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.swp
+*.swo
+
+# ===========================================
+# BUILD ARTIFACTS
+# ===========================================
+build/
+dist/
+target/
+out/
+
+# ===========================================
+# DATABASE
+# ===========================================
+*.db
+*.sqlite
+*.sqlite3
+
+# ===========================================
+# SENSITIVE FILES
+# ===========================================
+secrets/
+credentials/
+keys/
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# ===========================================
+# DOCUMENTATION BUILDS
+# ===========================================
+docs/_build/
+docs/build/
+
+# ===========================================
+# LOCAL DEVELOPMENT
+# ===========================================
+.cursor/
+*.cursor
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

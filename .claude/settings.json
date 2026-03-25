@@ -1,0 +1,45 @@
+{
+  "outputStyle": "Explanatory",
+  "projectManifest": "CLAUDE.md",
+  "projectManifestLastSync": "2026-03-24T10:19:00Z",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/post-edit-check.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "project": {
+    "name": "FinShield AI",
+    "version": "1.0.0",
+    "description": "Fraud detection platform",
+    "type": "fullstack",
+    "techStack": {
+      "frontend": "Next.js 14, React 18, Tailwind CSS, TypeScript",
+      "backend": "FastAPI, Python 3.12, PostgreSQL, Redis",
+      "ml": "scikit-learn, XGBoost, PyTorch, ONNX",
+      "infrastructure": "Supabase, Docker, Vercel, Railway/Render"
+    },
+    "architecture": "Multi-tenant microservices",
+    "database": "Supabase PostgreSQL with RLS",
+    "auth": "Supabase Auth with JWT",
+    "monitoring": "Custom metrics dashboard"
+  },
+  "sync": {
+    "enabled": true,
+    "source": "CLAUDE.md",
+    "lastRun": "2026-03-24T10:19:00Z",
+    "autoSync": true,
+    "rules": [
+      "Update project manifest",
+      "Sync rule files",
+      "Maintain structure"
+    ]
+  }
+}

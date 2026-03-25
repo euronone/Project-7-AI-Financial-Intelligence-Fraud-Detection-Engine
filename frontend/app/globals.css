@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0A0A0F;
+  --color-surface: #111118;
+  --color-border: #1E1E2E;
+  --color-accent-green: #00FF87;
+  --color-accent-blue: #3B82F6;
+  --color-accent-purple: #8B5CF6;
+  --color-accent-red: #EF4444;
+  --color-accent-orange: #F59E0B;
+
+  --animate-fade-in: fadeIn 0.6s ease-out forwards;
+  --animate-slide-up: slideUp 0.6s ease-out forwards;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-slow: pulse 3s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-20px); }
+}
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: #1E1E2E #0A0A0F;
+}
+
+body {
+  background-color: #0A0A0F;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0A0A0F; }
+::-webkit-scrollbar-thumb { background: #1E1E2E; border-radius: 3px; }
+
+.gradient-text {
+  background: linear-gradient(135deg, #00FF87, #3B82F6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-purple {
+  background: linear-gradient(135deg, #8B5CF6, #3B82F6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glow-green  { box-shadow: 0 0 30px rgba(0, 255, 135, 0.15); }
+.glow-blue   { box-shadow: 0 0 30px rgba(59, 130, 246, 0.15); }
+.glow-purple { box-shadow: 0 0 30px rgba(139, 92, 246, 0.15); }
+
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.card-hover:hover { transform: translateY(-4px); }
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(30, 30, 46, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 30, 46, 0.3) 1px, transparent 1px);
+  background-size: 50px 50px;
+}

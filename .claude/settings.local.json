@@ -1,0 +1,53 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(npm install:*)",
+      "Bash(npx next:*)",
+      "Bash(mv:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(pip:*)",
+      "Bash(poetry:*)",
+      "Bash(docker:*)",
+      "Bash(alembic:*)",
+      "Bash(ruff:*)",
+      "Bash(black:*)",
+      "Bash(prettier:*)",
+      "Bash(make:*)"
+    ]
+  },
+  "sync": {
+    "source": "CLAUDE.md",
+    "lastRun": "2026-03-24T10:19:00Z",
+    "autoSync": true,
+    "include": [
+      "rules/",
+      "skills/",
+      "scripts/",
+      "settings.json"
+    ],
+    "exclude": [
+      "rules/legacy/",
+      "skills/legacy/"
+    ]
+  },
+  "project": {
+    "manifest": "CLAUDE.md",
+    "structure": {
+      "frontend": "Next.js 14 App Router",
+      "backend": "FastAPI async SQLAlchemy",
+      "ml": "Python 3.12 scikit-learn XGBoost PyTorch",
+      "database": "Supabase PostgreSQL RLS",
+      "cache": "Redis sessions caching",
+      "queue": "Celery ML training notifications"
+    },
+    "standards": {
+      "frontend": "Strict TypeScript functional dark theme",
+      "backend": "PEP 8 async/await Pydantic",
+      "ml": "200+ features ensemble ONNX",
+      "security": "JWT RLS encryption"
+    }
+  }
+}
