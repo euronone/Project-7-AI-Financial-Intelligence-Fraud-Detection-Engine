@@ -92,31 +92,43 @@ def _severity_for_score(score: float) -> str:
 
 def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple[float, list[str]]:
     """
-    Fast deterministic checks that run before ML inference.
+    Additive deterministic rule engine — multiple triggered signals stack up.
     Returns (rules_score 0-1, list of triggered rule names).
     """
     score = 0.0
     triggered: list[str] = []
 
     amount = float(txn.amount or 0)
-
-    # Rule 1: Very large transaction (>50,000 INR)
-    if amount > 50_000:
-        score = max(score, 0.40)
-        triggered.append("large_amount")
-
-    # Rule 2: Transaction at unusual hour (1 AM - 5 AM)
+    is_foreign = txn.country_code and txn.country_code.upper() not in ("IN", "")
+    is_new_dev = txn.device_fingerprint and txn.device_fingerprint.startswith("new_")
     hour = txn.transaction_timestamp.hour if txn.transaction_timestamp else -1
+
+    # ── Rule 1: Large amount thresholds ────────────────────────────────────
+    if amount > 100_000:
+        score += 0.40
+        triggered.append("large_amount")
+    elif amount > 50_000:
+        score += 0.25
+        triggered.append("large_amount")
+    elif amount > 20_000:
+        score += 0.10
+
+    # ── Rule 2: Unusual hour (1 AM – 5 AM) ─────────────────────────────────
     if 1 <= hour <= 5:
-        score = max(score, 0.30)
+        score += 0.15
         triggered.append("unusual_hour")
 
-    # Rule 3: Foreign transaction (non-IN)
-    if txn.country_code and txn.country_code != "IN":
-        score = max(score, 0.35)
+    # ── Rule 3: Foreign transaction (non-IN) ───────────────────────────────
+    if is_foreign:
+        score += 0.20
         triggered.append("foreign_transaction")
 
-    # Rule 4: Velocity check - count recent transactions in last hour
+    # ── Rule 4: New / unrecognised device ──────────────────────────────────
+    if is_new_dev:
+        score += 0.15
+        triggered.append("new_device")
+
+    # ── Rule 5: Velocity check ─────────────────────────────────────────────
     if recent_txns:
         one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
         recent_count = sum(
@@ -124,21 +136,37 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
             if t.transaction_timestamp and t.transaction_timestamp >= one_hour_ago
         )
         if recent_count >= 5:
-            score = max(score, 0.60)
+            score += 0.55
             triggered.append("velocity_spike_1h")
         elif recent_count >= 3:
-            score = max(score, 0.35)
+            score += 0.20
             triggered.append("velocity_moderate")
 
-    # Rule 5: Impossible travel (very basic: if last txn was foreign and this is domestic or vice versa within 30 min)
+    # ── Rule 6: Impossible travel ─────────────────────────────────────────
     if recent_txns:
-        last = recent_txns[0]  # Most recent
+        last = recent_txns[0]
         if last.transaction_timestamp and txn.transaction_timestamp:
-            minutes_diff = (txn.transaction_timestamp - last.transaction_timestamp).total_seconds() / 60
-            if 0 < minutes_diff < 30 and last.country_code and txn.country_code:
-                if last.country_code != txn.country_code:
-                    score = max(score, 0.85)
+            minutes_diff = abs(
+                (txn.transaction_timestamp - last.transaction_timestamp).total_seconds() / 60
+            )
+            if minutes_diff < 60 and last.country_code and txn.country_code:
+                if last.country_code.upper() != txn.country_code.upper():
+                    score += 0.75
                     triggered.append("impossible_travel")
+
+    # ── Rule 7: Compound boosters ─────────────────────────────────────────
+    # Foreign + new device + high value = critical combination
+    if is_foreign and is_new_dev and amount > 10_000:
+        score += 0.25  # compound risk boost
+    # Night + large + new device
+    if 0 <= hour <= 5 and amount > 20_000 and is_new_dev:
+        score += 0.15
+
+    # ── Rule 8: High-risk channels ─────────────────────────────────────────
+    if txn.channel == "atm" and amount > 30_000:
+        score += 0.15
+    if txn.channel == "wire" and is_foreign:
+        score += 0.20
 
     return min(score, 1.0), triggered
 
