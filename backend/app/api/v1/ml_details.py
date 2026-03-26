@@ -98,32 +98,36 @@ async def get_sample_transactions(
     samples: list[dict] = []
 
     if use_live:
-        tid = current_user.tenant_id
+        try:
+            tid = current_user.tenant_id
 
-        # 6 most recent fraudulent (non-test)
-        fraud_res = await db.execute(
-            select(Transaction).where(
-                Transaction.tenant_id == tid,
-                Transaction.fraud_category == "fraudulent",
-                Transaction.is_test == False,
-            ).order_by(Transaction.fraud_score.desc()).limit(6)
-        )
-        fraud_txns = fraud_res.scalars().all()
+            # 6 most recent fraudulent (non-test)
+            fraud_res = await db.execute(
+                select(Transaction).where(
+                    Transaction.tenant_id == tid,
+                    Transaction.fraud_category == "fraudulent",
+                    Transaction.is_test == False,
+                ).order_by(Transaction.fraud_score.desc()).limit(6)
+            )
+            fraud_txns = fraud_res.scalars().all()
 
-        # 6 most recent legitimate (non-test)
-        legit_res = await db.execute(
-            select(Transaction).where(
-                Transaction.tenant_id == tid,
-                Transaction.fraud_category == "legitimate",
-                Transaction.is_test == False,
-            ).order_by(Transaction.transaction_timestamp.desc()).limit(6)
-        )
-        legit_txns = legit_res.scalars().all()
+            # 6 most recent legitimate (non-test)
+            legit_res = await db.execute(
+                select(Transaction).where(
+                    Transaction.tenant_id == tid,
+                    Transaction.fraud_category == "legitimate",
+                    Transaction.is_test == False,
+                ).order_by(Transaction.transaction_timestamp.desc()).limit(6)
+            )
+            legit_txns = legit_res.scalars().all()
 
-        for t in fraud_txns:
-            samples.append(_txn_to_sample(t))
-        for t in legit_txns:
-            samples.append(_txn_to_sample(t))
+            for t in fraud_txns:
+                samples.append(_txn_to_sample(t))
+            for t in legit_txns:
+                samples.append(_txn_to_sample(t))
+        except Exception as exc:
+            logger.warning("Live DB query failed, falling back to static samples: %s", exc)
+            samples = []
 
     # If not enough live data, pad with static examples
     if len(samples) < 12:
@@ -361,6 +365,22 @@ def _build_feature_catalogue(live_names: list[str]) -> list[dict]:
     ]
 
 
+def _safe_list(value) -> list:
+    """Safely convert a triggered_rule_ids value to a list, handling Python repr format."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    import ast, json
+    try:
+        return json.loads(value)
+    except Exception:
+        try:
+            return ast.literal_eval(value)
+        except Exception:
+            return []
+
+
 def _txn_to_sample(t: Transaction) -> dict:
     return {
         "transaction_id": t.id[:12] + "...",
@@ -375,7 +395,7 @@ def _txn_to_sample(t: Transaction) -> dict:
         "label": "fraud" if t.fraud_category == "fraudulent" else "legitimate",
         "fraud_category": t.fraud_category,
         "risk_level": t.fraud_risk_level or "low",
-        "triggered_rules": t.triggered_rule_ids or [],
+        "triggered_rules": _safe_list(t.triggered_rule_ids),
         "model_version": t.model_version or "—",
         "color": "#EF4444" if t.fraud_category == "fraudulent" else "#22C55E",
     }

@@ -128,9 +128,62 @@ export default function DataSourcesPage() {
         apiClient.getDataSourceSchema(token),
         apiClient.getDataSourceFieldMap(token),
       ]);
-      setSource(src as SourceInfo);
-      setSchema((sch as { columns: SchemaColumn[] }).columns || []);
-      setFieldMap((fm as { fields: FieldMapEntry[] }).fields || []);
+
+      // ── Map backend { sources: [...] } → SourceInfo ──────────────────────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = src as any;
+      const firstSrc = (raw.sources || [])[0] || {};
+      setSource({
+        db_type:       firstSrc.connector_type || firstSrc.type || "Database",
+        db_url_masked: firstSrc.connector_type || firstSrc.name || "—",
+        status:        firstSrc.status === "live" ? "connected" : firstSrc.status || "unknown",
+        latency_ms:    firstSrc.latency_ms ?? 0,
+        tables:        (firstSrc.tables || []).map((t: { table_name: string; record_count: number }) => ({
+          name:      t.table_name,
+          row_count: t.record_count,
+          size_kb:   0,
+        })),
+        last_checked:  firstSrc.last_synced || new Date().toISOString(),
+      });
+
+      // ── Flatten backend { schema: [{table, columns:[{name,...}]}] } ───────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const schRaw = sch as any;
+      const flat: SchemaColumn[] = (schRaw.schema || []).flatMap(
+        (tbl: { table: string; columns: { name: string; type: string; nullable: boolean; description: string; sample_values: (string | number | null)[] }[] }) =>
+          (tbl.columns || []).map((col) => ({
+            table:         tbl.table,
+            column:        col.name,
+            type:          col.type,
+            nullable:      col.nullable,
+            description:   col.description,
+            sample_values: col.sample_values || [],
+          }))
+      );
+      setSchema(flat);
+
+      // ── Map backend { key_fields: [{field, fraud_relevance, ...}] } ──────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fmRaw = fm as any;
+      const mapped: FieldMapEntry[] = (fmRaw.key_fields || []).map(
+        (f: { field: string; fraud_relevance: string; description: string; stats?: { min: number; max: number; avg: number }; enum_distribution?: { value: string; count: number }[] }) => {
+          const rel = f.fraud_relevance || "";
+          const relevanceKey = rel.toLowerCase().startsWith("critical") ? "critical"
+            : rel.toLowerCase().startsWith("high") ? "high"
+            : rel.toLowerCase().startsWith("medium") ? "medium"
+            : "low";
+          return {
+            column: f.field,
+            fraud_relevance: relevanceKey,
+            values:  f.enum_distribution?.map((e) => `${e.value} (${e.count})`),
+            range:   f.stats
+              ? `Min: ₹${f.stats.min?.toFixed(0)} / Max: ₹${f.stats.max?.toFixed(0)} / Avg: ₹${f.stats.avg?.toFixed(0)}`
+              : undefined,
+            notes: f.description,
+          };
+        }
+      );
+      setFieldMap(mapped);
     } catch { /* silent */ }
     finally { setLoading(false); }
   }, [token]);

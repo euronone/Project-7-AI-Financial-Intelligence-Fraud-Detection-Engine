@@ -38,22 +38,32 @@ interface JourneyStep {
   detail: string;
 }
 
+interface ReasonCard {
+  title: string;
+  detail: string;
+  severity: string;
+}
+
 interface SimResult {
   transaction_id: string;
   prediction: string;
   risk_score: number;
+  risk_level: string;
   decision: string;
-  reasons: string[];
-  shap_explanation: Record<string, number>;
-  journey: JourneyStep[];
+  // backend returns array of { title, detail, severity } objects, not strings
+  reasons: ReasonCard[];
+  shap_explanation: Record<string, number> | null;
+  // backend returns a dict of named steps, not an array
+  journey: Record<string, { ok: boolean; ms?: number; triggered?: number; status?: string; model?: string; score?: number; decision?: string; is_test?: boolean }>;
   sms_status: string | null;
-  amount: number;
-  channel: string;
-  merchant_name: string | null;
   fraud_category: string;
   fraud_risk_level: string | null;
   is_blocked: boolean;
   is_flagged: boolean;
+  // echo-back fields from the submitted transaction
+  amount?: number;
+  channel?: string;
+  merchant_name?: string;
 }
 
 // ── Decision colors ───────────────────────────────────────────────────────────
@@ -250,22 +260,28 @@ export default function TestMePage() {
     setResult(null);
     setError(null);
     try {
+      // ── Expiry year: accept 2-digit (27) or 4-digit (2027) ──────────────
+      const rawYear = parseInt(form.expiry_year || "27");
+      const expiryYear = rawYear < 100 ? 2000 + rawYear : rawYear;
+
       const payload: Record<string, unknown> = {
-        amount: parseFloat(form.amount),
-        purchase_type: form.purchase_type,
-        channel: form.channel,
-        city: form.city || null,
-        country_code: form.country_code || null,
-        device_type: form.device_type || null,
-        is_new_device: form.is_new_device,
+        // Required fields — provide safe defaults so backend doesn't return 422
+        cardholder_name: form.cardholder_name || "Test User",
+        card_number:     form.card_number     || "4111111111111111",
+        cvv:             form.cvv             || "123",
+        expiry_month:    parseInt(form.expiry_month || "12"),
+        expiry_year:     expiryYear,
+        amount:          parseFloat(form.amount),
+        purchase_type:   form.purchase_type,
+        channel:         form.channel,
+        country_code:    form.country_code || "IN",
+        device_type:     form.device_type  || "mobile",
+        is_new_device:   form.is_new_device,
       };
-      if (form.cardholder_name) payload.cardholder_name = form.cardholder_name;
-      if (form.email)           payload.email = form.email;
-      if (form.mobile_number)   payload.mobile_number = form.mobile_number;
-      if (form.card_number)     payload.card_number = form.card_number;
-      if (form.cvv)             payload.cvv = form.cvv;
-      if (form.expiry_month)    payload.expiry_month = parseInt(form.expiry_month);
-      if (form.expiry_year)     payload.expiry_year = parseInt(form.expiry_year);
+      // Optional fields
+      if (form.email)         payload.email = form.email;
+      if (form.mobile_number) payload.mobile_number = form.mobile_number;
+      if (form.city)          payload.city = form.city;
 
       const res = await apiClient.simulatorPredict(payload, token);
       setResult(res as SimResult);
@@ -498,7 +514,7 @@ export default function TestMePage() {
                     <div>
                       <div className="text-xs text-gray-500">Risk Level</div>
                       <div className="text-sm font-semibold capitalize" style={{ color: decisionColor }}>
-                        {result.fraud_risk_level || "—"}
+                        {result.risk_level || result.fraud_risk_level || "—"}
                       </div>
                     </div>
                     <div className="ml-auto">
@@ -519,50 +535,67 @@ export default function TestMePage() {
                   </div>
                 </div>
 
-                {/* Detection Journey */}
-                {result.journey && result.journey.length > 0 && (
+                {/* Detection Journey — backend returns a dict of named steps */}
+                {result.journey && Object.keys(result.journey).length > 0 && (
                   <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
                     <div className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">
                       Detection Journey
                     </div>
                     <div className="space-y-2">
-                      {result.journey.map((step) => (
-                        <div key={step.step} className="flex items-start gap-3">
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
-                            step.status === "triggered"
-                              ? "bg-[#EF4444]/20 text-[#EF4444]"
-                              : step.status === "flagged"
-                              ? "bg-[#F59E0B]/20 text-[#F59E0B]"
-                              : "bg-[#00FF87]/10 text-[#00FF87]"
-                          }`}>
-                            {step.step}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-medium text-white">{step.name}</span>
-                              <span className="text-xs text-gray-600 font-mono">{step.latency_ms}ms</span>
+                      {Object.entries(result.journey).map(([key, step], idx) => {
+                        const isOk   = step.ok;
+                        const label  = key.replace(/^step_/, "").replace(/_/g, " ");
+                        return (
+                          <div key={key} className="flex items-start gap-3">
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
+                              !isOk
+                                ? "bg-[#EF4444]/20 text-[#EF4444]"
+                                : "bg-[#00FF87]/10 text-[#00FF87]"
+                            }`}>
+                              {idx + 1}
                             </div>
-                            <div className="text-xs text-gray-500 mt-0.5">{step.detail}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium text-white capitalize">{label}</span>
+                                {step.ms != null && (
+                                  <span className="text-xs text-gray-600 font-mono">{step.ms}ms</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {step.triggered != null && `${step.triggered} rule(s) triggered · `}
+                                {step.score != null && `score: ${(step.score * 100).toFixed(1)}% · `}
+                                {step.decision || (isOk ? "ok" : "skipped")}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
-                {/* Reasons */}
+                {/* Reasons — backend returns [{title, detail, severity}] */}
                 {result.reasons && result.reasons.length > 0 && (
                   <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
                     <div className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">
                       Fraud Signals
                     </div>
-                    <div className="space-y-1.5">
-                      {result.reasons.map((r, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs">
-                          <AlertTriangle size={12} className="text-[#F59E0B] shrink-0 mt-0.5" />
-                          <span className="text-gray-300">{r}</span>
-                        </div>
-                      ))}
+                    <div className="space-y-2.5">
+                      {result.reasons.map((r, i) => {
+                        const sevColor = r.severity === "critical" ? "#EF4444"
+                          : r.severity === "high"     ? "#F97316"
+                          : r.severity === "medium"   ? "#F59E0B"
+                          : "#6B7280";
+                        return (
+                          <div key={i} className="flex items-start gap-2">
+                            <AlertTriangle size={12} className="shrink-0 mt-0.5" style={{ color: sevColor }} />
+                            <div>
+                              <div className="text-xs font-semibold" style={{ color: sevColor }}>{r.title}</div>
+                              <div className="text-xs text-gray-400 mt-0.5">{r.detail}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

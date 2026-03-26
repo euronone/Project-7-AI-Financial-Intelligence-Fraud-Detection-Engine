@@ -4,6 +4,7 @@
 
 ---
 
+
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
@@ -34,6 +35,8 @@ FinShield AI connects to a financial institution's customer and transaction data
 ---
 
 ## Architecture
+Before running the code you have to add details of supabase (databasse and auth) in 3 places
+1. frontend 
 
 ```
 frontend/           Next.js 16 (App Router, TypeScript, Tailwind CSS)

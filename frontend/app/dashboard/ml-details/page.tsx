@@ -11,36 +11,43 @@ import {
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types (matching actual backend response shapes) ──────────────────────────
 interface MLModel {
   model_id: string;
-  name: string;
-  type: string;
+  model_name: string;       // backend uses model_name not name
+  model_type: string;       // backend uses model_type not type
   status: string;
   version: string;
-  precision: number | null;
-  recall: number | null;
-  f1_score: number | null;
-  auc_roc: number | null;
+  metrics: {                // backend nests all metrics under metrics{}
+    precision: number | null;
+    recall: number | null;
+    f1_score: number | null;
+    auc_roc: number | null;
+    accuracy: number | null;
+  };
   ensemble_weight: number | null;
   description: string;
+  layer: string;
 }
 interface FeatureCategory {
   category: string;
-  count: number;
-  importance: number;
-  examples: string[];
+  feature_count: number;       // backend uses feature_count not count
+  importance_weight: number;   // backend uses importance_weight not importance
+  features: string[];          // backend uses features not examples
+  color: string;
+  description: string;
 }
 interface SampleTransaction {
-  id: string;
+  transaction_id: string;    // backend uses transaction_id not id
   amount: number;
   channel: string;
   fraud_category: string;
   fraud_score: number | null;
-  fraud_risk_level: string | null;
+  risk_level: string | null; // backend uses risk_level not fraud_risk_level
   merchant_name: string | null;
-  is_test: boolean;
-  transaction_timestamp: string;
+  timestamp: string;         // backend uses timestamp not transaction_timestamp
+  label: string;
+  color: string;
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -161,8 +168,10 @@ export default function MlDetailsPage() {
         apiClient.getMlSampleTransactions(token),
       ]);
       setModels((md as { models: MLModel[] }).models || []);
-      setFeatures((ft as { categories: FeatureCategory[] }).categories || []);
-      setSamples((sa as { transactions: SampleTransaction[] }).transactions || []);
+      // backend key is feature_categories, not categories
+      setFeatures((ft as { feature_categories: FeatureCategory[] }).feature_categories || []);
+      // backend key is samples, not transactions
+      setSamples((sa as { samples: SampleTransaction[] }).samples || []);
     } catch { /* silent */ }
     finally { setLoading(false); }
   }, [token]);
@@ -175,7 +184,7 @@ export default function MlDetailsPage() {
     </div>
   );
 
-  const maxImportance = features.reduce((m, f) => Math.max(m, f.importance), 0.01);
+  const maxImportance = features.reduce((m, f) => Math.max(m, f.importance_weight), 0.01);
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white">
@@ -254,7 +263,7 @@ export default function MlDetailsPage() {
           ) : (
             <div className="grid grid-cols-3 gap-4">
               {models.map((m) => {
-                const col = MODEL_COLORS[m.type] || "#6B7280";
+                const col = MODEL_COLORS[m.model_id] || "#6B7280";
                 return (
                   <div
                     key={m.model_id}
@@ -262,7 +271,7 @@ export default function MlDetailsPage() {
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <div className="font-semibold text-sm" style={{ color: col }}>{m.name}</div>
+                        <div className="font-semibold text-sm" style={{ color: col }}>{m.model_name}</div>
                         <div className="text-xs text-gray-500 mt-0.5 font-mono">{m.version}</div>
                       </div>
                       <div className="flex flex-col items-end gap-1">
@@ -277,10 +286,10 @@ export default function MlDetailsPage() {
                     <p className="text-xs text-gray-500 mb-4 leading-relaxed">{m.description}</p>
                     <div className="space-y-2">
                       {[
-                        { label: "Precision", val: m.precision },
-                        { label: "Recall", val: m.recall },
-                        { label: "F1", val: m.f1_score },
-                        { label: "AUC-ROC", val: m.auc_roc },
+                        { label: "Precision", val: m.metrics?.precision ?? null },
+                        { label: "Recall",    val: m.metrics?.recall ?? null },
+                        { label: "F1",        val: m.metrics?.f1_score ?? null },
+                        { label: "AUC-ROC",   val: m.metrics?.auc_roc ?? null },
                       ].map(({ label, val }) => (
                         val != null ? (
                           <div key={label}>
@@ -313,26 +322,26 @@ export default function MlDetailsPage() {
           ) : (
             <div className="space-y-5">
               {features.map((f) => {
-                const pct = Math.round((f.importance / maxImportance) * 100);
+                const pct = Math.round((f.importance_weight / maxImportance) * 100);
                 return (
                   <div key={f.category}>
                     <div className="flex justify-between text-xs mb-1.5">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-white capitalize">{f.category}</span>
-                        <span className="text-gray-600">{f.count} features</span>
+                        <span className="text-gray-600">{f.feature_count} features</span>
                       </div>
                       <span className="text-[#8B5CF6] font-mono font-semibold">
-                        {(f.importance * 100).toFixed(1)}%
+                        {(f.importance_weight * 100).toFixed(1)}%
                       </span>
                     </div>
                     <div className="w-full bg-[#0A0A0F] rounded-full h-2.5 mb-2 overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-700"
-                        style={{ width: `${pct}%`, backgroundColor: "#8B5CF6" }}
+                        style={{ width: `${pct}%`, backgroundColor: f.color || "#8B5CF6" }}
                       />
                     </div>
                     <div className="flex gap-1.5 flex-wrap">
-                      {f.examples.map((ex) => (
+                      {(f.features || []).map((ex: string) => (
                         <span key={ex} className="text-xs bg-[#1E1E2E] text-gray-400 px-2 py-0.5 rounded font-mono">
                           {ex}
                         </span>
@@ -385,10 +394,10 @@ export default function MlDetailsPage() {
                   <tbody>
                     {samples.map((txn) => {
                       const cat = txn.fraud_category || "unscored";
-                      const col = RISK_COLORS[cat] || "#6B7280";
+                      const col = txn.color || RISK_COLORS[cat] || "#6B7280";
                       return (
-                        <tr key={txn.id} className="border-b border-[#1E1E2E]/40 hover:bg-[#0A0A0F] transition-all">
-                          <td className="py-2.5 px-4 font-mono text-gray-500">{txn.id.slice(0, 8)}…</td>
+                        <tr key={txn.transaction_id} className="border-b border-[#1E1E2E]/40 hover:bg-[#0A0A0F] transition-all">
+                          <td className="py-2.5 px-4 font-mono text-gray-500">{txn.transaction_id.slice(0, 8)}…</td>
                           <td className="py-2.5 px-4 font-semibold">₹{Number(txn.amount).toLocaleString()}</td>
                           <td className="py-2.5 px-4 text-gray-400">{txn.channel}</td>
                           <td className="py-2.5 px-4 text-gray-300 max-w-[120px] truncate">{txn.merchant_name || "—"}</td>
@@ -402,18 +411,14 @@ export default function MlDetailsPage() {
                           </td>
                           <td className="py-2.5 px-4">
                             <span className="capitalize" style={{ color: col }}>
-                              {txn.fraud_risk_level || "—"}
+                              {txn.risk_level || "—"}
                             </span>
                           </td>
                           <td className="py-2.5 px-4">
-                            {txn.is_test ? (
-                              <span className="text-[#3B82F6] bg-[#3B82F6]/10 px-2 py-0.5 rounded-full">test</span>
-                            ) : (
-                              <span className="text-gray-600">live</span>
-                            )}
+                            <span className="text-gray-600">{txn.label || "live"}</span>
                           </td>
                           <td className="py-2.5 px-4 text-gray-600">
-                            {new Date(txn.transaction_timestamp).toLocaleString()}
+                            {txn.timestamp ? new Date(txn.timestamp).toLocaleString() : "—"}
                           </td>
                         </tr>
                       );
