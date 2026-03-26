@@ -175,7 +175,10 @@ export default function SettingsPage() {
             { label: "Dashboard",     href: "/dashboard" },
             { label: "Transactions",  href: "/dashboard/transactions" },
             { label: "Fraud Alerts",  href: "/dashboard/alerts" },
+            { label: "Test Me",       href: "/dashboard/test-me" },
             { label: "Customers",     href: "/dashboard/customers" },
+            { label: "Data Sources",  href: "/dashboard/data-sources" },
+            { label: "ML Details",    href: "/dashboard/ml-details" },
             { label: "Settings",      href: "/dashboard/settings", active: true },
           ].map(({ label: l, href, active }) => (
             <Link

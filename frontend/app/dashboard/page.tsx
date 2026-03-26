@@ -4,7 +4,7 @@ import { useAuthStore } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Shield, LogOut, Loader2, Database, Settings, AlertTriangle,
-         TrendingUp, Activity, Bell, Users, FlaskConical, RefreshCw } from "lucide-react";
+         TrendingUp, Activity, Bell, Users, FlaskConical, RefreshCw, Brain } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
 
@@ -146,6 +146,7 @@ export default function DashboardPage() {
             { icon: FlaskConical,   label: "Test Me",      href: "/dashboard/test-me",       active: false },
             { icon: Users,          label: "Customers",    href: "/dashboard/customers",     active: false },
             { icon: Database,       label: "Data Sources", href: "/dashboard/data-sources",  active: false },
+            { icon: Brain,          label: "ML Details",   href: "/dashboard/ml-details",    active: false },
             { icon: Settings,       label: "Settings",     href: "/dashboard/settings",      active: false },
           ].map(({ icon: Icon, label, href, active }) => (
             <Link

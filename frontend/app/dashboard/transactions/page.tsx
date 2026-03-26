@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Shield, LogOut, Settings, AlertTriangle, TrendingUp, Activity,
   Bell, Users, Database, FlaskConical, Search, RefreshCw, Loader2,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Brain,
 } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
@@ -122,6 +122,7 @@ export default function TransactionsPage() {
             { icon: FlaskConical,   label: "Test Me",      href: "/dashboard/test-me",      active: false },
             { icon: Users,          label: "Customers",    href: "/dashboard/customers",    active: false },
             { icon: Database,       label: "Data Sources", href: "/dashboard/data-sources", active: false },
+            { icon: Brain,          label: "ML Details",   href: "/dashboard/ml-details",   active: false },
             { icon: Settings,       label: "Settings",     href: "/dashboard/settings",     active: false },
           ].map(({ icon: Icon, label, href, active }) => (
             <Link key={label} href={href}
