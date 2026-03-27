@@ -2,8 +2,9 @@
 Fraud Simulator (enhanced Test Me) endpoints.
 
 Provides:
-  POST /api/v1/simulator/predict    – run full fraud pipeline on a simulated transaction
-  GET  /api/v1/simulator/examples   – 4 prefilled fraud/legit scenarios
+  POST /api/v1/simulator/predict         – run full fraud pipeline on a simulated transaction
+  GET  /api/v1/simulator/examples        – 4 prefilled fraud/legit scenarios
+  GET  /api/v1/simulator/lookup-customer – look up customer by phone number for auto-fill
 
 The simulator accepts card-level details (card number, CVV, expiry, cardholder name,
 email, mobile) in addition to the standard transaction fields.  Card data is NEVER
@@ -11,6 +12,11 @@ persisted — only the scored transaction row (with is_test=TRUE) is written to 
 
 If Twilio credentials are configured, an SMS alert is sent automatically for BLOCK
 and ALERT decisions to the mobile_number provided in the request.
+
+Phone lookup:
+  When the user enters a mobile number, GET /simulator/lookup-customer?phone=+919876543210
+  resolves a matching Customer row (same tenant) and returns cardholder name, city,
+  country, masked card, and risk profile for pre-filling the simulator form.
 """
 from __future__ import annotations
 
@@ -21,10 +27,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from app.db.session import get_db
 from app.dependencies import CurrentUser
@@ -64,8 +70,11 @@ class SimulatorRequest(BaseModel):
     # ── Transaction details ───────────────────────────────────────────────
     amount: float = Field(..., gt=0, description="Transaction amount in INR")
     currency: str = Field("INR", max_length=3)
-    purchase_type: str = Field("online_shopping", description="grocery | restaurant | online_shopping | fuel | travel | atm_withdrawal | electronics | healthcare")
-    channel: str = Field("online", description="online | pos_physical | atm | mobile")
+    purchase_type: str = Field(
+        "online_shopping",
+        description="grocery | restaurant | online_shopping | fuel | travel | atm_withdrawal | electronics | healthcare | wire_transfer | crypto",
+    )
+    channel: str = Field("online", description="online | pos_physical | atm | mobile | wire")
     merchant_name: Optional[str] = Field(None, max_length=255)
 
     # ── Location ──────────────────────────────────────────────────────────
@@ -102,6 +111,95 @@ class SimulatorRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/v1/simulator/lookup-customer
+# ---------------------------------------------------------------------------
+
+@router.get("/lookup-customer")
+async def lookup_customer_by_phone(
+    current_user: CurrentUser,
+    phone: str = Query(..., description="Phone number to look up (e.g. +919876543210 or 09876543210)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Look up a Customer by phone number within the current tenant.
+
+    Normalises the phone to E.164 (+91…) before searching.
+    Also tries a last-10-digit partial match as a fallback.
+
+    Returns cardholder name, email, city, country, masked card token,
+    and risk profile — all safe to surface in the simulator form.
+    """
+    # Normalise the input phone number
+    cleaned = re.sub(r"[\s\-().]", "", phone)
+    if not cleaned.startswith("+"):
+        # Strip leading zeros and assume India (+91) if no country code
+        stripped = cleaned.lstrip("0")
+        if len(stripped) == 10:
+            cleaned = "+91" + stripped
+        else:
+            cleaned = "+" + stripped
+
+    last10 = re.sub(r"\D", "", cleaned)[-10:]
+
+    # Try exact match first, then partial (last 10 digits)
+    result = await db.execute(
+        select(Customer)
+        .where(
+            Customer.tenant_id == current_user.tenant_id,
+            or_(
+                Customer.phone_number == cleaned,
+                Customer.phone_number == phone,
+            ),
+        )
+        .limit(1)
+    )
+    customer = result.scalar_one_or_none()
+
+    if not customer and last10:
+        result = await db.execute(
+            select(Customer)
+            .where(
+                Customer.tenant_id == current_user.tenant_id,
+                Customer.phone_number.like(f"%{last10}"),
+            )
+            .limit(1)
+        )
+        customer = result.scalar_one_or_none()
+
+    if not customer:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No customer found with phone number '{phone}'. "
+                   "Try a different number or fill the form manually.",
+        )
+
+    # Mask preferred card token for display (show only last 4)
+    card_last4 = "****"
+    if customer.preferred_card_token:
+        tok = re.sub(r"\D", "", customer.preferred_card_token)
+        if len(tok) >= 4:
+            card_last4 = tok[-4:]
+
+    return {
+        "found": True,
+        "customer_id": customer.id,
+        "cardholder_name": customer.full_name,
+        "email": customer.email,
+        "city": customer.city or "",
+        "country_code": (customer.country_code or "IN").upper(),
+        "state_province": customer.state_province or "",
+        "card_last4": card_last4,
+        "card_type": "visa",          # Default — card network not stored separately
+        "risk_score": float(customer.risk_score or 0),
+        "customer_tier": customer.customer_tier,
+        "kyc_status": customer.kyc_status,
+        "account_type": customer.account_type,
+        "balance_amount": float(customer.balance_amount or 0),
+        "active_card_count": customer.active_card_count or 0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # POST /api/v1/simulator/predict
 # ---------------------------------------------------------------------------
 
@@ -116,16 +214,18 @@ async def predict_fraud(
 
     Steps:
       1.  Validate & derive card metadata (masked card tail, expiry check)
-      2.  Build Transaction object (is_test=True) and persist
-      3.  Run fraud scoring pipeline (rules + ML ensemble)
-      4.  Assemble human-readable reasons
-      5.  Send Twilio SMS if BLOCK/ALERT and mobile_number provided
-      6.  Return prediction, risk score, risk level, decision, reasons, SHAP
+      2.  Resolve or create customer (links to existing if customer_id provided)
+      3.  Build Transaction object (is_test=True) and persist
+      4.  Run fraud scoring pipeline (rules + ML ensemble)
+      5.  Assemble human-readable reasons
+      6.  Send Twilio SMS if BLOCK/ALERT and mobile_number provided
+      7.  Return prediction, risk score, risk level, decision, reasons, SHAP
     """
     t_start = time.time()
 
     # ── 1. Card metadata ────────────────────────────────────────────────
-    card_last4 = body.card_number[-4:]
+    card_digits = re.sub(r"\D", "", body.card_number)
+    card_last4 = card_digits[-4:] if len(card_digits) >= 4 else "****"
     card_masked = f"**** **** **** {card_last4}"
 
     # Expiry check
@@ -147,7 +247,6 @@ async def predict_fraud(
     resolved_customer_id: Optional[str] = body.customer_id
 
     if not resolved_customer_id:
-        # Create a temporary ephemeral customer for this simulation
         temp_cust = Customer(
             id=str(uuid.uuid4()),
             tenant_id=current_user.tenant_id,
@@ -160,6 +259,8 @@ async def predict_fraud(
             customer_tier="standard",
             balance_amount=50000.0,
             active_card_count=1,
+            city=body.city,
+            country_code=body.country_code or "IN",
         )
         db.add(temp_cust)
         await db.flush()
@@ -196,7 +297,7 @@ async def predict_fraud(
     score_result = await score_transaction(txn, db, broadcast_fn=None)
     await db.refresh(txn)
 
-    final_score = score_result.get("fraud_score", 0.05)
+    final_score = score_result.get("fraud_score", 0.04)
     decision = score_result.get("decision", "PASS")
     triggered_rules = score_result.get("triggered_rules", [])
     shap = score_result.get("shap_explanation")
@@ -234,7 +335,6 @@ async def predict_fraud(
             alert_id=score_result.get("alert_id", "SIM"),
         )
 
-    # Risk colour for frontend rendering
     risk_color = _score_color(final_score)
 
     return {
@@ -270,8 +370,16 @@ async def predict_fraud(
         # Step-by-step journey data (for the Test Me UI panel)
         "journey": {
             "step_data_received":   {"ok": True, "ms": 1},
-            "step_rules_engine":    {"ok": True, "triggered": len([r for r in triggered_rules if r not in card_flags]), "ms": 3},
-            "step_ml_inference":    {"ok": model_version != "rules_only_v1", "model": model_version, "ms": processing_ms - 5},
+            "step_rules_engine":    {
+                "ok": True,
+                "triggered": len([r for r in triggered_rules if r not in card_flags]),
+                "ms": 3,
+            },
+            "step_ml_inference":    {
+                "ok": model_version != "rules_only_v1",
+                "model": model_version,
+                "ms": processing_ms - 5,
+            },
             "step_ensemble_score":  {"ok": True, "score": round(final_score, 4), "decision": decision, "ms": 2},
             "step_persisted":       {"ok": True, "is_test": True},
             "step_sms":             {"ok": sms_result == "sent", "status": sms_result},
@@ -323,7 +431,7 @@ async def get_examples(_: CurrentUser):
             {
                 "id": "impossible_travel",
                 "label": "Impossible Travel (Mumbai → London)",
-                "description": "Transaction appears in London 15 minutes after one in Mumbai — physically impossible",
+                "description": "Transaction in London 15 minutes after one in Mumbai — physically impossible",
                 "expected_outcome": "fraud",
                 "expected_decision": "BLOCK",
                 "color": "#EF4444",
@@ -352,7 +460,7 @@ async def get_examples(_: CurrentUser):
             {
                 "id": "high_value_night",
                 "label": "Large ATM Withdrawal at 3 AM",
-                "description": "Rs. 98,000 ATM withdrawal at 3:15 AM from a new device",
+                "description": "₹98,000 ATM withdrawal at 3:15 AM from a new device",
                 "expected_outcome": "fraud",
                 "expected_decision": "ALERT",
                 "color": "#F97316",
@@ -382,7 +490,7 @@ async def get_examples(_: CurrentUser):
             {
                 "id": "velocity_fraud",
                 "label": "Rapid Successive Transactions",
-                "description": "6 online purchases at different merchants within 8 minutes — velocity fraud pattern",
+                "description": "6 online purchases at different merchants within 8 minutes — velocity fraud",
                 "expected_outcome": "fraud",
                 "expected_decision": "BLOCK",
                 "color": "#EF4444",
@@ -426,6 +534,8 @@ def _purchase_type_to_mcc(purchase_type: str) -> str:
         "atm_withdrawal":  "6011",
         "electronics":     "5734",
         "healthcare":      "5912",
+        "wire_transfer":   "4829",
+        "crypto":          "6051",
     }
     return MCC_MAP.get(purchase_type, "5999")
 
@@ -440,6 +550,8 @@ def _infer_merchant(purchase_type: str) -> str:
         "atm_withdrawal":  "ATM Withdrawal",
         "electronics":     "Croma",
         "healthcare":      "Apollo Pharmacy",
+        "wire_transfer":   "International Wire",
+        "crypto":          "CoinSwitch Kuber",
     }
     return MERCHANTS.get(purchase_type, "Online Merchant")
 
@@ -466,68 +578,116 @@ def _build_reasons(
 ) -> list[dict]:
     """Convert triggered rule names into human-readable reason cards."""
 
-    RULE_DESCRIPTIONS = {
+    RULE_DESCRIPTIONS: dict[str, dict] = {
         "large_amount": {
-            "title": "Unusually Large Amount",
-            "detail": f"Transaction amount of ₹{amount:,.0f} is significantly above the customer's average spending.",
+            "title": "Unusually Large Transaction Amount",
+            "detail": f"₹{amount:,.0f} is significantly above the customer's historical spending average. Large amounts from new devices or foreign locations carry heightened risk.",
             "severity": "high",
         },
         "unusual_hour": {
-            "title": "Transaction at Unusual Hour",
-            "detail": "This transaction occurred between 1 AM – 5 AM, outside normal activity hours.",
+            "title": "Transaction at Unusual Hour (1 AM – 5 AM)",
+            "detail": "This transaction occurred during the 1–5 AM window, outside of the customer's normal activity hours. Late-night transactions are a strong account takeover signal.",
             "severity": "medium",
         },
         "foreign_transaction": {
             "title": "Foreign Country Detected",
-            "detail": f"Transaction originated from {country_code}, which differs from the customer's home country (IN).",
+            "detail": f"Transaction originated from {country_code}, which differs from the customer's registered home country (IN). Cross-border card-not-present fraud is a leading fraud vector.",
             "severity": "high",
+        },
+        "high_risk_country": {
+            "title": f"High-Risk Jurisdiction — {country_code}",
+            "detail": f"{country_code} is on the high-risk jurisdiction watchlist due to elevated card fraud, money laundering, or sanctions exposure. Transactions from this country carry additional scrutiny.",
+            "severity": "critical",
         },
         "velocity_spike_1h": {
             "title": "Velocity Spike — 5+ Transactions in 1 Hour",
-            "detail": "Unusually high number of transactions detected in a short window.",
+            "detail": "An unusually high number of transactions were detected in a short window. This pattern is consistent with card-testing attacks, where fraudsters rapidly probe a card before executing large purchases.",
             "severity": "critical",
         },
         "velocity_moderate": {
-            "title": "Moderate Velocity — 3+ Transactions in 1 Hour",
-            "detail": "Above-average transaction frequency in the last hour.",
+            "title": "Elevated Transaction Frequency",
+            "detail": "3 or more transactions were recorded in the past hour, above the customer's baseline. Could indicate account sharing or an early-stage fraud attempt.",
             "severity": "medium",
+        },
+        "rapid_successive": {
+            "title": "Rapid Successive Transactions (<10 Minutes)",
+            "detail": "Multiple transactions occurred within a 10-minute window. Legitimate cardholders rarely transact this rapidly. This is a primary signal for card skimming and carding fraud.",
+            "severity": "high",
+        },
+        "structuring_pattern": {
+            "title": "Structuring / Smurfing Pattern Detected",
+            "detail": "Multiple transactions near the ₹8,00,000 currency reporting threshold were detected within 24 hours. This is a classic money-laundering technique designed to avoid AML reporting obligations.",
+            "severity": "critical",
         },
         "impossible_travel": {
             "title": "Impossible Travel Detected",
-            "detail": "This transaction occurred in a location that cannot be reached from the last known location in the elapsed time.",
+            "detail": "This transaction occurred in a location that cannot be physically reached from the last known location in the elapsed time. The computed travel speed exceeds 900 km/h — only possible if the card details were cloned.",
             "severity": "critical",
         },
+        "suspicious_travel_speed": {
+            "title": "Suspicious Travel Speed",
+            "detail": "The travel speed between consecutive transaction locations is above 450 km/h — improbable for any ground or air transport. This may indicate card-present fraud or identity sharing.",
+            "severity": "high",
+        },
+        "card_not_present_high_value": {
+            "title": "High-Value Card-Not-Present Transaction",
+            "detail": f"An online transaction of ₹{amount:,.0f} was submitted without physical card verification. CNP fraud accounts for over 75% of global card fraud losses.",
+            "severity": "medium",
+        },
+        "high_risk_merchant_category": {
+            "title": "High-Risk Merchant Category",
+            "detail": "This transaction is with a merchant in a high-risk category (cryptocurrency exchange, cash advance, gambling, or wire transfer). These MCCs are disproportionately represented in fraud cases.",
+            "severity": "high",
+        },
+        "large_atm_withdrawal": {
+            "title": "Large ATM Cash Withdrawal",
+            "detail": f"Cash withdrawal of ₹{amount:,.0f} exceeds the normal ATM usage threshold. Large ATM withdrawals — especially at unusual hours — are a common pattern in physical card theft.",
+            "severity": "high",
+        },
+        "foreign_wire_transfer": {
+            "title": "International Wire / ACH Transfer",
+            "detail": f"An international wire transfer to {country_code} was initiated. Cross-border wire transfers are frequently used to move funds from compromised accounts to mule accounts overseas.",
+            "severity": "critical",
+        },
+        "round_amount_pattern": {
+            "title": "Repeated Round-Amount Pattern",
+            "detail": "Multiple transactions with exact round amounts (e.g. ₹10,000, ₹20,000) were detected. Fraudsters often use round amounts during card-testing to verify stolen card limits.",
+            "severity": "low",
+        },
         "expired_card": {
-            "title": "Expired Card Used",
-            "detail": "The card's expiry date has passed. Legitimate merchants would decline this card.",
+            "title": "Expired Card Presented",
+            "detail": "The card's expiry date has passed. Legitimate payment terminals automatically decline expired cards. A transaction appearing with an expired card suggests a fraudulent submission or system bypass.",
             "severity": "high",
         },
         "new_device": {
             "title": "New / Unrecognised Device",
-            "detail": "This transaction was made from a device not previously associated with this account.",
+            "detail": "This transaction was initiated from a device fingerprint not previously associated with this account. New device + high-value transaction is a primary account takeover indicator.",
             "severity": "medium",
         },
     }
 
     reasons = []
-    for rule in triggered_rules:
-        if rule in RULE_DESCRIPTIONS:
-            reasons.append(RULE_DESCRIPTIONS[rule])
+    seen = set()
 
-    if is_new_device and "new_device" not in triggered_rules:
+    for rule in triggered_rules:
+        if rule in RULE_DESCRIPTIONS and rule not in seen:
+            reasons.append(RULE_DESCRIPTIONS[rule])
+            seen.add(rule)
+
+    if is_new_device and "new_device" not in seen:
         reasons.append(RULE_DESCRIPTIONS["new_device"])
 
-    # Add a summary reason based on ML score if no rules triggered
+    # Fallback summary reasons when no specific rule fired
     if not reasons and fraud_score < 0.30:
         reasons.append({
             "title": "No Suspicious Signals Found",
-            "detail": "All rule checks and ML model analysis indicate this transaction is legitimate.",
+            "detail": "All rule checks and ML model analysis indicate this transaction matches the customer's normal behaviour. Amount, location, device, and timing are all within expected parameters.",
             "severity": "low",
         })
     elif not reasons and fraud_score >= 0.30:
         reasons.append({
             "title": "ML Model Detected Anomaly",
-            "detail": f"The ensemble fraud model assigned a score of {fraud_score:.0%}. No specific rule triggered, but the overall transaction pattern is unusual.",
+            "detail": f"The ensemble fraud model assigned a score of {fraud_score:.0%}. No single rule triggered, but the overall transaction feature vector is statistically unusual compared to this customer's baseline.",
             "severity": "medium" if fraud_score < 0.60 else "high",
         })
 

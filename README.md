@@ -102,7 +102,12 @@ poetry install
 
 ```bash
 cd backend
+# On Windows PowerShell:
+$env:PYTHONPATH="."
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+
+# On Linux/macOS:
+PYTHONPATH=. python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
 The backend auto-creates all SQLite tables on first startup in development mode.
@@ -319,11 +324,17 @@ make build            # Build Docker images
 
 ## Troubleshooting
 
-### Backend won't start — `pyproject.toml` error
+### Backend won't start — `ModuleNotFoundError: No module named 'app'`
+**Fix:** Set the PYTHONPATH before running uvicorn:
+```bash
+# From backend directory:
+# Windows PowerShell:
+$env:PYTHONPATH="."
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
+
+# Linux/macOS:
+PYTHONPATH=. python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
 ```
-The Poetry configuration is invalid: Additional properties are not allowed ('python' was unexpected)
-```
-**Fix:** Remove the duplicate `python = "^3.12"` line from `[tool.poetry]` section. It belongs only under `[tool.poetry.dependencies]`.
 
 ### Port already in use
 ```bash

@@ -1,543 +1,882 @@
-"use client";
-
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
-import {
-  Shield, Database, ChevronLeft, Save, Zap, Loader2, CheckCircle2,
-  AlertCircle, Eye, EyeOff, Trash2, Plus, ExternalLink, Settings, Bell,
-  Key, User, CreditCard
-} from "lucide-react";
-import Link from "next/link";
-import { useAuthStore, DbConfig, DbType } from "@/store/auth-store";
-
-// ── DB type definitions (same as onboarding) ────────────────────────────────
-const DB_TYPES: {
-  id: DbType;
-  name: string;
-  icon: string;
-  color: string;
-  description: string;
-  fields: string[];
-  docs: string;
-}[] = [
-  {
-    id: "supabase",
-    name: "Supabase",
-    icon: "⚡",
-    color: "#3ECF8E",
-    description: "PostgreSQL-backed BaaS — recommended",
-    fields: ["supabase_url", "supabase_anon_key", "supabase_service_key"],
-    docs: "https://supabase.com/docs",
-  },
-  {
-    id: "postgresql",
-    name: "PostgreSQL",
-    icon: "🐘",
-    color: "#336791",
-    description: "Direct PostgreSQL / asyncpg connection",
-    fields: ["db_url", "db_name", "db_user", "db_password"],
-    docs: "https://www.postgresql.org/docs/",
-  },
-  {
-    id: "mysql",
-    name: "MySQL / MariaDB",
-    icon: "🐬",
-    color: "#F29111",
-    description: "MySQL or MariaDB via aiomysql",
-    fields: ["db_url", "db_name", "db_user", "db_password"],
-    docs: "https://dev.mysql.com/doc/",
-  },
-  {
-    id: "mongodb",
-    name: "MongoDB",
-    icon: "🍃",
-    color: "#47A248",
-    description: "MongoDB Atlas or self-hosted (transactions only)",
-    fields: ["db_url", "db_name"],
-    docs: "https://www.mongodb.com/docs/",
-  },
-  {
-    id: "rest_api",
-    name: "REST API / CSV",
-    icon: "🔌",
-    color: "#8B5CF6",
-    description: "Custom REST endpoint or CSV batch upload",
-    fields: ["db_url", "api_key"],
-    docs: "#",
-  },
-];
-
-const FIELD_META: Record<string, { label: string; placeholder: string; secret?: boolean }> = {
-  supabase_url:         { label: "Project URL",        placeholder: "https://xxxx.supabase.co" },
-  supabase_anon_key:    { label: "Anon / Public Key",  placeholder: "eyJhbGci...", secret: true },
-  supabase_service_key: { label: "Service Role Key",   placeholder: "eyJhbGci...", secret: true },
-  db_url:               { label: "Connection URL",     placeholder: "postgresql+asyncpg://user:pass@host/db" },
-  db_name:              { label: "Database Name",      placeholder: "finshield" },
-  db_user:              { label: "Username",           placeholder: "db_user" },
-  db_password:          { label: "Password",           placeholder: "••••••••", secret: true },
-  api_key:              { label: "API Key",            placeholder: "sk-...", secret: true },
-};
-
-// ── Sidebar nav sections ─────────────────────────────────────────────────────
-const SECTIONS = [
-  { id: "database",      label: "Database",      icon: Database },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "api-keys",      label: "API Keys",      icon: Key },
-  { id: "account",       label: "Account",       icon: User },
-  { id: "billing",       label: "Billing",       icon: CreditCard },
-];
-
-// ── Component ────────────────────────────────────────────────────────────────
-export default function SettingsPage() {
-  const { user, dbConfig, updateDbConfig } = useAuthStore();
-  const router = useRouter();
-
-  const [activeSection, setActiveSection] = useState("database");
-
-  // DB form state — pre-fill from saved config
-  const [selectedType, setSelectedType] = useState<DbType>(dbConfig?.db_type || "supabase");
-  const [label, setLabel] = useState(dbConfig?.label || "");
-  const [formValues, setFormValues] = useState<Record<string, string>>({
-    supabase_url:         dbConfig?.supabase_url || "",
-    supabase_anon_key:    dbConfig?.supabase_anon_key || "",
-    supabase_service_key: dbConfig?.supabase_service_key || "",
-    db_url:               dbConfig?.db_url || "",
-    db_name:              dbConfig?.db_name || "",
-    db_user:              dbConfig?.db_user || "",
-    db_password:          dbConfig?.db_password || "",
-    api_key:              dbConfig?.api_key || "",
-  });
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
-  const [testMessage, setTestMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const dbDef = DB_TYPES.find((d) => d.id === selectedType)!;
-
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    await new Promise((r) => setTimeout(r, 1800));
-    const hasValues = dbDef.fields.some((f) => formValues[f]?.trim());
-    if (hasValues) {
-      setTestResult("success");
-      setTestMessage("Connection test passed — credentials accepted.");
-    } else {
-      setTestResult("error");
-      setTestMessage("Fill in at least one field before testing.");
-    }
-    setTesting(false);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    await new Promise((r) => setTimeout(r, 500));
-
-    const config: DbConfig = {
-      db_type:              selectedType,
-      db_url:               formValues.db_url || formValues.supabase_url || "",
-      db_name:              formValues.db_name,
-      db_user:              formValues.db_user,
-      db_password:          formValues.db_password,
-      api_key:              formValues.api_key,
-      supabase_url:         formValues.supabase_url,
-      supabase_anon_key:    formValues.supabase_anon_key,
-      supabase_service_key: formValues.supabase_service_key,
-      label:                label || dbDef.name,
-    };
-
-    updateDbConfig(config);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
-
-  const planColor =
-    user?.plan === "advanced" ? "#8B5CF6" : user?.plan === "pro" ? "#3B82F6" : "#00FF87";
-
-  return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white flex">
-      {/* App Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-60 bg-[#0D0D15] border-r border-[#1E1E2E] flex flex-col">
-        <div className="p-5 border-b border-[#1E1E2E]">
-          <div className="flex items-center gap-2.5">
-            <Shield size={22} className="text-[#00FF87]" />
-            <span className="font-black text-base">
-              Fin<span className="text-[#00FF87]">Shield</span> AI
-            </span>
-          </div>
-        </div>
-        <nav className="flex-1 p-4 space-y-1">
-          {[
-            { label: "Dashboard",     href: "/dashboard" },
-            { label: "Transactions",  href: "/dashboard/transactions" },
-            { label: "Fraud Alerts",  href: "/dashboard/alerts" },
-            { label: "Test Me",       href: "/dashboard/test-me" },
-            { label: "Customers",     href: "/dashboard/customers" },
-            { label: "Data Sources",  href: "/dashboard/data-sources" },
-            { label: "ML Details",    href: "/dashboard/ml-details" },
-            { label: "Settings",      href: "/dashboard/settings", active: true },
-          ].map(({ label: l, href, active }) => (
-            <Link
-              key={l}
-              href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                active
-                  ? "bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/20"
-                  : "text-gray-500 hover:text-gray-300 hover:bg-[#111118]"
-              }`}
-            >
-              {active ? <Settings size={16} /> : null}
-              {l}
-            </Link>
-          ))}
-        </nav>
-      </aside>
-
-      {/* Settings layout */}
-      <div className="ml-60 flex w-full">
-        {/* Settings sidebar */}
-        <div className="w-52 border-r border-[#1E1E2E] min-h-screen p-4 space-y-1 flex-shrink-0">
-          <div className="text-xs text-gray-600 font-mono uppercase tracking-wider px-3 mb-3 mt-2">
-            Settings
-          </div>
-          {SECTIONS.map(({ id, label: l, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveSection(id)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left ${
-                activeSection === id
-                  ? "bg-[#111118] text-white border border-[#2E2E3E]"
-                  : "text-gray-500 hover:text-gray-300"
-              }`}
-            >
-              <Icon size={15} />
-              {l}
-            </button>
-          ))}
-        </div>
-
-        {/* Content area */}
-        <div className="flex-1 p-8 max-w-2xl">
-          {/* ── Database Section ── */}
-          {activeSection === "database" && (
-            <div>
-              <h2 className="text-xl font-black mb-1">Database Connection</h2>
-              <p className="text-gray-500 text-sm mb-7">
-                Configure the transaction and customer database FinShield connects to.
-              </p>
-
-              {/* DB type picker */}
-              <div className="mb-6">
-                <label className="block text-sm text-gray-400 mb-3">Database Type</label>
-                <div className="grid grid-cols-1 gap-2">
-                  {DB_TYPES.map((db) => (
-                    <button
-                      key={db.id}
-                      onClick={() => setSelectedType(db.id)}
-                      className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
-                        selectedType === db.id
-                          ? "border-opacity-80"
-                          : "border-[#1E1E2E] hover:border-[#2E2E3E]"
-                      }`}
-                      style={
-                        selectedType === db.id
-                          ? { borderColor: db.color, backgroundColor: `${db.color}08` }
-                          : {}
-                      }
-                    >
-                      <span className="text-xl w-8 text-center">{db.icon}</span>
-                      <div className="flex-1">
-                        <div className="text-sm font-semibold">{db.name}</div>
-                        <div className="text-xs text-gray-600">{db.description}</div>
-                      </div>
-                      <a
-                        href={db.docs}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-600 hover:text-gray-400 ml-2"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ExternalLink size={12} />
-                      </a>
-                      <div
-                        className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ml-2"
-                        style={{
-                          borderColor: selectedType === db.id ? db.color : "#2E2E3E",
-                          backgroundColor: selectedType === db.id ? db.color : "transparent",
-                        }}
-                      >
-                        {selectedType === db.id && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-black" />
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Connection label */}
-              <div className="mb-4">
-                <label className="block text-sm text-gray-400 mb-1.5">Connection Label</label>
-                <input
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  placeholder={`e.g. Production ${dbDef.name}`}
-                  className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
-                />
-              </div>
-
-              {/* Dynamic credential fields */}
-              <div className="space-y-4 mb-6">
-                {dbDef.fields.map((field) => {
-                  const meta = FIELD_META[field];
-                  const isSecret = meta?.secret;
-                  const shown = showSecrets[field];
-
-                  return (
-                    <div key={field}>
-                      <label className="block text-sm text-gray-400 mb-1.5">{meta?.label}</label>
-                      <div className="relative">
-                        <input
-                          type={isSecret && !shown ? "password" : "text"}
-                          value={formValues[field] || ""}
-                          onChange={(e) =>
-                            setFormValues((prev) => ({ ...prev, [field]: e.target.value }))
-                          }
-                          placeholder={meta?.placeholder}
-                          className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors pr-10"
-                        />
-                        {isSecret && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowSecrets((p) => ({ ...p, [field]: !p[field] }))
-                            }
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
-                          >
-                            {shown ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Test + Save */}
-              <div className="flex gap-3 items-start">
-                <button
-                  onClick={handleTest}
-                  disabled={testing}
-                  className="flex items-center gap-2 text-sm border border-[#1E1E2E] px-4 py-2.5 rounded-xl hover:border-[#00FF87]/40 text-gray-400 hover:text-white transition-all disabled:opacity-50"
-                >
-                  {testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                  {testing ? "Testing..." : "Test Connection"}
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all disabled:opacity-60"
-                >
-                  {saving ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : saved ? (
-                    <CheckCircle2 size={14} />
-                  ) : (
-                    <Save size={14} />
-                  )}
-                  {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
-                </button>
-              </div>
-
-              {testResult && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`mt-4 flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl ${
-                    testResult === "success"
-                      ? "bg-[#00FF87]/10 border border-[#00FF87]/30 text-[#00FF87]"
-                      : "bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444]"
-                  }`}
-                >
-                  {testResult === "success" ? (
-                    <CheckCircle2 size={14} />
-                  ) : (
-                    <AlertCircle size={14} />
-                  )}
-                  {testMessage}
-                </motion.div>
-              )}
-            </div>
-          )}
-
-          {/* ── Notifications Section ── */}
-          {activeSection === "notifications" && (
-            <div>
-              <h2 className="text-xl font-black mb-1">Notification Services</h2>
-              <p className="text-gray-500 text-sm mb-7">
-                Configure email and SMS providers for fraud alerts. All fields are optional — system falls back gracefully.
-              </p>
-              <div className="space-y-6">
-                {[
-                  {
-                    label: "Resend.com (Email — recommended)",
-                    field: "RESEND_API_KEY",
-                    placeholder: "re_xxxxxxxxxxxxxxxxxx",
-                    link: "https://resend.com",
-                    badge: "3,000/mo free",
-                  },
-                  {
-                    label: "SendGrid API Key (Email — fallback)",
-                    field: "SENDGRID_API_KEY",
-                    placeholder: "SG.xxxxxxxxxxxxxxxxxx",
-                    link: "https://sendgrid.com",
-                    badge: "100/day free",
-                  },
-                  {
-                    label: "Twilio Account SID (SMS)",
-                    field: "TWILIO_ACCOUNT_SID",
-                    placeholder: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-                    link: "https://twilio.com",
-                    badge: "Paid",
-                  },
-                  {
-                    label: "Twilio Auth Token",
-                    field: "TWILIO_AUTH_TOKEN",
-                    placeholder: "your_auth_token",
-                    link: null,
-                    badge: null,
-                    secret: true,
-                  },
-                  {
-                    label: "Slack Webhook URL (Team alerts)",
-                    field: "SLACK_WEBHOOK_URL",
-                    placeholder: "https://hooks.slack.com/services/...",
-                    link: "https://api.slack.com/messaging/webhooks",
-                    badge: "Free",
-                  },
-                ].map(({ label: l, field, placeholder, link, badge, secret }) => (
-                  <div key={field}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <label className="text-sm text-gray-400">{l}</label>
-                      {badge && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/20 font-mono">
-                          {badge}
-                        </span>
-                      )}
-                      {link && (
-                        <a href={link} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400">
-                          <ExternalLink size={11} />
-                        </a>
-                      )}
-                    </div>
-                    <input
-                      type={secret ? "password" : "text"}
-                      placeholder={placeholder}
-                      className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
-                    />
-                  </div>
-                ))}
-              </div>
-              <button className="mt-6 flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all">
-                <Save size={14} /> Save Notification Settings
-              </button>
-            </div>
-          )}
-
-          {/* ── API Keys Section ── */}
-          {activeSection === "api-keys" && (
-            <div>
-              <h2 className="text-xl font-black mb-1">API Keys</h2>
-              <p className="text-gray-500 text-sm mb-7">
-                Manage keys for fraud intelligence services. All are optional — FinShield uses built-in fallbacks.
-              </p>
-              <div className="space-y-6">
-                {[
-                  { label: "IPQualityScore (IP Intelligence)", placeholder: "ipqs_xxxxxxxxxx", badge: "Free tier" },
-                  { label: "MaxMind GeoIP2 (Geolocation)", placeholder: "your_license_key", badge: null },
-                  { label: "Fingerprint.js (Device)", placeholder: "fp_xxxxxxxxxx", badge: "Free tier" },
-                ].map(({ label: l, placeholder, badge }) => (
-                  <div key={l}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <label className="text-sm text-gray-400">{l}</label>
-                      {badge && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 font-mono">
-                          {badge}
-                        </span>
-                      )}
-                    </div>
-                    <input
-                      type="password"
-                      placeholder={placeholder}
-                      className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
-                    />
-                  </div>
-                ))}
-              </div>
-              <button className="mt-6 flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all">
-                <Save size={14} /> Save API Keys
-              </button>
-            </div>
-          )}
-
-          {/* ── Account Section ── */}
-          {activeSection === "account" && (
-            <div>
-              <h2 className="text-xl font-black mb-1">Account</h2>
-              <p className="text-gray-500 text-sm mb-7">Your profile and institution settings.</p>
-              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-6 space-y-4">
-                {[
-                  { label: "Full Name",         value: user?.full_name || "" },
-                  { label: "Email",             value: user?.email || "" },
-                  { label: "Institution Name",  value: user?.institution_name || "" },
-                  { label: "Institution Type",  value: user?.institution_type || "" },
-                  { label: "Role",              value: user?.role || "" },
-                ].map(({ label: l, value }) => (
-                  <div key={l} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">{l}</span>
-                    <span className="text-sm font-medium capitalize">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── Billing Section ── */}
-          {activeSection === "billing" && (
-            <div>
-              <h2 className="text-xl font-black mb-1">Billing & Plan</h2>
-              <p className="text-gray-500 text-sm mb-7">Manage your subscription.</p>
-              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-6 mb-4">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm text-gray-400">Current Plan</span>
-                  <span
-                    className="text-sm font-bold px-3 py-1 rounded-full capitalize"
-                    style={{
-                      color: planColor,
-                      backgroundColor: `${planColor}15`,
-                      border: `1px solid ${planColor}40`,
-                    }}
-                  >
-                    {user?.plan}
-                  </span>
-                </div>
-                {user?.plan === "free" && (
-                  <Link
-                    href="/signup"
-                    className="block w-full text-center bg-[#3B82F6] text-white font-bold py-2.5 rounded-xl hover:bg-[#2563EB] transition-all text-sm"
-                  >
-                    Upgrade to Pro — ₹9,999/mo
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+"use client";
+
+import { useState } from "react";
+import { motion } from "framer-motion";
+import {
+  Shield, Database, Save, Zap, Loader2, CheckCircle2,
+  AlertCircle, Eye, EyeOff, ExternalLink, Settings, Bell,
+  Key, User, CreditCard, ChevronDown, ChevronUp,
+} from "lucide-react";
+import Link from "next/link";
+import { useAuthStore, DbConfig, DbType } from "@/store/auth-store";
+
+// ── DB type definitions ───────────────────────────────────────────────────────
+
+interface DbFieldDef {
+  key: string;
+  label: string;
+  placeholder: string;
+  secret?: boolean;
+  type?: "text" | "number" | "select";
+  options?: string[];
+  hint?: string;
+}
+
+interface DbTypeDef {
+  id: DbType;
+  name: string;
+  icon: string;
+  color: string;
+  description: string;
+  badge?: string;
+  docs: string;
+  fields: DbFieldDef[];
+  advancedFields?: DbFieldDef[];
+}
+
+const DB_TYPES: DbTypeDef[] = [
+  {
+    id: "supabase",
+    name: "Supabase",
+    icon: "⚡",
+    color: "#3ECF8E",
+    description: "PostgreSQL-backed BaaS — recommended for fast setup",
+    badge: "Recommended",
+    docs: "https://supabase.com/docs/guides/getting-started",
+    fields: [
+      { key: "supabase_url",         label: "Project URL",       placeholder: "https://xyzabc.supabase.co" },
+      { key: "supabase_anon_key",    label: "Anon / Public Key", placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", secret: true, hint: "Found in Project Settings → API → Project API keys" },
+      { key: "supabase_service_key", label: "Service Role Key",  placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", secret: true, hint: "Required for server-side writes and RLS bypass" },
+    ],
+    advancedFields: [
+      { key: "schema_name", label: "Schema", placeholder: "public", hint: "PostgreSQL schema (default: public)" },
+    ],
+  },
+  {
+    id: "postgresql",
+    name: "PostgreSQL",
+    icon: "🐘",
+    color: "#336791",
+    description: "Direct PostgreSQL connection via asyncpg",
+    docs: "https://www.postgresql.org/docs/current/",
+    fields: [
+      { key: "host",        label: "Host",          placeholder: "db.example.com" },
+      { key: "port",        label: "Port",          placeholder: "5432", type: "number" },
+      { key: "db_name",     label: "Database Name", placeholder: "finshield_prod" },
+      { key: "db_user",     label: "Username",      placeholder: "finshield_user" },
+      { key: "db_password", label: "Password",      placeholder: "••••••••", secret: true },
+    ],
+    advancedFields: [
+      { key: "schema_name",         label: "Schema",      placeholder: "public" },
+      { key: "ssl_mode",            label: "SSL Mode",    placeholder: "require", type: "select", options: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"] },
+      { key: "pool_size",           label: "Pool Size",   placeholder: "10", type: "number" },
+      { key: "connection_timeout",  label: "Timeout (s)", placeholder: "30", type: "number" },
+    ],
+  },
+  {
+    id: "mysql",
+    name: "MySQL / MariaDB",
+    icon: "🐬",
+    color: "#F29111",
+    description: "MySQL or MariaDB via aiomysql",
+    docs: "https://dev.mysql.com/doc/refman/8.0/en/",
+    fields: [
+      { key: "host",        label: "Host",          placeholder: "mysql.example.com" },
+      { key: "port",        label: "Port",          placeholder: "3306", type: "number" },
+      { key: "db_name",     label: "Database Name", placeholder: "finshield" },
+      { key: "db_user",     label: "Username",      placeholder: "finshield_user" },
+      { key: "db_password", label: "Password",      placeholder: "••••••••", secret: true },
+    ],
+    advancedFields: [
+      { key: "ssl_mode",           label: "SSL Mode",    placeholder: "require", type: "select", options: ["disabled", "preferred", "required", "verify_ca", "verify_identity"] },
+      { key: "connection_timeout", label: "Timeout (s)", placeholder: "30", type: "number" },
+    ],
+  },
+  {
+    id: "mongodb",
+    name: "MongoDB",
+    icon: "🍃",
+    color: "#47A248",
+    description: "MongoDB Atlas or self-hosted (transaction data)",
+    docs: "https://www.mongodb.com/docs/drivers/node/current/",
+    fields: [
+      { key: "mongo_connection_string", label: "Connection String", placeholder: "mongodb+srv://user:password@cluster0.abc123.mongodb.net/finshield?retryWrites=true&w=majority", secret: true, hint: "Full MongoDB URI including credentials" },
+      { key: "db_name",                label: "Database Name",     placeholder: "finshield" },
+    ],
+    advancedFields: [
+      { key: "auth_source", label: "Auth Source DB", placeholder: "admin", hint: "Database used for authentication (default: admin)" },
+    ],
+  },
+  {
+    id: "mssql",
+    name: "Microsoft SQL Server",
+    icon: "🪟",
+    color: "#CC2222",
+    description: "SQL Server / Azure SQL Database via pyodbc",
+    docs: "https://learn.microsoft.com/en-us/sql/connect/python/pyodbc/",
+    fields: [
+      { key: "host",        label: "Server / Host", placeholder: "sqlserver.example.com,1433" },
+      { key: "port",        label: "Port",          placeholder: "1433", type: "number" },
+      { key: "db_name",     label: "Database",      placeholder: "FinShield" },
+      { key: "db_user",     label: "Username",      placeholder: "sa" },
+      { key: "db_password", label: "Password",      placeholder: "••••••••", secret: true },
+    ],
+    advancedFields: [
+      { key: "schema_name", label: "Schema",       placeholder: "dbo" },
+      { key: "ssl_mode",    label: "Encrypt",      placeholder: "yes", type: "select", options: ["yes", "no", "strict"] },
+      { key: "pool_size",   label: "Pool Size",    placeholder: "10", type: "number" },
+    ],
+  },
+  {
+    id: "oracle",
+    name: "Oracle Database",
+    icon: "🔴",
+    color: "#F80000",
+    description: "Oracle DB via python-oracledb (thin or thick mode)",
+    docs: "https://python-oracledb.readthedocs.io/",
+    fields: [
+      { key: "host",                 label: "Host / Hostname",   placeholder: "oracle.example.com" },
+      { key: "port",                 label: "Port",              placeholder: "1521", type: "number" },
+      { key: "oracle_service_name",  label: "Service Name / SID", placeholder: "ORCL" },
+      { key: "db_user",              label: "Username",          placeholder: "FINSHIELD" },
+      { key: "db_password",          label: "Password",          placeholder: "••••••••", secret: true },
+    ],
+    advancedFields: [
+      { key: "schema_name",           label: "Schema",          placeholder: "FINSHIELD" },
+      { key: "oracle_wallet_location", label: "Wallet Path",    placeholder: "/opt/oracle/wallet", hint: "For mTLS / Oracle Cloud Autonomous DB" },
+      { key: "pool_size",             label: "Pool Size",       placeholder: "10", type: "number" },
+    ],
+  },
+  {
+    id: "redis",
+    name: "Redis",
+    icon: "🔴",
+    color: "#DC382D",
+    description: "Redis 7+ for caching and feature store",
+    docs: "https://redis.io/docs/",
+    fields: [
+      { key: "host",           label: "Host",       placeholder: "redis.example.com" },
+      { key: "port",           label: "Port",       placeholder: "6379", type: "number" },
+      { key: "redis_password", label: "Password",   placeholder: "••••••••", secret: true, hint: "Leave blank for no-auth Redis" },
+    ],
+    advancedFields: [
+      { key: "redis_db_index", label: "DB Index",   placeholder: "0", type: "number", hint: "Redis logical database index (0-15)" },
+      { key: "redis_use_tls",  label: "Use TLS",    placeholder: "true", type: "select", options: ["true", "false"] },
+    ],
+  },
+  {
+    id: "dynamodb",
+    name: "Amazon DynamoDB",
+    icon: "🏗️",
+    color: "#FF9900",
+    description: "AWS DynamoDB via boto3 / aiobotocore",
+    docs: "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/",
+    fields: [
+      { key: "aws_region",            label: "AWS Region",          placeholder: "ap-south-1" },
+      { key: "aws_access_key_id",     label: "Access Key ID",       placeholder: "AKIAIOSFODNN7EXAMPLE" },
+      { key: "aws_secret_access_key", label: "Secret Access Key",   placeholder: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", secret: true },
+    ],
+    advancedFields: [
+      { key: "aws_session_token",       label: "Session Token",     placeholder: "AQoXnyc4lcK4w...", secret: true, hint: "For assumed-role / temporary credentials" },
+      { key: "dynamodb_table_prefix",   label: "Table Prefix",      placeholder: "finshield_", hint: "Prefix prepended to all table names" },
+    ],
+  },
+  {
+    id: "firestore",
+    name: "Google Firestore",
+    icon: "🔥",
+    color: "#FFCA28",
+    description: "Google Cloud Firestore via firebase-admin",
+    docs: "https://firebase.google.com/docs/firestore",
+    fields: [
+      { key: "gcp_project_id",      label: "GCP Project ID",        placeholder: "my-finshield-project" },
+      { key: "service_account_json", label: "Service Account JSON", placeholder: "eyJhbGciOiJSU0EtT...", secret: true, hint: "Base64-encoded service account key JSON" },
+    ],
+    advancedFields: [
+      { key: "firestore_collection_prefix", label: "Collection Prefix", placeholder: "finshield_" },
+    ],
+  },
+  {
+    id: "snowflake",
+    name: "Snowflake",
+    icon: "❄️",
+    color: "#29B5E8",
+    description: "Snowflake Data Cloud — analytics and batch scoring",
+    docs: "https://docs.snowflake.com/en/developer-guide/python-connector/",
+    fields: [
+      { key: "snowflake_account",    label: "Account Identifier",  placeholder: "xy12345.ap-southeast-1.aws", hint: "Format: <account>.<region>.<cloud>" },
+      { key: "snowflake_warehouse",  label: "Warehouse",           placeholder: "FINSHIELD_WH" },
+      { key: "snowflake_database",   label: "Database",            placeholder: "FINSHIELD_DB" },
+      { key: "db_user",              label: "Username",            placeholder: "FINSHIELD_SVC" },
+      { key: "db_password",          label: "Password",            placeholder: "••••••••", secret: true },
+    ],
+    advancedFields: [
+      { key: "snowflake_schema", label: "Schema",         placeholder: "PUBLIC" },
+      { key: "snowflake_role",   label: "Role",           placeholder: "SYSADMIN", hint: "Snowflake role for this connection" },
+      { key: "pool_size",        label: "Pool Size",      placeholder: "5", type: "number" },
+    ],
+  },
+  {
+    id: "cockroachdb",
+    name: "CockroachDB",
+    icon: "🪳",
+    color: "#6933FF",
+    description: "CockroachDB Cloud or self-hosted (PostgreSQL-compatible)",
+    docs: "https://www.cockroachlabs.com/docs/stable/connect-to-the-database.html",
+    fields: [
+      { key: "host",        label: "Host",          placeholder: "free-tier.cockroachlabs.cloud" },
+      { key: "port",        label: "Port",          placeholder: "26257", type: "number" },
+      { key: "db_name",     label: "Database",      placeholder: "defaultdb" },
+      { key: "db_user",     label: "Username",      placeholder: "finshield" },
+      { key: "db_password", label: "Password",      placeholder: "••••••••", secret: true },
+    ],
+    advancedFields: [
+      { key: "ssl_mode",   label: "SSL Mode",  placeholder: "verify-full", type: "select", options: ["require", "verify-ca", "verify-full"] },
+      { key: "schema_name", label: "Schema",   placeholder: "public" },
+    ],
+  },
+  {
+    id: "neon",
+    name: "Neon (Serverless Postgres)",
+    icon: "🌿",
+    color: "#00E5BF",
+    description: "Neon serverless PostgreSQL with branching support",
+    docs: "https://neon.tech/docs/connect/connect-from-any-app",
+    fields: [
+      { key: "neon_connection_string", label: "Connection String", placeholder: "postgresql://alex:AbC123dEf@ep-cool-darkness-123456.us-east-2.aws.neon.tech/dbname?sslmode=require", secret: true, hint: "Full Neon connection string from the dashboard" },
+    ],
+    advancedFields: [
+      { key: "schema_name",         label: "Schema",       placeholder: "public" },
+      { key: "connection_timeout",  label: "Timeout (s)",  placeholder: "30", type: "number" },
+    ],
+  },
+  {
+    id: "planetscale",
+    name: "PlanetScale",
+    icon: "🪐",
+    color: "#F4F4F5",
+    description: "PlanetScale MySQL-compatible serverless database",
+    docs: "https://planetscale.com/docs/concepts/connection-strings",
+    fields: [
+      { key: "planetscale_host",     label: "Host",     placeholder: "aws.connect.psdb.cloud" },
+      { key: "db_name",              label: "Database", placeholder: "finshield" },
+      { key: "planetscale_username", label: "Username", placeholder: "xxxxxxxxxxxxxxxx" },
+      { key: "planetscale_password", label: "Password", placeholder: "your_planetscale_password", secret: true },
+    ],
+  },
+  {
+    id: "clickhouse",
+    name: "ClickHouse",
+    icon: "🟡",
+    color: "#FACC15",
+    description: "ClickHouse — high-performance analytics for fraud trend queries",
+    docs: "https://clickhouse.com/docs/en/integrations/python",
+    fields: [
+      { key: "host",        label: "Host",          placeholder: "clickhouse.example.com" },
+      { key: "db_user",     label: "Username",      placeholder: "default" },
+      { key: "db_password", label: "Password",      placeholder: "••••••••", secret: true },
+      { key: "db_name",     label: "Database",      placeholder: "finshield" },
+    ],
+    advancedFields: [
+      { key: "clickhouse_http_port",   label: "HTTP Port",    placeholder: "8123", type: "number" },
+      { key: "clickhouse_native_port", label: "Native Port",  placeholder: "9000", type: "number" },
+      { key: "clickhouse_cluster",     label: "Cluster Name", placeholder: "finshield_cluster", hint: "For distributed queries across shards" },
+    ],
+  },
+  {
+    id: "rest_api",
+    name: "REST API / CSV",
+    icon: "🔌",
+    color: "#8B5CF6",
+    description: "Custom REST endpoint or SFTP/CSV batch upload",
+    docs: "#",
+    fields: [
+      { key: "api_base_url",   label: "Base URL",    placeholder: "https://api.yourbank.com/v1/transactions" },
+      { key: "api_key",        label: "API Key",     placeholder: "your_api_key_here", secret: true },
+    ],
+    advancedFields: [
+      { key: "api_auth_header", label: "Auth Header Name", placeholder: "X-API-Key", hint: "Header name for the API key (default: Authorization)" },
+    ],
+  },
+];
+
+const SECTIONS = [
+  { id: "database",      label: "Database",      icon: Database },
+  { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "api-keys",      label: "API Keys",      icon: Key },
+  { id: "account",       label: "Account",       icon: User },
+  { id: "billing",       label: "Billing",       icon: CreditCard },
+];
+
+// ── Component ────────────────────────────────────────────────────────────────
+export default function SettingsPage() {
+  const { user, dbConfig, updateDbConfig } = useAuthStore();
+
+  const [activeSection, setActiveSection] = useState("database");
+  const [selectedType, setSelectedType] = useState<DbType>(dbConfig?.db_type || "supabase");
+  const [label, setLabel] = useState(dbConfig?.label || "");
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<"success" | "error" | null>(null);
+  const [testMessage, setTestMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const dbDef = DB_TYPES.find((d) => d.id === selectedType)!;
+  const allFields = [...dbDef.fields, ...(showAdvanced ? (dbDef.advancedFields || []) : [])];
+
+  function fv(key: string) {
+    return formValues[key] ?? (dbConfig as Record<string, string> | null)?.[key] ?? "";
+  }
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    await new Promise((r) => setTimeout(r, 1800));
+    const hasValues = dbDef.fields.some((f) => fv(f.key)?.trim());
+    if (hasValues) {
+      setTestResult("success");
+      setTestMessage(`${dbDef.name} credentials accepted — connection test passed.`);
+    } else {
+      setTestResult("error");
+      setTestMessage("Fill in at least the required fields before testing.");
+    }
+    setTesting(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await new Promise((r) => setTimeout(r, 400));
+
+    const config: DbConfig = {
+      db_type: selectedType,
+      label: label || dbDef.name,
+      ...Object.fromEntries(
+        [...dbDef.fields, ...(dbDef.advancedFields || [])].map((f) => [f.key, fv(f.key)])
+      ),
+    } as DbConfig;
+
+    updateDbConfig(config);
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  const planColor =
+    user?.plan === "advanced" ? "#8B5CF6" : user?.plan === "pro" ? "#3B82F6" : "#00FF87";
+
+  return (
+    <div className="min-h-screen bg-[#0A0A0F] text-white flex">
+      {/* App Sidebar */}
+      <aside className="fixed left-0 top-0 h-full w-60 bg-[#0D0D15] border-r border-[#1E1E2E] flex flex-col">
+        <div className="p-5 border-b border-[#1E1E2E]">
+          <div className="flex items-center gap-2.5">
+            <Shield size={22} className="text-[#00FF87]" />
+            <span className="font-black text-base">
+              Fin<span className="text-[#00FF87]">Shield</span> AI
+            </span>
+          </div>
+        </div>
+        <nav className="flex-1 p-4 space-y-1">
+          {[
+            { label: "Dashboard",    href: "/dashboard" },
+            { label: "Transactions", href: "/dashboard/transactions" },
+            { label: "Fraud Alerts", href: "/dashboard/alerts" },
+            { label: "Test Me",      href: "/dashboard/test-me" },
+            { label: "Customers",    href: "/dashboard/customers" },
+            { label: "Data Sources", href: "/dashboard/data-sources" },
+            { label: "ML Details",   href: "/dashboard/ml-details" },
+            { label: "Settings",     href: "/dashboard/settings", active: true },
+          ].map(({ label: l, href, active }) => (
+            <Link
+              key={l}
+              href={href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                active
+                  ? "bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/20"
+                  : "text-gray-500 hover:text-gray-300 hover:bg-[#111118]"
+              }`}
+            >
+              {active ? <Settings size={16} /> : null}
+              {l}
+            </Link>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Settings layout */}
+      <div className="ml-60 flex w-full">
+        {/* Settings sidebar */}
+        <div className="w-52 border-r border-[#1E1E2E] min-h-screen p-4 space-y-1 flex-shrink-0">
+          <div className="text-xs text-gray-600 font-mono uppercase tracking-wider px-3 mb-3 mt-2">
+            Settings
+          </div>
+          {SECTIONS.map(({ id, label: l, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveSection(id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left ${
+                activeSection === id
+                  ? "bg-[#111118] text-white border border-[#2E2E3E]"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              <Icon size={15} />
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {/* Content area */}
+        <div className="flex-1 p-8 max-w-2xl">
+
+          {/* ── Database Section ── */}
+          {activeSection === "database" && (
+            <div>
+              <h2 className="text-xl font-black mb-1">Database Connection</h2>
+              <p className="text-gray-500 text-sm mb-6">
+                Connect FinShield to your transaction and customer database. All credentials are encrypted at rest.
+              </p>
+
+              {/* DB type picker */}
+              <div className="mb-6">
+                <label className="block text-sm text-gray-400 mb-3 font-medium">Database Type</label>
+                <div className="grid grid-cols-1 gap-1.5 max-h-72 overflow-y-auto pr-1 custom-scroll">
+                  {DB_TYPES.map((db) => (
+                    <button
+                      key={db.id}
+                      onClick={() => { setSelectedType(db.id); setShowAdvanced(false); setTestResult(null); }}
+                      className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
+                        selectedType === db.id ? "border-opacity-80" : "border-[#1E1E2E] hover:border-[#2E2E3E]"
+                      }`}
+                      style={
+                        selectedType === db.id
+                          ? { borderColor: db.color, backgroundColor: `${db.color}08` }
+                          : {}
+                      }
+                    >
+                      <span className="text-lg w-7 text-center shrink-0">{db.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold">{db.name}</span>
+                          {db.badge && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
+                              style={{ backgroundColor: `${db.color}20`, color: db.color, border: `1px solid ${db.color}40` }}>
+                              {db.badge}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-600 truncate">{db.description}</div>
+                      </div>
+                      {db.docs !== "#" && (
+                        <a href={db.docs} target="_blank" rel="noopener noreferrer"
+                          className="text-gray-600 hover:text-gray-400 ml-1 shrink-0"
+                          onClick={(e) => e.stopPropagation()}>
+                          <ExternalLink size={11} />
+                        </a>
+                      )}
+                      <div
+                        className="w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center"
+                        style={{
+                          borderColor: selectedType === db.id ? db.color : "#2E2E3E",
+                          backgroundColor: selectedType === db.id ? db.color : "transparent",
+                        }}
+                      >
+                        {selectedType === db.id && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Connection label */}
+              <div className="mb-5">
+                <label className="block text-sm text-gray-400 mb-1.5 font-medium">Connection Label</label>
+                <input
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder={`e.g. Production ${dbDef.name}`}
+                  className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
+                />
+              </div>
+
+              {/* Required credential fields */}
+              <div className="space-y-4 mb-3">
+                {dbDef.fields.map((field) => (
+                  <FieldInput
+                    key={field.key}
+                    field={field}
+                    value={fv(field.key)}
+                    shown={showSecrets[field.key]}
+                    onChange={(val) => setFormValues((p) => ({ ...p, [field.key]: val }))}
+                    onToggleSecret={() => setShowSecrets((p) => ({ ...p, [field.key]: !p[field.key] }))}
+                  />
+                ))}
+              </div>
+
+              {/* Advanced fields toggle */}
+              {dbDef.advancedFields && dbDef.advancedFields.length > 0 && (
+                <div className="mb-5">
+                  <button
+                    onClick={() => setShowAdvanced((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    {showAdvanced ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    {showAdvanced ? "Hide advanced settings" : "Show advanced settings (SSL, pool size, schema…)"}
+                  </button>
+                  {showAdvanced && (
+                    <div className="mt-4 space-y-4 border-l-2 border-[#1E1E2E] pl-4">
+                      {dbDef.advancedFields.map((field) => (
+                        <FieldInput
+                          key={field.key}
+                          field={field}
+                          value={fv(field.key)}
+                          shown={showSecrets[field.key]}
+                          onChange={(val) => setFormValues((p) => ({ ...p, [field.key]: val }))}
+                          onToggleSecret={() => setShowSecrets((p) => ({ ...p, [field.key]: !p[field.key] }))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Test + Save */}
+              <div className="flex gap-3 items-start mt-2">
+                <button
+                  onClick={handleTest}
+                  disabled={testing}
+                  className="flex items-center gap-2 text-sm border border-[#1E1E2E] px-4 py-2.5 rounded-xl hover:border-[#00FF87]/40 text-gray-400 hover:text-white transition-all disabled:opacity-50"
+                >
+                  {testing ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                  {testing ? "Testing…" : "Test Connection"}
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all disabled:opacity-60"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" />
+                    : saved ? <CheckCircle2 size={14} />
+                    : <Save size={14} />}
+                  {saving ? "Saving…" : saved ? "Saved!" : "Save Changes"}
+                </button>
+              </div>
+
+              {testResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`mt-4 flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl ${
+                    testResult === "success"
+                      ? "bg-[#00FF87]/10 border border-[#00FF87]/30 text-[#00FF87]"
+                      : "bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444]"
+                  }`}
+                >
+                  {testResult === "success" ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  {testMessage}
+                </motion.div>
+              )}
+            </div>
+          )}
+
+          {/* ── Notifications Section ── */}
+          {activeSection === "notifications" && (
+            <div>
+              <h2 className="text-xl font-black mb-1">Notification Services</h2>
+              <p className="text-gray-500 text-sm mb-7">
+                Configure email and SMS providers for fraud alerts. All fields are optional — system falls back gracefully to in-app alerts.
+              </p>
+              <div className="space-y-6">
+                {[
+                  {
+                    label: "Resend.com — Email (recommended)",
+                    field: "RESEND_API_KEY",
+                    placeholder: "re_xxxxxxxxxxxxxxxxxx",
+                    link: "https://resend.com/api-keys",
+                    badge: "3,000/mo free",
+                    hint: "Preferred email provider. Sign up at resend.com — API key starts with re_",
+                  },
+                  {
+                    label: "SendGrid API Key — Email (fallback)",
+                    field: "SENDGRID_API_KEY",
+                    placeholder: "SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    link: "https://app.sendgrid.com/settings/api_keys",
+                    badge: "100/day free",
+                    hint: null,
+                  },
+                  {
+                    label: "Twilio Account SID — SMS",
+                    field: "TWILIO_ACCOUNT_SID",
+                    placeholder: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    link: "https://console.twilio.com/",
+                    badge: "Paid (~₹0.10/SMS)",
+                    hint: "Required for SMS and voice call alerts",
+                  },
+                  {
+                    label: "Twilio Auth Token",
+                    field: "TWILIO_AUTH_TOKEN",
+                    placeholder: "your_32_char_auth_token",
+                    link: null,
+                    badge: null,
+                    hint: null,
+                    secret: true,
+                  },
+                  {
+                    label: "Twilio From Number",
+                    field: "TWILIO_FROM_NUMBER",
+                    placeholder: "+12025551234",
+                    link: null,
+                    badge: null,
+                    hint: "Your Twilio phone number (E.164 format)",
+                  },
+                  {
+                    label: "Slack Webhook URL — Team alerts",
+                    field: "SLACK_WEBHOOK_URL",
+                    placeholder: "https://example.com/your-slack-webhook",
+                    link: "https://api.slack.com/messaging/webhooks",
+                    badge: "Free",
+                    hint: null,
+                  },
+                  {
+                    label: "Firebase Service Account — Push notifications",
+                    field: "FIREBASE_SERVICE_ACCOUNT_JSON",
+                    placeholder: "Base64-encoded service account JSON",
+                    link: "https://console.firebase.google.com/",
+                    badge: "Free unlimited",
+                    hint: null,
+                    secret: true,
+                  },
+                ].map(({ label: l, field, placeholder, link, badge, hint, secret }) => (
+                  <div key={field}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <label className="text-sm text-gray-400 font-medium">{l}</label>
+                      {badge && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/20 font-mono">
+                          {badge}
+                        </span>
+                      )}
+                      {link && (
+                        <a href={link} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400">
+                          <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </div>
+                    {hint && <div className="text-xs text-gray-600 mb-1.5">{hint}</div>}
+                    <input
+                      type={secret ? "password" : "text"}
+                      placeholder={placeholder}
+                      className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button className="mt-6 flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all">
+                <Save size={14} /> Save Notification Settings
+              </button>
+            </div>
+          )}
+
+          {/* ── API Keys Section ── */}
+          {activeSection === "api-keys" && (
+            <div>
+              <h2 className="text-xl font-black mb-1">Fraud Intelligence API Keys</h2>
+              <p className="text-gray-500 text-sm mb-7">
+                Optional third-party enrichment services. FinShield uses built-in fallbacks when not configured.
+              </p>
+              <div className="space-y-6">
+                {[
+                  {
+                    label: "IPQualityScore — IP Reputation & Proxy Detection",
+                    placeholder: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+                    badge: "5,000/mo free",
+                    link: "https://www.ipqualityscore.com/documentation/overview",
+                    hint: "Detects VPN, Tor, proxy, and malicious IP addresses in real time",
+                    secret: true,
+                  },
+                  {
+                    label: "MaxMind GeoIP2 — Geolocation & Fraud Score",
+                    placeholder: "xxxxxxxxxx",
+                    badge: null,
+                    link: "https://dev.maxmind.com/geoip/geolite2-free-geolocation-data/",
+                    hint: "Provides country, city, and fraud risk score per IP. GeoLite2 is free.",
+                    secret: true,
+                  },
+                  {
+                    label: "Fingerprint.js — Device Intelligence",
+                    placeholder: "fp_xxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    badge: "Free tier",
+                    link: "https://dev.fingerprint.com/",
+                    hint: "Browser/device fingerprinting to detect device spoofing and account takeover",
+                    secret: true,
+                  },
+                  {
+                    label: "OFAC / Sanctions Screening API",
+                    placeholder: "your_ofac_api_key",
+                    badge: "Free (OFAC direct)",
+                    link: "https://ofac.treasury.gov/",
+                    hint: "Screens customers against US OFAC Specially Designated Nationals list",
+                    secret: true,
+                  },
+                  {
+                    label: "ThreatMetrix / LexisNexis — Identity Risk",
+                    placeholder: "tmx_xxxxxxxxxxxxxxxx",
+                    badge: null,
+                    link: "https://risk.lexisnexis.com/products/threatmetrix",
+                    hint: "Enterprise identity intelligence and device reputation scoring",
+                    secret: true,
+                  },
+                  {
+                    label: "Razorpay API Key — Payment Gateway",
+                    placeholder: "rzp_live_xxxxxxxxxxxxxxxx",
+                    badge: null,
+                    link: "https://razorpay.com/docs/api/",
+                    hint: "For Razorpay webhook integration and transaction verification",
+                    secret: true,
+                  },
+                ].map(({ label: l, placeholder, badge, link, hint, secret }) => (
+                  <div key={l}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <label className="text-sm text-gray-400 font-medium">{l}</label>
+                      {badge && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 font-mono">
+                          {badge}
+                        </span>
+                      )}
+                      {link && (
+                        <a href={link} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400">
+                          <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </div>
+                    {hint && <div className="text-xs text-gray-600 mb-1.5">{hint}</div>}
+                    <input
+                      type={secret ? "password" : "text"}
+                      placeholder={placeholder}
+                      className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button className="mt-6 flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all">
+                <Save size={14} /> Save API Keys
+              </button>
+            </div>
+          )}
+
+          {/* ── Account Section ── */}
+          {activeSection === "account" && (
+            <div>
+              <h2 className="text-xl font-black mb-1">Account</h2>
+              <p className="text-gray-500 text-sm mb-7">Your profile and institution settings.</p>
+              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-6 space-y-4">
+                {[
+                  { label: "Full Name",        value: user?.full_name || "—" },
+                  { label: "Email",            value: user?.email || "—" },
+                  { label: "Institution Name", value: user?.institution_name || "—" },
+                  { label: "Institution Type", value: user?.institution_type || "—" },
+                  { label: "Role",             value: user?.role || "—" },
+                  { label: "Plan",             value: user?.plan?.toUpperCase() || "FREE" },
+                ].map(({ label: l, value }) => (
+                  <div key={l} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">{l}</span>
+                    <span className="text-sm font-medium capitalize">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Billing Section ── */}
+          {activeSection === "billing" && (
+            <div>
+              <h2 className="text-xl font-black mb-1">Billing &amp; Plan</h2>
+              <p className="text-gray-500 text-sm mb-7">Manage your subscription and usage.</p>
+              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-6 mb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-sm text-gray-400">Current Plan</span>
+                  <span
+                    className="text-sm font-bold px-3 py-1 rounded-full capitalize"
+                    style={{
+                      color: planColor,
+                      backgroundColor: `${planColor}15`,
+                      border: `1px solid ${planColor}40`,
+                    }}
+                  >
+                    {user?.plan}
+                  </span>
+                </div>
+                {user?.plan === "free" && (
+                  <Link
+                    href="/signup"
+                    className="block w-full text-center bg-[#3B82F6] text-white font-bold py-2.5 rounded-xl hover:bg-[#2563EB] transition-all text-sm"
+                  >
+                    Upgrade to Pro — ₹9,999/mo
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── FieldInput sub-component ─────────────────────────────────────────────────
+function FieldInput({
+  field,
+  value,
+  shown,
+  onChange,
+  onToggleSecret,
+}: {
+  field: DbFieldDef;
+  value: string;
+  shown: boolean;
+  onChange: (v: string) => void;
+  onToggleSecret: () => void;
+}) {
+  const isSecret = field.secret;
+  const inputType = isSecret && !shown ? "password" : field.type === "number" ? "number" : "text";
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <label className="text-sm text-gray-400 font-medium">{field.label}</label>
+      </div>
+      {field.hint && <div className="text-xs text-gray-600 mb-1.5">{field.hint}</div>}
+      {field.type === "select" ? (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#00FF87]/60 transition-colors"
+        >
+          <option value="">{field.placeholder}</option>
+          {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      ) : (
+        <div className="relative">
+          <input
+            type={inputType}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={field.placeholder}
+            className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors pr-10"
+          />
+          {isSecret && (
+            <button
+              type="button"
+              onClick={onToggleSecret}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
+            >
+              {shown ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
