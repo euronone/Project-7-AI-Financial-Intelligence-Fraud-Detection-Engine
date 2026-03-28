@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuthStore } from "@/store/auth-store";
+import { useAuthStore, isAdmin } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
@@ -309,6 +309,12 @@ export default function TestMePage() {
   useEffect(() => {
     if (!isAuthenticated) { router.replace("/login"); }
   }, [isAuthenticated, router]);
+
+  // Test Me is admin-only: redirect non-admins back to dashboard
+  if (user && !isAdmin(user)) {
+    router.replace("/dashboard");
+    return null;
+  }
 
   if (!user) return (
     <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">

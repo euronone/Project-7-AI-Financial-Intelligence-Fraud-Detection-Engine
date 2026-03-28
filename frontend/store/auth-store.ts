@@ -5,7 +5,11 @@ import { persist } from "zustand/middleware";
 
 export type UserRole = "admin" | "analyst" | "viewer";
 export type SubscriptionPlan = "free" | "pro" | "advanced";
-export type DbType = "supabase" | "postgresql" | "mysql" | "mongodb" | "rest_api";
+export type DbType =
+  | "supabase" | "postgresql" | "mysql" | "mongodb" | "rest_api"
+  | "mssql" | "oracle" | "redis" | "dynamodb" | "firestore"
+  | "snowflake" | "cockroachdb" | "neon" | "planetscale" | "clickhouse"
+  | string;  // catch-all for any future DB types
 
 export interface DbConfig {
   db_type: DbType;
@@ -26,11 +30,23 @@ export interface AuthUser {
   id: string;
   email: string;
   full_name: string;
+  phone_number?: string;
   role: UserRole;
   institution_name: string;
   institution_type: string;
   plan: SubscriptionPlan;
   avatar_initials: string;
+  must_change_password?: boolean;
+}
+
+/** True if user has admin-level access */
+export function isAdmin(user: AuthUser | null): boolean {
+  return user?.role === "admin";
+}
+
+/** True if user can view analyst-level data */
+export function isAnalystOrAbove(user: AuthUser | null): boolean {
+  return user?.role === "admin" || user?.role === "analyst";
 }
 
 interface AuthState {

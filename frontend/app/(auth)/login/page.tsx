@@ -7,12 +7,11 @@ import { z } from "zod";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Shield, Zap, AlertCircle, Loader2 } from "lucide-react";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { Eye, EyeOff, Shield, Zap, AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 
 const schema = z.object({
-  email: z.string().email("Enter a valid email"),
+  email:    z.string().email("Enter a valid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 type FormData = z.infer<typeof schema>;
@@ -41,9 +40,9 @@ const DEMO_ACCOUNTS = [
 export default function LoginPage() {
   const router = useRouter();
   const { setUser, completeOnboarding } = useAuthStore();
-  const [showPass, setShowPass] = useState(false);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass]   = useState(false);
+  const [error, setError]         = useState("");
+  const [loading, setLoading]     = useState(false);
 
   const {
     register,
@@ -53,7 +52,7 @@ export default function LoginPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const handleDemoLogin = (demo: (typeof DEMO_ACCOUNTS)[0]) => {
-    setValue("email", demo.email);
+    setValue("email",    demo.email);
     setValue("password", demo.password);
   };
 
@@ -62,9 +61,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1";
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003/api/v1";
 
-      // Try backend login first (works for both demo and real accounts)
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,56 +74,40 @@ export default function LoginPage() {
         const u = json.user;
         setUser(
           {
-            id: u.id,
-            email: u.email,
-            full_name: u.full_name,
-            role: u.role,
+            id:               u.id,
+            email:            u.email,
+            full_name:        u.full_name,
+            phone_number:     u.phone_number,
+            role:             u.role,
             institution_name: u.institution_name || "FinShield Demo Bank",
             institution_type: u.institution_type || "bank",
-            plan: u.plan || "free",
-            avatar_initials: u.avatar_initials || u.full_name.slice(0, 2).toUpperCase(),
+            plan:             u.plan || "free",
+            avatar_initials:  u.avatar_initials || u.full_name.slice(0, 2).toUpperCase(),
+            must_change_password: u.must_change_password,
           },
           json.access_token
         );
-        // Mark onboarding complete if backend says so (prevents redirect to /onboarding)
+
         if (u.has_completed_onboarding) {
           completeOnboarding({ db_type: "supabase", db_url: "" });
         }
+
+        // If admin forced a password reset, redirect to change-password first
+        if (u.must_change_password) {
+          router.push("/reset-password?forced=true");
+          return;
+        }
+
+        // Role-based redirect:
+        // Admin → full dashboard (with Test Me accessible)
+        // User (analyst/viewer) → dashboard (Test Me hidden)
         router.push("/dashboard");
         return;
       }
 
-      // Backend returned an error — show its message
+      // Backend returned error
       const errJson = await res.json().catch(() => ({}));
-      const backendMsg = errJson?.detail || `Login failed (${res.status})`;
-
-      // If Supabase is configured, try Supabase auth as fallback
-      if (isSupabaseConfigured) {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
-        });
-        if (authError) throw new Error(authError.message);
-        if (!authData.user) throw new Error("Login failed");
-        const meta = authData.user.user_metadata;
-        setUser(
-          {
-            id: authData.user.id,
-            email: authData.user.email!,
-            full_name: meta?.full_name || data.email,
-            role: meta?.role || "viewer",
-            institution_name: meta?.institution_name || "Unknown",
-            institution_type: meta?.institution_type || "bank",
-            plan: meta?.plan || "free",
-            avatar_initials: (meta?.full_name || data.email).slice(0, 2).toUpperCase(),
-          },
-          authData.session?.access_token || ""
-        );
-        router.push("/dashboard");
-        return;
-      }
-
-      throw new Error(backendMsg);
+      throw new Error(errJson?.detail || `Login failed (${res.status})`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed. Check credentials.");
     } finally {
@@ -140,17 +122,6 @@ export default function LoginPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
     >
-      {/* Supabase not configured banner */}
-      {!isSupabaseConfigured && (
-        <div className="mb-5 flex items-start gap-2.5 p-3 rounded-xl bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-xs text-[#F59E0B]">
-          <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
-          <span>
-            <strong>Supabase not connected.</strong> Add your credentials to <code className="font-mono bg-[#F59E0B]/10 px-1 rounded">.env.local</code> to enable real auth.
-            Use the <strong>demo accounts</strong> below to continue without setup.
-          </span>
-        </div>
-      )}
-
       {/* Header */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#00FF87]/10 border border-[#00FF87]/30 mb-4">
@@ -162,7 +133,9 @@ export default function LoginPage() {
 
       {/* Demo accounts */}
       <div className="mb-6">
-        <p className="text-xs text-gray-600 text-center mb-3 font-mono uppercase tracking-wider">Quick Demo Access</p>
+        <p className="text-xs text-gray-600 text-center mb-3 font-mono uppercase tracking-wider">
+          Quick Demo Access
+        </p>
         <div className="grid grid-cols-2 gap-3">
           {DEMO_ACCOUNTS.map((demo) => (
             <button
@@ -217,7 +190,13 @@ export default function LoginPage() {
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-sm text-gray-400">Password</label>
-            <a href="#" className="text-xs text-[#00FF87] hover:underline">Forgot password?</a>
+            {/* ✅ FIXED: Forgot password now navigates to dedicated page */}
+            <Link
+              href="/forgot-password"
+              className="text-xs text-[#00FF87] hover:underline flex items-center gap-1"
+            >
+              <KeyRound size={11} /> Forgot password?
+            </Link>
           </div>
           <div className="relative">
             <input

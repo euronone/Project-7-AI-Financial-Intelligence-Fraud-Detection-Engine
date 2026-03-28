@@ -87,7 +87,7 @@ export default function AlertsPage() {
     setActionLoading(alertId);
     try {
       await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"}/alerts/${alertId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003/api/v1"}/alerts/${alertId}`,
         {
           method: "PUT",
           headers: {

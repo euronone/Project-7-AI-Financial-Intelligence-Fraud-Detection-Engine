@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuthStore } from "@/store/auth-store";
+import { useAuthStore, isAdmin } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Shield, LogOut, Loader2, Database, Settings, AlertTriangle,
@@ -140,15 +140,18 @@ export default function DashboardPage() {
 
         <nav className="flex-1 p-4 space-y-1">
           {[
-            { icon: Activity,       label: "Dashboard",    href: "/dashboard",              active: true  },
-            { icon: TrendingUp,     label: "Transactions", href: "/dashboard/transactions",  active: false },
-            { icon: AlertTriangle,  label: "Fraud Alerts", href: "/dashboard/alerts",        active: false },
-            { icon: FlaskConical,   label: "Test Me",      href: "/dashboard/test-me",       active: false },
-            { icon: Users,          label: "Customers",    href: "/dashboard/customers",     active: false },
-            { icon: Database,       label: "Data Sources", href: "/dashboard/data-sources",  active: false },
-            { icon: Brain,          label: "ML Details",   href: "/dashboard/ml-details",    active: false },
-            { icon: Settings,       label: "Settings",     href: "/dashboard/settings",      active: false },
-          ].map(({ icon: Icon, label, href, active }) => (
+            { icon: Activity,       label: "Dashboard",    href: "/dashboard",              active: true,  adminOnly: false },
+            { icon: TrendingUp,     label: "Transactions", href: "/dashboard/transactions",  active: false, adminOnly: false },
+            { icon: AlertTriangle,  label: "Fraud Alerts", href: "/dashboard/alerts",        active: false, adminOnly: false },
+            // Test Me is ADMIN-ONLY — hidden for analyst/viewer roles
+            { icon: FlaskConical,   label: "Test Me",      href: "/dashboard/test-me",       active: false, adminOnly: true  },
+            { icon: Users,          label: "Customers",    href: "/dashboard/customers",     active: false, adminOnly: false },
+            { icon: Database,       label: "Data Sources", href: "/dashboard/data-sources",  active: false, adminOnly: false },
+            { icon: Brain,          label: "ML Details",   href: "/dashboard/ml-details",    active: false, adminOnly: false },
+            { icon: Settings,       label: "Settings",     href: "/dashboard/settings",      active: false, adminOnly: false },
+          ]
+            .filter(({ adminOnly }) => !adminOnly || isAdmin(user))
+            .map(({ icon: Icon, label, href, active }) => (
             <Link
               key={label}
               href={href}
@@ -173,7 +176,19 @@ export default function DashboardPage() {
               {user.avatar_initials}
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold truncate">{user.full_name}</div>
+              <div className="text-sm font-semibold truncate flex items-center gap-1.5">
+                {user.full_name}
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded-full capitalize shrink-0"
+                  style={{
+                    color: user.role === "admin" ? "#00FF87" : "#3B82F6",
+                    backgroundColor: user.role === "admin" ? "#00FF8715" : "#3B82F615",
+                    border: `1px solid ${user.role === "admin" ? "#00FF8740" : "#3B82F640"}`,
+                  }}
+                >
+                  {user.role}
+                </span>
+              </div>
               <div className="text-xs text-gray-500 truncate">{user.email}</div>
             </div>
           </div>

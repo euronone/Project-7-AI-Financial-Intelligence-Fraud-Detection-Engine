@@ -60,3 +60,110 @@ Step 2 — build Login + 4-step Signup with Supabase. Update work_progress.md an
 - TypeScript: 0 errors · Production build: PASSES
 
 **Stopped At:** STEP 2 COMPLETED — Proceed to Step 3 (FastAPI backend)
+
+
+You are building a Fraud Detection System with a stable Frontend + Backend + Supabase setup.
+
+⚠️ Execution Rule (Strict):
+After completing each task:
+
+Save code + progress
+Test functionality
+Ensure frontend + backend flow is working
+Only then move to the next task
+🔷 TASK 1: DATA + AUTHENTICATION (CORE FOUNDATION)
+Data Integration:
+Create a unified transaction schema:
+user_id, transaction_id, amount, timestamp, location, device_id, merchant_id
+Build basic ingestion system:
+API input (real-time)
+CSV upload (batch)
+Normalize all incoming data
+🔐 AUTHENTICATION (CRITICAL – FULL FIX REQUIRED)
+Fix Existing Issues:
+❌ Forgot password not working
+❌ User not updating in Supabase
+❌ Phone + password not stored
+New Requirements:
+✅ Signup System:
+Add option:
+Signup as User
+Signup as Admin
+Store in Supabase:
+phone number
+password
+role (admin/user)
+✅ Login System:
+Authenticate via Supabase
+Redirect based on role:
+Admin → Admin dashboard
+User → User interface
+✅ “Try Me” Feature:
+Available ONLY for Admin login
+Not visible to normal users
+Allows admin to simulate/test system
+✅ Forgot Password:
+Fully working reset flow:
+OTP or email link
+Update password in Supabase correctly
+✅ Admin Controls:
+Set temporary password
+Force password reset for users
+✅ User Controls:
+Reset password anytime
+Update credentials securely
+Validation:
+Signup (admin/user) → stored correctly
+Login works for both roles
+Try Me visible only to admin
+Password reset works
+Supabase sync verified
+
+✅ After completion:
+
+Save schema + auth implementation
+Test full authentication flow
+🔷 TASK 2: FRAUD DETECTION + ACTION SYSTEM
+Fraud Detection Logic:
+
+Implement rule-based detection using:
+
+High transaction amount
+Location mismatch
+Rapid transactions
+Device/IP mismatch
+Define Rules:
+Amount > 3× average
+Multiple locations in short time
+
+5 transactions/min
+
+Build:
+Rule engine
+Fraud score (0–100)
+Post-Detection Actions:
+Before transaction:
+Block or request OTP
+After transaction:
+Flag transaction
+Notify user (SMS/email/in-app)
+Allow “Report Fraud”
+Admin Actions:
+Freeze account
+Validation:
+Simulate fraud cases
+Ensure alerts trigger correctly
+
+✅ After completion:
+
+Save rule configs
+Log fraud cases
+🔷 OUTPUT FORMAT (MANDATORY)
+
+After each task, return:
+
+✅ What was completed
+✅ Files updated
+✅ Test results
+✅ Issues fixed
+🔥 Final Structure

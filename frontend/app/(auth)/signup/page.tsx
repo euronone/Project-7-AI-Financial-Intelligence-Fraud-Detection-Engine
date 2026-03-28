@@ -10,8 +10,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   User, Building2, CreditCard, CheckCircle2,
   Eye, EyeOff, AlertCircle, Loader2, Check, ArrowRight, ArrowLeft,
+  ShieldCheck, Users,
 } from "lucide-react";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useAuthStore } from "@/store/auth-store";
 
 /* ─── Schemas ─────────────────────────────────────────── */
@@ -40,6 +40,7 @@ const step2Schema = z.object({
 
 type Step1 = z.infer<typeof step1Schema>;
 type Step2 = z.infer<typeof step2Schema>;
+type SignupRole = "admin" | "user";
 
 const PLANS = [
   {
@@ -67,18 +68,19 @@ const PLANS = [
 ] as const;
 
 const STEPS = [
-  { label: "Personal", icon: User },
-  { label: "Institution", icon: Building2 },
-  { label: "Plan", icon: CreditCard },
-  { label: "Review", icon: CheckCircle2 },
+  { label: "Role",        icon: ShieldCheck },
+  { label: "Personal",   icon: User        },
+  { label: "Institution",icon: Building2   },
+  { label: "Plan",       icon: CreditCard  },
+  { label: "Review",     icon: CheckCircle2},
 ];
 
 const INSTITUTION_TYPES = [
-  { value: "bank", label: "Bank / Credit Union" },
-  { value: "fintech", label: "Fintech Startup" },
-  { value: "insurance", label: "Insurance Company" },
-  { value: "payment_processor", label: "Payment Processor" },
-  { value: "neobank", label: "Neobank / Digital Bank" },
+  { value: "bank",              label: "Bank / Credit Union"   },
+  { value: "fintech",           label: "Fintech Startup"       },
+  { value: "insurance",         label: "Insurance Company"     },
+  { value: "payment_processor", label: "Payment Processor"     },
+  { value: "neobank",           label: "Neobank / Digital Bank"},
 ];
 
 const COUNTRIES = [
@@ -86,10 +88,21 @@ const COUNTRIES = [
   "Australia", "Canada", "Germany", "France", "Japan",
 ];
 
-/* ─── Field components ─────────────────────────────────── */
-function Field({
-  label, error, children,
-}: { label: string; error?: string; children: React.ReactNode }) {
+const COUNTRY_CODES = [
+  { code: "+91",  flag: "🇮🇳", name: "India"         },
+  { code: "+1",   flag: "🇺🇸", name: "United States" },
+  { code: "+1",   flag: "🇨🇦", name: "Canada"        },
+  { code: "+44",  flag: "🇬🇧", name: "United Kingdom"},
+  { code: "+61",  flag: "🇦🇺", name: "Australia"     },
+  { code: "+971", flag: "🇦🇪", name: "UAE"           },
+  { code: "+65",  flag: "🇸🇬", name: "Singapore"     },
+  { code: "+49",  flag: "🇩🇪", name: "Germany"       },
+  { code: "+33",  flag: "🇫🇷", name: "France"        },
+  { code: "+81",  flag: "🇯🇵", name: "Japan"         },
+];
+
+/* ─── Field helper ─────────────────────────────────────── */
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-sm text-gray-400 mb-1.5">{label}</label>
@@ -106,66 +119,28 @@ function Field({
 const inputCls =
   "w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors";
 
-const COUNTRY_CODES = [
-  { code: "+91",  flag: "🇮🇳", name: "India" },
-  { code: "+1",   flag: "🇺🇸", name: "United States" },
-  { code: "+1",   flag: "🇨🇦", name: "Canada" },
-  { code: "+44",  flag: "🇬🇧", name: "United Kingdom" },
-  { code: "+61",  flag: "🇦🇺", name: "Australia" },
-  { code: "+971", flag: "🇦🇪", name: "UAE" },
-  { code: "+65",  flag: "🇸🇬", name: "Singapore" },
-  { code: "+49",  flag: "🇩🇪", name: "Germany" },
-  { code: "+33",  flag: "🇫🇷", name: "France" },
-  { code: "+81",  flag: "🇯🇵", name: "Japan" },
-  { code: "+86",  flag: "🇨🇳", name: "China" },
-  { code: "+55",  flag: "🇧🇷", name: "Brazil" },
-  { code: "+27",  flag: "🇿🇦", name: "South Africa" },
-  { code: "+234", flag: "🇳🇬", name: "Nigeria" },
-  { code: "+20",  flag: "🇪🇬", name: "Egypt" },
-  { code: "+62",  flag: "🇮🇩", name: "Indonesia" },
-  { code: "+60",  flag: "🇲🇾", name: "Malaysia" },
-  { code: "+63",  flag: "🇵🇭", name: "Philippines" },
-  { code: "+82",  flag: "🇰🇷", name: "South Korea" },
-  { code: "+92",  flag: "🇵🇰", name: "Pakistan" },
-  { code: "+880", flag: "🇧🇩", name: "Bangladesh" },
-  { code: "+94",  flag: "🇱🇰", name: "Sri Lanka" },
-  { code: "+977", flag: "🇳🇵", name: "Nepal" },
-  { code: "+966", flag: "🇸🇦", name: "Saudi Arabia" },
-  { code: "+974", flag: "🇶🇦", name: "Qatar" },
-  { code: "+973", flag: "🇧🇭", name: "Bahrain" },
-  { code: "+968", flag: "🇴🇲", name: "Oman" },
-  { code: "+965", flag: "🇰🇼", name: "Kuwait" },
-  { code: "+7",   flag: "🇷🇺", name: "Russia" },
-  { code: "+31",  flag: "🇳🇱", name: "Netherlands" },
-  { code: "+41",  flag: "🇨🇭", name: "Switzerland" },
-  { code: "+34",  flag: "🇪🇸", name: "Spain" },
-  { code: "+39",  flag: "🇮🇹", name: "Italy" },
-  { code: "+46",  flag: "🇸🇪", name: "Sweden" },
-  { code: "+47",  flag: "🇳🇴", name: "Norway" },
-  { code: "+45",  flag: "🇩🇰", name: "Denmark" },
-  { code: "+358", flag: "🇫🇮", name: "Finland" },
-  { code: "+64",  flag: "🇳🇿", name: "New Zealand" },
-  { code: "+52",  flag: "🇲🇽", name: "Mexico" },
-  { code: "+54",  flag: "🇦🇷", name: "Argentina" },
-  { code: "+56",  flag: "🇨🇱", name: "Chile" },
-  { code: "+57",  flag: "🇨🇴", name: "Colombia" },
-];
+const slideVariants = {
+  enter: { opacity: 0, x: 30  },
+  center:{ opacity: 1, x: 0   },
+  exit:  { opacity: 0, x: -30 },
+};
 
 /* ─── Main component ───────────────────────────────────── */
 function SignupPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const { setUser } = useAuthStore();
+  const { setUser, completeOnboarding } = useAuthStore();
 
-  const [step, setStep] = useState(1);
-  const [showPass, setShowPass] = useState(false);
+  const [step, setStep]               = useState(1);
+  const [signupRole, setSignupRole]   = useState<SignupRole>("admin");
+  const [showPass, setShowPass]       = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string>(params.get("plan") || "free");
-  const [dialCode, setDialCode] = useState("+91");
-  const [formData, setFormData] = useState<Partial<Step1 & Step2>>({});
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
+  const [dialCode, setDialCode]       = useState("+91");
+  const [formData, setFormData]       = useState<Partial<Step1 & Step2>>({});
+  const [error, setError]             = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [done, setDone]               = useState(false);
 
   const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema) });
   const form2 = useForm<Step2>({ resolver: zodResolver(step2Schema) });
@@ -173,71 +148,64 @@ function SignupPage() {
   /* Step navigation */
   const nextStep1 = form1.handleSubmit((data) => {
     setFormData((p) => ({ ...p, ...data }));
-    setStep(2);
+    setStep(3);
   });
 
   const nextStep2 = form2.handleSubmit((data) => {
     setFormData((p) => ({ ...p, ...data }));
-    setStep(3);
+    setStep(4);
   });
 
-  /* Final submit */
+  /* Final submit — always calls backend API */
   const handleSubmit = async () => {
     setError("");
     setLoading(true);
     try {
-      // If Supabase not configured, create demo session and redirect
-      if (!isSupabaseConfigured) {
-        setUser(
-          {
-            id: `local-${Date.now()}`,
-            email: formData.email!,
-            full_name: formData.full_name!,
-            role: "admin",
-            institution_name: formData.institution_name!,
-            institution_type: formData.institution_type!,
-            plan: selectedPlan as "free" | "pro" | "advanced",
-            avatar_initials: formData.full_name!.slice(0, 2).toUpperCase(),
-          },
-          "local-session-token"
-        );
-        setDone(true);
-        setTimeout(() => router.push("/dashboard"), 2000);
-        return;
-      }
-
-      const { data: authData, error: authErr } = await supabase.auth.signUp({
-        email: formData.email!,
-        password: formData.password!,
-        options: {
-          data: {
-            full_name: formData.full_name,
-            phone_number: `${dialCode} ${formData.phone_number}`,
-            institution_name: formData.institution_name,
-            institution_type: formData.institution_type,
-            country: formData.country,
-            plan: selectedPlan,
-            role: "admin",
-          },
-        },
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003/api/v1";
+      const res = await fetch(`${apiBase}/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email:            formData.email,
+          password:         formData.password,
+          full_name:        formData.full_name,
+          phone_number:     `${dialCode} ${formData.phone_number}`,
+          institution_name: formData.institution_name,
+          institution_type: formData.institution_type,
+          subscription_plan:selectedPlan,
+          country_code:     formData.country === "India" ? "IN" : "US",
+          signup_role:      signupRole,
+        }),
       });
 
-      if (authErr) throw new Error(authErr.message);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Signup failed (${res.status})`);
+      }
 
-      // Auto login after signup
+      const json = await res.json();
+      const u = json.user;
+
       setUser(
         {
-          id: authData.user?.id || "new-user",
-          email: formData.email!,
-          full_name: formData.full_name!,
-          role: "admin",
-          institution_name: formData.institution_name!,
-          institution_type: formData.institution_type!,
-          plan: selectedPlan as "free" | "pro" | "advanced",
-          avatar_initials: formData.full_name!.slice(0, 2).toUpperCase(),
+          id:               u.id,
+          email:            u.email,
+          full_name:        u.full_name,
+          phone_number:     u.phone_number,
+          role:             u.role,
+          institution_name: u.institution_name,
+          institution_type: u.institution_type,
+          plan:             u.plan,
+          avatar_initials:  u.avatar_initials,
+          must_change_password: u.must_change_password,
         },
-        authData.session?.access_token || "pending-verification"
+        json.access_token
       );
+
+      // Mark onboarding as started (user can finish after first login)
+      if (u.has_completed_onboarding) {
+        completeOnboarding({ db_type: "supabase", db_url: "" });
+      }
 
       setDone(true);
       setTimeout(() => router.push("/dashboard"), 2000);
@@ -260,41 +228,44 @@ function SignupPage() {
           <CheckCircle2 size={40} className="text-[#00FF87]" />
         </div>
         <h2 className="text-3xl font-black mb-2">You&apos;re in!</h2>
-        <p className="text-gray-400">Redirecting to your dashboard...</p>
+        <p className="text-gray-400">
+          Signed up as <span className="text-[#00FF87] font-semibold capitalize">{signupRole}</span>.
+          Redirecting to your dashboard…
+        </p>
       </motion.div>
     );
   }
 
-  /* ─── Step indicator ───────────────────────────── */
+  /* ─── Step progress bar ────────────────────────── */
   const StepBar = () => (
     <div className="flex items-center justify-center mb-8 gap-0">
       {STEPS.map(({ label, icon: Icon }, i) => {
         const n = i + 1;
         const active = step === n;
-        const done = step > n;
+        const isDone = step > n;
         return (
           <div key={label} className="flex items-center">
             <div className="flex flex-col items-center">
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300"
                 style={{
-                  backgroundColor: done ? "#00FF87" : active ? "#00FF8720" : "#111118",
-                  border: `2px solid ${done || active ? "#00FF87" : "#1E1E2E"}`,
-                  color: done ? "#000" : active ? "#00FF87" : "#4B5563",
+                  backgroundColor: isDone ? "#00FF87" : active ? "#00FF8720" : "#111118",
+                  border: `2px solid ${isDone || active ? "#00FF87" : "#1E1E2E"}`,
+                  color: isDone ? "#000" : active ? "#00FF87" : "#4B5563",
                 }}
               >
-                {done ? <Check size={14} /> : <Icon size={14} />}
+                {isDone ? <Check size={14} /> : <Icon size={14} />}
               </div>
               <span
                 className="text-[10px] mt-1 font-mono"
-                style={{ color: active ? "#00FF87" : done ? "#00FF8780" : "#4B5563" }}
+                style={{ color: active ? "#00FF87" : isDone ? "#00FF8780" : "#4B5563" }}
               >
                 {label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
               <div
-                className="w-12 h-px mb-5 transition-all duration-500"
+                className="w-10 h-px mb-5 transition-all duration-500"
                 style={{ backgroundColor: step > n ? "#00FF87" : "#1E1E2E" }}
               />
             )}
@@ -303,12 +274,6 @@ function SignupPage() {
       })}
     </div>
   );
-
-  const slideVariants = {
-    enter: { opacity: 0, x: 30 },
-    center: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: -30 },
-  };
 
   return (
     <div className="max-w-lg mx-auto">
@@ -320,31 +285,114 @@ function SignupPage() {
       <StepBar />
 
       <AnimatePresence mode="wait">
-        {/* ── STEP 1: Personal Info ── */}
+
+        {/* ── STEP 1: Role Selection ── */}
         {step === 1 && (
+          <motion.div
+            key="step-role"
+            variants={slideVariants}
+            initial="enter" animate="center" exit="exit"
+            transition={{ duration: 0.3 }}
+            className="space-y-4"
+          >
+            <p className="text-sm text-gray-400 text-center mb-2">
+              How are you joining FinShield AI?
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Admin option */}
+              <button
+                onClick={() => setSignupRole("admin")}
+                className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 transition-all text-center"
+                style={{
+                  borderColor: signupRole === "admin" ? "#00FF87" : "#1E1E2E",
+                  backgroundColor: signupRole === "admin" ? "#00FF8710" : "#111118",
+                }}
+              >
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: signupRole === "admin" ? "#00FF8720" : "#1E1E2E" }}
+                >
+                  <ShieldCheck size={22} className={signupRole === "admin" ? "text-[#00FF87]" : "text-gray-500"} />
+                </div>
+                <div>
+                  <div className="font-bold text-sm" style={{ color: signupRole === "admin" ? "#00FF87" : "#fff" }}>
+                    Admin
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5 leading-tight">
+                    Create & manage your institution. Full access + Test Me.
+                  </div>
+                </div>
+                {signupRole === "admin" && (
+                  <div className="w-4 h-4 rounded-full bg-[#00FF87] flex items-center justify-center">
+                    <Check size={10} className="text-black" />
+                  </div>
+                )}
+              </button>
+
+              {/* User option */}
+              <button
+                onClick={() => setSignupRole("user")}
+                className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 transition-all text-center"
+                style={{
+                  borderColor: signupRole === "user" ? "#3B82F6" : "#1E1E2E",
+                  backgroundColor: signupRole === "user" ? "#3B82F610" : "#111118",
+                }}
+              >
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: signupRole === "user" ? "#3B82F620" : "#1E1E2E" }}
+                >
+                  <Users size={22} className={signupRole === "user" ? "text-[#3B82F6]" : "text-gray-500"} />
+                </div>
+                <div>
+                  <div className="font-bold text-sm" style={{ color: signupRole === "user" ? "#3B82F6" : "#fff" }}>
+                    User
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5 leading-tight">
+                    Analyst / team member. View alerts and transactions.
+                  </div>
+                </div>
+                {signupRole === "user" && (
+                  <div className="w-4 h-4 rounded-full bg-[#3B82F6] flex items-center justify-center">
+                    <Check size={10} className="text-white" />
+                  </div>
+                )}
+              </button>
+            </div>
+
+            {/* Feature difference note */}
+            <div className="bg-[#111118] border border-[#1E1E2E] rounded-xl p-3 text-xs text-gray-500 space-y-1">
+              <div className="flex items-center gap-2">
+                <Check size={10} className="text-[#00FF87]" /> Admin: Full dashboard, Test Me tab, user management, fraud rules
+              </div>
+              <div className="flex items-center gap-2">
+                <Check size={10} className="text-[#3B82F6]" /> User: Transactions, alerts, customers, analytics
+              </div>
+            </div>
+
+            <button
+              onClick={() => setStep(2)}
+              className="w-full bg-[#00FF87] text-black font-bold py-3 rounded-xl hover:bg-[#00e87a] transition-all flex items-center justify-center gap-2 mt-2"
+            >
+              Continue as {signupRole === "admin" ? "Admin" : "User"} <ArrowRight size={16} />
+            </button>
+          </motion.div>
+        )}
+
+        {/* ── STEP 2: Personal Info ── */}
+        {step === 2 && (
           <motion.div
             key="step1"
             variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
+            initial="enter" animate="center" exit="exit"
             transition={{ duration: 0.3 }}
             className="space-y-4"
           >
             <Field label="Full Name" error={form1.formState.errors.full_name?.message}>
-              <input
-                {...form1.register("full_name")}
-                placeholder="Rajesh Kumar Sharma"
-                className={inputCls}
-              />
+              <input {...form1.register("full_name")} placeholder="Rajesh Kumar Sharma" className={inputCls} />
             </Field>
             <Field label="Email Address" error={form1.formState.errors.email?.message}>
-              <input
-                {...form1.register("email")}
-                type="email"
-                placeholder="you@institution.com"
-                className={inputCls}
-              />
+              <input {...form1.register("email")} type="email" placeholder="you@institution.com" className={inputCls} />
             </Field>
             <Field label="Mobile Number" error={form1.formState.errors.phone_number?.message}>
               <div className="flex gap-2">
@@ -375,11 +423,8 @@ function SignupPage() {
                   placeholder="Min 8 chars, 1 uppercase, 1 number"
                   className={`${inputCls} pr-11`}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPass((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
-                >
+                <button type="button" onClick={() => setShowPass((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
@@ -392,41 +437,36 @@ function SignupPage() {
                   placeholder="Repeat password"
                   className={`${inputCls} pr-11`}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
-                >
+                <button type="button" onClick={() => setShowConfirm((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                   {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </Field>
-            <button
-              onClick={nextStep1}
-              className="w-full bg-[#00FF87] text-black font-bold py-3 rounded-xl hover:bg-[#00e87a] transition-all flex items-center justify-center gap-2 mt-2"
-            >
-              Continue <ArrowRight size={16} />
-            </button>
+            <div className="flex gap-3 mt-2">
+              <button onClick={() => setStep(1)}
+                className="flex-1 border border-[#1E1E2E] text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-500 transition-all flex items-center justify-center gap-2">
+                <ArrowLeft size={16} /> Back
+              </button>
+              <button onClick={nextStep1}
+                className="flex-[2] bg-[#00FF87] text-black font-bold py-3 rounded-xl hover:bg-[#00e87a] transition-all flex items-center justify-center gap-2">
+                Continue <ArrowRight size={16} />
+              </button>
+            </div>
           </motion.div>
         )}
 
-        {/* ── STEP 2: Institution ── */}
-        {step === 2 && (
+        {/* ── STEP 3: Institution ── */}
+        {step === 3 && (
           <motion.div
             key="step2"
             variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
+            initial="enter" animate="center" exit="exit"
             transition={{ duration: 0.3 }}
             className="space-y-4"
           >
             <Field label="Institution Name" error={form2.formState.errors.institution_name?.message}>
-              <input
-                {...form2.register("institution_name")}
-                placeholder="Acme Bank Ltd."
-                className={inputCls}
-              />
+              <input {...form2.register("institution_name")} placeholder="Acme Bank Ltd." className={inputCls} />
             </Field>
             <Field label="Institution Type" error={form2.formState.errors.institution_type?.message}>
               <select {...form2.register("institution_type")} className={inputCls}>
@@ -445,30 +485,24 @@ function SignupPage() {
               </select>
             </Field>
             <div className="flex gap-3 mt-2">
-              <button
-                onClick={() => setStep(1)}
-                className="flex-1 border border-[#1E1E2E] text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-500 transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={() => setStep(2)}
+                className="flex-1 border border-[#1E1E2E] text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-500 transition-all flex items-center justify-center gap-2">
                 <ArrowLeft size={16} /> Back
               </button>
-              <button
-                onClick={nextStep2}
-                className="flex-[2] bg-[#00FF87] text-black font-bold py-3 rounded-xl hover:bg-[#00e87a] transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={nextStep2}
+                className="flex-[2] bg-[#00FF87] text-black font-bold py-3 rounded-xl hover:bg-[#00e87a] transition-all flex items-center justify-center gap-2">
                 Continue <ArrowRight size={16} />
               </button>
             </div>
           </motion.div>
         )}
 
-        {/* ── STEP 3: Plan Selection ── */}
-        {step === 3 && (
+        {/* ── STEP 4: Plan Selection ── */}
+        {step === 4 && (
           <motion.div
             key="step3"
             variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
+            initial="enter" animate="center" exit="exit"
             transition={{ duration: 0.3 }}
           >
             <div className="space-y-3 mb-6">
@@ -484,10 +518,8 @@ function SignupPage() {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
-                        style={{ borderColor: plan.color }}
-                      >
+                      <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
+                        style={{ borderColor: plan.color }}>
                         {selectedPlan === plan.id && (
                           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: plan.color }} />
                         )}
@@ -510,45 +542,47 @@ function SignupPage() {
               ))}
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(2)}
-                className="flex-1 border border-[#1E1E2E] text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-500 transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={() => setStep(3)}
+                className="flex-1 border border-[#1E1E2E] text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-500 transition-all flex items-center justify-center gap-2">
                 <ArrowLeft size={16} /> Back
               </button>
-              <button
-                onClick={() => setStep(4)}
-                className="flex-[2] bg-[#00FF87] text-black font-bold py-3 rounded-xl hover:bg-[#00e87a] transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={() => setStep(5)}
+                className="flex-[2] bg-[#00FF87] text-black font-bold py-3 rounded-xl hover:bg-[#00e87a] transition-all flex items-center justify-center gap-2">
                 Continue <ArrowRight size={16} />
               </button>
             </div>
           </motion.div>
         )}
 
-        {/* ── STEP 4: Review ── */}
-        {step === 4 && (
+        {/* ── STEP 5: Review ── */}
+        {step === 5 && (
           <motion.div
             key="step4"
             variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
+            initial="enter" animate="center" exit="exit"
             transition={{ duration: 0.3 }}
           >
             <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-5 space-y-4">
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider font-mono">Review your details</h3>
-
+              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider font-mono">
+                Review your details
+              </h3>
               {[
-                { label: "Full Name", value: formData.full_name },
-                { label: "Email", value: formData.email },
-                { label: "Mobile", value: formData.phone_number ? `${dialCode} ${formData.phone_number}` : "—" },
-                { label: "Institution", value: formData.institution_name },
-                { label: "Type", value: INSTITUTION_TYPES.find((t) => t.value === formData.institution_type)?.label },
-                { label: "Country", value: formData.country },
-                { label: "Plan", value: PLANS.find((p) => p.id === selectedPlan)?.name + " — " + PLANS.find((p) => p.id === selectedPlan)?.price },
+                { label: "Account Type", value: signupRole === "admin" ? "Admin (Institution Owner)" : "User (Analyst)" },
+                { label: "Full Name",    value: formData.full_name },
+                { label: "Email",        value: formData.email },
+                { label: "Mobile",       value: formData.phone_number ? `${dialCode} ${formData.phone_number}` : "—" },
+                { label: "Institution",  value: formData.institution_name },
+                { label: "Type",         value: INSTITUTION_TYPES.find((t) => t.value === formData.institution_type)?.label },
+                { label: "Country",      value: formData.country },
+                {
+                  label: "Plan",
+                  value: PLANS.find((p) => p.id === selectedPlan)?.name
+                    + " — "
+                    + PLANS.find((p) => p.id === selectedPlan)?.price,
+                },
               ].map(({ label, value }) => (
-                <div key={label} className="flex justify-between text-sm border-b border-[#1E1E2E] pb-2 last:border-0 last:pb-0">
+                <div key={label}
+                  className="flex justify-between text-sm border-b border-[#1E1E2E] pb-2 last:border-0 last:pb-0">
                   <span className="text-gray-500">{label}</span>
                   <span className="text-white font-medium text-right max-w-[200px] truncate">{value}</span>
                 </div>
@@ -558,8 +592,7 @@ function SignupPage() {
             {error && (
               <motion.div
                 className="flex items-center gap-2 p-3 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/30 text-sm text-[#EF4444] mb-4"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               >
                 <AlertCircle size={14} /> {error}
               </motion.div>
@@ -572,10 +605,8 @@ function SignupPage() {
             </p>
 
             <div className="flex gap-3">
-              <button
-                onClick={() => setStep(3)}
-                className="flex-1 border border-[#1E1E2E] text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-500 transition-all flex items-center justify-center gap-2"
-              >
+              <button onClick={() => setStep(4)}
+                className="flex-1 border border-[#1E1E2E] text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-500 transition-all flex items-center justify-center gap-2">
                 <ArrowLeft size={16} /> Back
               </button>
               <button
@@ -589,6 +620,7 @@ function SignupPage() {
             </div>
           </motion.div>
         )}
+
       </AnimatePresence>
 
       <p className="text-center text-sm text-gray-600 mt-6">
