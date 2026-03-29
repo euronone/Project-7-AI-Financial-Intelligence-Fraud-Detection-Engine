@@ -158,13 +158,20 @@ export default function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
         >
-          {["Features", "Pricing", "How It Works", "Docs"].map((item) => (
+          {[
+            { label: "Features", href: "#features" },
+            { label: "Pricing", href: "#pricing" },
+            { label: "How It Works", href: "#how-it-works" },
+            { label: "Docs", href: `${process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ?? "http://localhost:8003"}/docs` },
+          ].map((item) => (
             <a
-              key={item}
-              href={`#${item.toLowerCase().replace(" ", "-")}`}
+              key={item.label}
+              href={item.href}
+              target={item.label === "Docs" ? "_blank" : undefined}
+              rel={item.label === "Docs" ? "noopener noreferrer" : undefined}
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
-              {item}
+              {item.label}
             </a>
           ))}
         </motion.div>
