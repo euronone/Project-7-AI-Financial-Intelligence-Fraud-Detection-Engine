@@ -40,7 +40,7 @@
     "eslint": "^8.57",
     "eslint-config-next": "^14.2",
     "prettier": "^3.4",
-    "vitest": "^2.1",
+    "vitest": "^4.1",
     "@testing-library/react": "^16.1",
     "@testing-library/jest-dom": "^6.6",
     "@playwright/test": "^1.49"
