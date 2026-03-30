@@ -26,7 +26,7 @@
     "socket.io-client": "^4.8",
     "clsx": "^2.1",
     "tailwind-merge": "^2.6",
-    "lucide-react": "^0.468",
+    "lucide-react": "^1.7",
     "date-fns": "^4.1"
   },
   "devDependencies": {
