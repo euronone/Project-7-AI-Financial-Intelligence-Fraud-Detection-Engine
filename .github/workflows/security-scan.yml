@@ -19,7 +19,7 @@ jobs:
     name: SAST - Semgrep
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: returntocorp/semgrep-action@v1
         with:
@@ -41,7 +41,7 @@ jobs:
     name: Secrets Scan - Gitleaks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -58,7 +58,7 @@ jobs:
           - { context: "./backend", file: "./backend/Dockerfile", name: "backend" }
           - { context: "./frontend", file: "./frontend/Dockerfile", name: "frontend" }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build image
         uses: docker/build-push-action@v5
@@ -88,7 +88,7 @@ jobs:
     name: Dependency Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-python@v5
         with:
