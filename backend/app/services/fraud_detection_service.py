@@ -54,7 +54,7 @@ def _get_pipeline():
     if _pipeline is None:
         try:
             from app.ml.pipeline import FraudScoringPipeline
-            _pipeline = FraudScoringPipeline()
+            _pipeline = FraudScoringPipeline.get_instance()
             logger.info("ML pipeline loaded successfully")
         except Exception as exc:
             logger.warning("ML pipeline unavailable, using rule-only mode: %s", exc)
@@ -455,8 +455,9 @@ async def score_transaction(
         shap_values = ml_result.get("shap_explanation")
         model_version = "ensemble_v1"
     else:
-        # Rules-only mode: use rules_score directly (no artificial floor)
-        final_score = rules_score if rules_score > 0 else 0.04
+        # Rules-only mode: apply the same damping as EnsembleScorer
+        # so thresholds are consistent regardless of code path.
+        final_score = (rules_score * 0.90) if rules_score > 0 else 0.04
         fraud_category = _score_to_category(final_score)
         risk_level = _score_to_risk_level(final_score)
         decision = _score_to_decision(final_score)

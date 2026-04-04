@@ -30,6 +30,11 @@ _OTP_STORE: dict[str, dict] = {}
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
 
+# ---------------------------------------------------------------------------
+# NOTE: Static-path routes (/test, /upload) MUST be declared before the
+# parameterised route (/{transaction_id}) so FastAPI matches them first.
+# ---------------------------------------------------------------------------
+
 @router.post("", response_model=TransactionResponse, status_code=201)
 async def create_transaction(
     body: TransactionCreate,
@@ -112,6 +117,22 @@ async def list_transactions(
     return TransactionListResponse(items=list(items), total=total, page=page, per_page=per_page)
 
 
+# ---------------------------------------------------------------------------
+# Static-path routes before /{transaction_id} to avoid shadowing
+# ---------------------------------------------------------------------------
+
+@router.post("/test", response_model=TransactionResponse, status_code=201)
+async def test_transaction(
+    body: TransactionCreate,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit a test transaction (is_test=True) through the full fraud pipeline."""
+    body.is_test = True
+    return await create_transaction(body, background_tasks, current_user, db)
+
+
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 async def get_transaction(
     transaction_id: str,
@@ -130,18 +151,6 @@ async def get_transaction(
     if not txn:
         raise NotFoundException("Transaction")
     return txn
-
-
-@router.post("/test", response_model=TransactionResponse, status_code=201)
-async def test_transaction(
-    body: TransactionCreate,
-    background_tasks: BackgroundTasks,
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-):
-    """Submit a test transaction (is_test=True) through the full fraud pipeline."""
-    body.is_test = True
-    return await create_transaction(body, background_tasks, current_user, db)
 
 
 # ---------------------------------------------------------------------------
@@ -186,16 +195,27 @@ async def request_otp(
         "expires": datetime.now(timezone.utc) + timedelta(minutes=10),
     }
 
+    # Resolve customer phone number from the Customer table
+    customer_phone: str | None = None
+    if txn.customer_id:
+        from app.models.customer import Customer
+        cust_result = await db.execute(
+            select(Customer).where(Customer.id == txn.customer_id)
+        )
+        cust = cust_result.scalar_one_or_none()
+        if cust:
+            customer_phone = cust.phone_number
+
     # Try to send OTP via Twilio
     sms_sent = False
-    if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN:
+    if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and customer_phone:
         try:
             from twilio.rest import Client
             client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
             client.messages.create(
                 body=f"FinShield OTP: {otp} — Use this to verify your ₹{float(txn.amount):,.0f} transaction. Valid 10 min.",
                 from_=settings.TWILIO_FROM_NUMBER,
-                to="+919999999999",  # Would be fetched from customer record in production
+                to=customer_phone,
             )
             sms_sent = True
         except Exception as exc:

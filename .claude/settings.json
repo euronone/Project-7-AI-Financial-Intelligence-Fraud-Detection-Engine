@@ -1,7 +1,14 @@
 {
-  "outputStyle": "Explanatory",
-  "projectManifest": "CLAUDE.md",
-  "projectManifestLastSync": "2026-03-24T10:19:00Z",
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(npm --version)",
+      "Bash(PYTHONPATH=. python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload)",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(echo \"Frontend PID: $!\")",
+      "Bash(PYTHONPATH=. python -c \"from app.main import app; print\\('OK'\\)\")"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -15,6 +22,9 @@
       }
     ]
   },
+  "outputStyle": "Explanatory",
+  "projectManifest": "CLAUDE.md",
+  "projectManifestLastSync": "2026-03-24T10:19:00Z",
   "project": {
     "name": "FinShield AI",
     "version": "1.0.0",

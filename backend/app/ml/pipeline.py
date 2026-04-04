@@ -112,7 +112,8 @@ class FraudScoringPipeline:
         t0 = time.time()
 
         if not self.is_ready:
-            # Fallback: use rules score only if models not loaded
+            # Fallback: ML models not loaded — ensemble scorer will
+            # detect all-zero ML inputs and switch to rules-dominant mode
             from app.ml.risk_scorer import EnsembleScorer
             scorer = EnsembleScorer()
             decision = scorer.score(
@@ -123,7 +124,9 @@ class FraudScoringPipeline:
                 nn_score=0.0,
                 triggered_rules=triggered_rules,
             )
-            return self._format_result(decision, [], time.time() - t0)
+            result = self._format_result(decision, [], time.time() - t0)
+            result["model_version"] = "rules_only_v1"
+            return result
 
         try:
             # Build a small DataFrame for feature engineering
@@ -188,6 +191,7 @@ class FraudScoringPipeline:
 
         except Exception as e:
             # Graceful degradation: if feature engineering fails, use rules only
+            # EnsembleScorer will detect all-zero ML inputs and use rules-dominant mode
             from app.ml.risk_scorer import EnsembleScorer
             scorer = EnsembleScorer()
             decision = scorer.score(
@@ -200,6 +204,7 @@ class FraudScoringPipeline:
             )
             result = self._format_result(decision, [], time.time() - t0)
             result["error"] = str(e)
+            result["model_version"] = "rules_only_v1"
             return result
 
     @staticmethod

@@ -7,7 +7,11 @@ from pydantic import AnyHttpUrl, field_validator
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Search for .env in the project root (../) first, then fall back to
+        # the current working directory.  When running from backend/ the root
+        # .env is at ../.env.  Docker passes vars via environment, so both
+        # paths are tried gracefully with no error if a file is absent.
+        env_file=["../.env", ".env"],
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
