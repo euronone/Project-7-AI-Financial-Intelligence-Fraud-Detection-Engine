@@ -32,6 +32,7 @@ from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
 from app.models.user import Tenant
+from app.core.encryption import encryptor
 
 logger = logging.getLogger(__name__)
 
@@ -466,6 +467,13 @@ class DataSyncService:
             config = tenant.db_config_json or {}
             schema = tenant.schema_mapping_json or {}
 
+            # Decrypt sensitive fields (credentials)
+            try:
+                config = encryptor.decrypt_config(config)
+            except Exception as exc:
+                logger.warning("Failed to decrypt config: %s (may be plaintext)", exc)
+                # Continue with plaintext if decryption fails (old data)
+
         raw_rows = await _fetch_external_table(
             db_type=tenant.db_type,
             config=config,
@@ -536,6 +544,14 @@ class DataSyncService:
             db_type = tenant.db_type
             config = tenant.db_config_json or {}
             schema = tenant.schema_mapping_json or {}
+
+            # Decrypt sensitive fields (credentials) before using
+            try:
+                config = encryptor.decrypt_config(config)
+            except Exception as exc:
+                logger.warning("Failed to decrypt config: %s (may be plaintext)", exc)
+                # Continue with plaintext if decryption fails (old data)
+
             last_sync_info = config.get("last_sync", {})
 
         errors: list[str] = []

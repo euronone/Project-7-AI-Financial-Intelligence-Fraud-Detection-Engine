@@ -1,38 +1,64 @@
-# ── Stage 1: Builder ────────────────────────────────────────────────────────
-FROM python:3.12-slim AS builder
+# Multi-stage production Dockerfile optimized for AWS deployment
+# Stage 1: Builder
+FROM python:3.12-slim as builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install system deps for asyncpg, cryptography, etc.
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl && rm -rf /var/lib/apt/lists/*
+    build-essential \
+    gcc \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
 RUN pip install --no-cache-dir poetry==1.8.3
 
+# Copy dependency files
 COPY pyproject.toml poetry.lock* ./
-RUN poetry config virtualenvs.create false && \
+
+# Install Python dependencies with Poetry
+RUN poetry config virtualenvs.in-project true && \
     poetry install --no-dev --no-interaction --no-ansi
 
-# ── Stage 2: Runtime ────────────────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
+# Stage 2: Runtime
+FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && \
-    rm -rf /var/lib/apt/lists/*
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    postgresql-client \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy virtual environment from builder
+COPY --from=builder /build/.venv /app/.venv
+
+# Copy application code
 COPY . .
 
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app && \
+    chmod +x /app/start.sh || true
+
+USER appuser
+
+# Set environment variables
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8000
+
+# Expose port
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+# Health check (requires curl)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-# Copy and set startup script (runs migrations then starts server)
-COPY start.sh ./start.sh
-RUN chmod +x start.sh
-
-CMD ["bash", "start.sh"]
+# Run startup script (migrations + server)
+CMD ["bash", "/app/start.sh"]

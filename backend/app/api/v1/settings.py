@@ -1,5 +1,6 @@
 """Settings endpoints — DB connections, API keys, connection tests."""
 import time
+import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,6 +9,9 @@ from app.db.session import get_db
 from app.models.user import Tenant
 from app.schemas.settings import DbConnectionRequest, DbConnectionResponse, ConnectionTestResponse
 from app.dependencies import CurrentUser, AdminUser
+from app.core.encryption import encryptor
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -24,6 +28,14 @@ async def get_database_settings(
         return {"db_type": None, "label": None, "is_connected": False}
 
     config = tenant.db_config_json or {}
+
+    # Try to decrypt secrets — if decryption fails, assume data is old plaintext
+    try:
+        config = encryptor.decrypt_config(config)
+    except Exception as exc:
+        logger.warning("Failed to decrypt database config: %s (may be plaintext from before encryption)", exc)
+        # Continue with plaintext config from old data
+
     return {
         "db_type": tenant.db_type,
         "label": config.get("label"),
@@ -62,9 +74,13 @@ async def update_database_settings(
         raise NotFoundException("Tenant")
 
     tenant.db_type = body.db_type
-    # Store full config as JSON (in production, encrypt secret fields with ENCRYPTION_KEY)
-    tenant.db_config_json = {k: v for k, v in body.model_dump().items() if v is not None}
-    tenant.db_config_json["label"] = body.label or body.db_type
+    # Store full config as JSON with encrypted secrets
+    config = {k: v for k, v in body.model_dump().items() if v is not None}
+    config["label"] = body.label or body.db_type
+
+    # Encrypt sensitive fields before storing
+    config = encryptor.encrypt_config(config)
+    tenant.db_config_json = config
 
     # Mark onboarding complete
     from app.models.user import User

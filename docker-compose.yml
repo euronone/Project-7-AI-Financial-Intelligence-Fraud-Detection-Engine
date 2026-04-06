@@ -1,66 +1,108 @@
-version: "3.9"
+version: '3.8'
 
 services:
-  # ── PostgreSQL (local dev alternative to Supabase) ────────────────────────
+  # PostgreSQL database (local dev alternative to AWS RDS)
   postgres:
     image: postgres:16-alpine
-    container_name: finshield-postgres
+    container_name: finshield_postgres
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_DB: finshield
       POSTGRES_USER: finshield
-      POSTGRES_PASSWORD: localdev123
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-localdev123}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U finshield"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - finshield_network
 
-  # ── Redis ────────────────────────────────────────────────────────────────
+  # Redis cache (for sessions, rate limiting, caching)
   redis:
     image: redis:7-alpine
-    container_name: finshield-redis
+    container_name: finshield_redis
     restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
     volumes:
-      - redisdata:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - finshield_network
 
-  # ── MailHog (local email capture — no real email sent) ───────────────────
+  # MailHog for local email testing (development only)
   mailhog:
-    image: mailhog/mailhog
-    container_name: finshield-mailhog
+    image: mailhog/mailhog:latest
+    container_name: finshield_mailhog
     restart: unless-stopped
     ports:
-      - "1025:1025"   # SMTP
+      - "1025:1025"   # SMTP port
       - "8025:8025"   # Web UI: http://localhost:8025
+    networks:
+      - finshield_network
 
-  # ── Backend ──────────────────────────────────────────────────────────────
+  # Backend API
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: finshield-backend
+    container_name: finshield_backend
     restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://finshield:${DB_PASSWORD:-localdev123}@postgres:5432/finshield
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
+
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-local-dev-secret-change-in-prod}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
+
+      # Email
+      EMAIL_FROM: noreply@finshield.local
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+
+      # Encryption
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+
+      # Twilio (optional)
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+
+      # Firebase (optional)
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+
+      # AWS (optional)
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+
+      # App config
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://frontend:3000"
+
     ports:
       - "8000:8000"
-    env_file:
-      - ./.env
-    environment:
-      # Override DB/Redis URLs to use Docker service names
-      DATABASE_URL: postgresql+asyncpg://finshield:localdev123@postgres:5432/finshield
-      REDIS_URL: redis://redis:6379/0
-      CORS_ORIGINS: "http://localhost:3000,http://frontend:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,26 +110,45 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - /app/.venv  # Don't sync virtual environment
+    networks:
+      - finshield_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
 
-  # ── Frontend ─────────────────────────────────────────────────────────────
+  # Frontend (development with hot reload)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: finshield-frontend
+    container_name: finshield_frontend
     restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_WS_URL: http://localhost:8000
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-local-dev-secret}
     ports:
       - "3000:3000"
-    env_file:
-      - ./.env
-    environment:
-      # Point the frontend at the backend Docker service
-      NEXT_PUBLIC_API_URL: http://backend:8000/api/v1
-      NEXT_PUBLIC_WS_URL: ws://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Don't sync node_modules
+      - /app/.next  # Don't sync build cache
     depends_on:
       - backend
+    networks:
+      - finshield_network
 
 volumes:
-  pgdata:
-  redisdata:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  finshield_network:
+    driver: bridge

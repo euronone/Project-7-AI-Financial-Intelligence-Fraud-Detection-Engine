@@ -1,59 +1,74 @@
-# ── Stage 1: Install dependencies ──────────────────────────────────────────
-FROM node:20-alpine AS deps
+# Multi-stage build for Next.js frontend optimized for AWS deployment
+# Stage 1: Install dependencies
+FROM node:20-alpine as deps
 
 WORKDIR /app
 
-# Copy package manifests and install production + dev deps
-# (dev deps needed for next build)
-COPY package.json package-lock.json* ./
-RUN npm ci
+# Copy package manifests
+COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
 
-# ── Stage 2: Build ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+# Install dependencies (both prod and dev, needed for build)
+RUN if [ -f "pnpm-lock.yaml" ]; then \
+        npm install -g pnpm && pnpm install --frozen-lockfile; \
+    elif [ -f "yarn.lock" ]; then \
+        yarn install --frozen-lockfile; \
+    else \
+        npm ci; \
+    fi
 
-WORKDIR /app
-
-# Copy installed node_modules from deps stage
-COPY --from=deps /app/node_modules ./node_modules
-
-# Copy full source
-COPY . .
-
-# Build Next.js app (output: standalone is set in next.config.ts)
-# NEXT_PUBLIC_ vars baked in at build time are read from process.env injected
-# by docker-compose via env_file / environment blocks.
-RUN npm run build
-
-# ── Stage 3: Production runner ───────────────────────────────────────────────
-FROM node:20-alpine AS runner
+# Stage 2: Builder
+FROM node:20-alpine as builder
 
 WORKDIR /app
 
-ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser  --system --uid 1001 nextjs
+# Copy node_modules from deps stage
+COPY --from=deps /app/node_modules ./node_modules
 
-# Copy standalone server bundle
+# Copy application source
+COPY . .
+
+# Build Next.js application with environment variables
+# Environment variables are injected at build time via Docker
+RUN npm run build || yarn build || pnpm build
+
+# Stage 3: Production runtime
+FROM node:20-alpine as runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+# Install only production runtime dependencies
+RUN apk add --no-cache curl dumb-init
+
+# Create non-root user for security (required for AWS)
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nextjs -u 1001
+
+# Copy built application from builder
 COPY --from=builder /app/.next/standalone ./
-# Copy static assets (CSS, JS chunks)
 COPY --from=builder /app/.next/static ./.next/static
-# Copy public assets (images, icons, etc.)
 COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/package*.json ./
 
-# Set correct ownership
+# Fix permissions
 RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 
 EXPOSE 3000
 
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
+# Health check (curl is available)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost:3000/ || exit 1
+# Use dumb-init to handle signals properly in containers
+ENTRYPOINT ["/sbin/dumb-init", "--"]
 
+# Start Next.js application
 CMD ["node", "server.js"]
