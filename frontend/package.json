@@ -43,6 +43,6 @@
     "vitest": "^2.1",
     "@testing-library/react": "^16.1",
     "@testing-library/jest-dom": "^6.6",
-    "@playwright/test": "^1.49"
+    "@playwright/test": "^1.59"
   }
 }
