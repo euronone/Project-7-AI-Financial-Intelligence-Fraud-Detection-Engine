@@ -1,13 +1,13 @@
 "use client";
 
-import { useAuthStore, isAdmin } from "@/store/auth-store";
+import { useAuthStore, isAdmin, type AuthUser } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Shield, LogOut, Settings, AlertTriangle, TrendingUp, Activity,
   Users, Database, FlaskConical, Loader2, Play, RefreshCw,
   CheckCircle2, XCircle, Info, Brain, CreditCard, User,
-  MessageSquare, Search, MapPin,
+  MessageSquare, Search, MapPin, Table,
 } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
@@ -48,6 +48,8 @@ interface SimulatorForm {
   cardholder_name: string;
   email: string;
   mobile_number: string;
+  payment_method: "credit_card" | "debit_card" | "upi";
+  upi_vpa: string;
   card_number: string;
   cvv: string;
   expiry_month: string;
@@ -69,6 +71,36 @@ interface ReasonCard {
   severity: string;
 }
 
+interface ModelLayer {
+  name: string;
+  layer: string;
+  score: number;
+  weight: number;
+  contribution: number;
+  triggered_rules?: string[];
+  individual_models?: Record<string, number>;
+  description: string;
+}
+
+interface ModelBreakdown {
+  layers: ModelLayer[];
+  final_score: number;
+  final_decision: string;
+  rules_score: number;
+  ml_available: boolean;
+}
+
+interface Conclusion {
+  verdict: string;
+  headline: string;
+  detail: string;
+  risk_factors: string[];
+  mitigating_factors: string[];
+  rules_score: number;
+  final_score: number;
+  ml_available: boolean;
+}
+
 interface SimResult {
   transaction_id: string;
   prediction: string;
@@ -76,7 +108,7 @@ interface SimResult {
   risk_level: string;
   decision: string;
   reasons: ReasonCard[];
-  shap_explanation: Record<string, number> | null;
+  shap_explanation: Array<{ feature: string; shap_value: number; direction: string }> | null;
   journey: Record<string, { ok: boolean; ms?: number; triggered?: number; status?: string; model?: string; score?: number; decision?: string; is_test?: boolean }>;
   sms_status: string | null;
   fraud_category: string;
@@ -86,6 +118,10 @@ interface SimResult {
   amount?: number;
   channel?: string;
   merchant_name?: string;
+  // New fields
+  rules_score?: number;
+  model_breakdown?: ModelBreakdown;
+  conclusion?: Conclusion;
 }
 
 // ── Decision colors ───────────────────────────────────────────────────────────
@@ -199,7 +235,7 @@ const PRESET_COLORS: Record<string, string> = {
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ plan, user, clearAuth, router }: {
   plan: string;
-  user: { avatar_initials: string; full_name: string; email: string; plan: string };
+  user: AuthUser;
   clearAuth: () => void;
   router: ReturnType<typeof useRouter>;
 }) {
@@ -211,7 +247,8 @@ function Sidebar({ plan, user, clearAuth, router }: {
     { icon: FlaskConical,  label: "Test Me",       href: "/dashboard/test-me",      active: true  },
     { icon: Users,         label: "Customers",     href: "/dashboard/customers",    active: false },
     { icon: Database,      label: "Data Sources",  href: "/dashboard/data-sources", active: false },
-    { icon: Brain,         label: "ML Details",    href: "/dashboard/ml-details",   active: false },
+    { icon: Table,         label: "Data Schema",   href: "/dashboard/data-schema",  active: false },
+    { icon: Brain,         label: "ML Training",   href: "/dashboard/ml-training",  active: false },
     { icon: Settings,      label: "Settings",      href: "/dashboard/settings",     active: false },
   ];
   return (
@@ -277,6 +314,8 @@ const BLANK: SimulatorForm = {
   cardholder_name: "",
   email: "",
   mobile_number: "",
+  payment_method: "credit_card",
+  upi_vpa: "",
   card_number: "",
   cvv: "",
   expiry_month: "12",
@@ -305,10 +344,27 @@ export default function TestMePage() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupStatus, setLookupStatus] = useState<"idle" | "found" | "not_found">("idle");
   const [lookupMsg, setLookupMsg] = useState("");
+  const [sampleCustomers, setSampleCustomers] = useState<{
+    phone_number: string;
+    full_name: string;
+    city: string;
+    risk_score?: number;
+    customer_tier?: string;
+    primary_payment_type?: string | null;
+    primary_payment_label?: string | null;
+  }[]>([]);
 
   useEffect(() => {
     if (!isAuthenticated) { router.replace("/login"); }
   }, [isAuthenticated, router]);
+
+  // Pre-fetch sample customers so we can show suggestions on lookup failure
+  useEffect(() => {
+    if (!token) return;
+    apiClient.simulatorSampleCustomers(token)
+      .then((res) => setSampleCustomers(res.samples ?? []))
+      .catch(() => {});
+  }, [token]);
 
   // Test Me is admin-only: redirect non-admins back to dashboard
   if (user && !isAdmin(user)) {
@@ -341,6 +397,10 @@ export default function TestMePage() {
     try {
       const res = await apiClient.simulatorLookupCustomer(form.mobile_number, token);
       if (res.found) {
+        // Auto-select the primary payment method if available
+        const primaryPm = (res.payment_methods || [])[0];
+        const pmType = primaryPm?.payment_type as "credit_card" | "debit_card" | "upi" | undefined;
+
         setForm((f) => ({
           ...f,
           cardholder_name: res.cardholder_name || f.cardholder_name,
@@ -348,17 +408,69 @@ export default function TestMePage() {
           city: res.city || f.city,
           country_code: res.country_code || f.country_code,
           customer_id: res.customer_id,
-          // Pre-fill last 4 into card number field if it's empty
-          card_number: f.card_number || `**** **** **** ${res.card_last4}`,
+          // Auto-fill payment method
+          payment_method: pmType || f.payment_method,
+          upi_vpa: primaryPm?.payment_type === "upi" ? (primaryPm.upi_vpa || f.upi_vpa) : f.upi_vpa,
+          card_number: primaryPm?.card_last4
+            ? `**** **** **** ${primaryPm.card_last4}`
+            : (f.card_number || `**** **** **** ${res.card_last4}`),
         }));
+        const pmLabel = primaryPm ? ` · ${primaryPm.display_label}` : "";
         setLookupStatus("found");
         setLookupMsg(
-          `Found: ${res.cardholder_name} · ${res.customer_tier} · KYC ${res.kyc_status} · Risk ${(res.risk_score * 100).toFixed(0)}%`
+          `Found: ${res.cardholder_name} · ${res.customer_tier} · KYC ${res.kyc_status} · Risk ${(res.risk_score * 100).toFixed(0)}%${pmLabel}`
         );
       }
     } catch {
       setLookupStatus("not_found");
-      setLookupMsg("No customer found with this phone number — fill details manually.");
+      setLookupMsg("No customer found with this number. Try one of the sample customers below, or fill the form manually.");
+      // Refresh sample suggestions on failure so they're always visible
+      if (token) {
+        apiClient.simulatorSampleCustomers(token)
+          .then((res) => setSampleCustomers(res.samples ?? []))
+          .catch(() => {});
+      }
+    } finally {
+      setLookupLoading(false);
+    }
+  }
+
+  async function pickSampleCustomer(phone: string) {
+    if (!token) return;
+    // Set phone first so user sees it immediately
+    setForm((f) => ({ ...f, mobile_number: phone }));
+    setLookupStatus("idle");
+    setLookupMsg("");
+    // Auto-trigger full lookup to pre-fill payment details
+    setLookupLoading(true);
+    try {
+      const res = await apiClient.simulatorLookupCustomer(phone, token);
+      if (res.found) {
+        const primaryPm = (res.payment_methods || [])[0];
+        const pmType = primaryPm?.payment_type as "credit_card" | "debit_card" | "upi" | undefined;
+        setForm((f) => ({
+          ...f,
+          mobile_number: phone,
+          cardholder_name: res.cardholder_name || f.cardholder_name,
+          email: res.email || f.email,
+          city: res.city || f.city,
+          country_code: res.country_code || f.country_code,
+          customer_id: res.customer_id,
+          payment_method: pmType || f.payment_method,
+          upi_vpa: primaryPm?.payment_type === "upi" ? (primaryPm.upi_vpa || f.upi_vpa) : f.upi_vpa,
+          card_number: primaryPm?.card_last4
+            ? `**** **** **** ${primaryPm.card_last4}`
+            : (f.card_number || `**** **** **** ${res.card_last4}`),
+        }));
+        const pmLabel = primaryPm ? ` · ${primaryPm.display_label}` : "";
+        setLookupStatus("found");
+        setLookupMsg(
+          `Found: ${res.cardholder_name} · ${res.customer_tier} · KYC ${res.kyc_status} · Risk ${(res.risk_score * 100).toFixed(0)}%${pmLabel}`
+        );
+      }
+    } catch {
+      setLookupStatus("not_found");
+      setLookupMsg("No customer found with this number.");
     } finally {
       setLookupLoading(false);
     }
@@ -373,12 +485,15 @@ export default function TestMePage() {
       const rawYear = parseInt(form.expiry_year || "27");
       const expiryYear = rawYear < 100 ? 2000 + rawYear : rawYear;
 
+      const isUpi = form.payment_method === "upi";
       const payload: Record<string, unknown> = {
         cardholder_name: form.cardholder_name || "Test User",
-        card_number:     form.card_number.replace(/\s|\*/g, "") || "4111111111111111",
-        cvv:             form.cvv || "123",
-        expiry_month:    parseInt(form.expiry_month || "12"),
-        expiry_year:     expiryYear,
+        payment_method:  form.payment_method,
+        // Card fields — use defaults for UPI so backend validation passes
+        card_number:     isUpi ? "0000000000000000" : (form.card_number.replace(/\s|\*/g, "") || "4111111111111111"),
+        cvv:             isUpi ? "000" : (form.cvv || "123"),
+        expiry_month:    isUpi ? 12 : parseInt(form.expiry_month || "12"),
+        expiry_year:     isUpi ? 2030 : expiryYear,
         amount:          parseFloat(form.amount),
         purchase_type:   form.purchase_type,
         channel:         form.channel,
@@ -392,6 +507,7 @@ export default function TestMePage() {
       if (form.city)          payload.city          = form.city;
       if (form.merchant_name) payload.merchant_name = form.merchant_name;
       if (form.customer_id)   payload.customer_id   = form.customer_id;
+      if (isUpi && form.upi_vpa) payload.upi_vpa    = form.upi_vpa;
 
       const res = await apiClient.simulatorPredict(payload, token);
       setResult(res as SimResult);
@@ -409,7 +525,7 @@ export default function TestMePage() {
       <Sidebar plan={user.plan} user={user} clearAuth={clearAuth} router={router} />
 
       <main className="ml-60 p-8">
-        <div className="flex items-start justify-between mb-8">
+        <div className="flex items-start justify-between mb-4">
           <div>
             <h1 className="text-2xl font-black">Test Me</h1>
             <p className="text-gray-500 text-sm mt-1">
@@ -419,6 +535,17 @@ export default function TestMePage() {
           <div className="flex items-center gap-2 text-xs text-[#00FF87] bg-[#00FF87]/10 border border-[#00FF87]/20 px-3 py-1.5 rounded-full">
             <div className="w-1.5 h-1.5 rounded-full bg-[#00FF87] animate-pulse" />
             is_test = true · won&apos;t affect live metrics
+          </div>
+        </div>
+
+        {/* Testing purpose note */}
+        <div className="flex items-start gap-3 bg-[#F59E0B]/8 border border-[#F59E0B]/30 rounded-xl px-4 py-3 mb-6">
+          <Info size={15} className="text-[#F59E0B] shrink-0 mt-0.5" />
+          <div className="text-xs text-[#F59E0B]/90 leading-relaxed">
+            <span className="font-bold">Testing Environment Only —</span> All transactions submitted here are tagged{" "}
+            <span className="font-mono bg-[#F59E0B]/15 px-1 py-0.5 rounded">is_test = true</span> and stored separately from live data.
+            They are visible in the Transactions tab with a TEST badge but excluded from fraud rate calculations and live alerts.
+            Real customer notifications (SMS/email) will <span className="font-semibold">not</span> fire unless explicitly configured in Settings.
           </div>
         </div>
 
@@ -483,6 +610,40 @@ export default function TestMePage() {
                     {lookupMsg}
                   </div>
                 )}
+
+                {/* Sample customer suggestions — shown on failure or when field is empty */}
+                {(lookupStatus === "not_found" || (!form.mobile_number && sampleCustomers.length > 0)) && (
+                  <div className="mt-2">
+                    <p className="text-[10px] text-gray-500 mb-1.5">
+                      {lookupStatus === "not_found" ? "Try a sample customer:" : "Sample customers in DB:"}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {sampleCustomers.map((c) => (
+                        <button
+                          key={c.phone_number}
+                          type="button"
+                          onClick={() => pickSampleCustomer(c.phone_number)}
+                          className="flex items-center gap-1.5 text-[10px] bg-[#1E1E2E] border border-[#2E2E3E] hover:border-[#3B82F6]/50 hover:bg-[#3B82F6]/10 text-gray-300 hover:text-white px-2 py-1.5 rounded-lg transition-all"
+                          title={`${c.full_name} · ${c.city}${c.primary_payment_label ? ` · ${c.primary_payment_label}` : ""}`}
+                        >
+                          <User size={9} className="text-[#3B82F6]" />
+                          <span className="font-mono">{c.phone_number}</span>
+                          <span className="text-gray-500">·</span>
+                          <span className="text-gray-400 truncate max-w-[70px]">{c.full_name.split(" ")[0]}</span>
+                          {c.primary_payment_type && (
+                            <span className={`text-[9px] px-1 py-0.5 rounded font-semibold ${
+                              c.primary_payment_type === "upi"         ? "bg-[#00FF87]/10 text-[#00FF87]" :
+                              c.primary_payment_type === "credit_card" ? "bg-[#8B5CF6]/10 text-[#8B5CF6]" :
+                              "bg-[#3B82F6]/10 text-[#3B82F6]"
+                            }`}>
+                              {c.primary_payment_type === "upi" ? "UPI" : c.primary_payment_type === "credit_card" ? "CC" : "DC"}
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Field>
 
               <div className="grid grid-cols-2 gap-4">
@@ -505,49 +666,98 @@ export default function TestMePage() {
                 </Field>
               </div>
 
-              {/* ── Card section ─────────────────────────────────────────── */}
+              {/* ── Card / Payment section ───────────────────────────────── */}
               <div className="flex items-center gap-2 mt-2 mb-1">
                 <CreditCard size={13} className="text-[#8B5CF6]" />
                 <span className="text-xs text-[#8B5CF6] font-semibold uppercase tracking-wide">Card Details</span>
               </div>
-              <Field label="Card Number" required>
-                <input
-                  value={form.card_number}
-                  onChange={(e) => set("card_number", e.target.value)}
-                  placeholder="4111 1111 1111 1111"
-                  maxLength={19}
-                  className={`${inputClass} font-mono`}
-                />
+
+              {/* Payment Method selector */}
+              <Field label="Payment Method" required>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["credit_card", "debit_card", "upi"] as const).map((m) => {
+                    const labels: Record<string, string> = {
+                      credit_card: "💳 Credit Card",
+                      debit_card:  "🏧 Debit Card",
+                      upi:         "📲 UPI",
+                    };
+                    const active = form.payment_method === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => set("payment_method", m)}
+                        className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all ${
+                          active
+                            ? "bg-[#8B5CF6]/20 border-[#8B5CF6] text-[#8B5CF6]"
+                            : "bg-[#0A0A0F] border-[#1E1E2E] text-gray-400 hover:border-[#8B5CF6]/40"
+                        }`}
+                      >
+                        {labels[m]}
+                      </button>
+                    );
+                  })}
+                </div>
               </Field>
-              <div className="grid grid-cols-3 gap-4">
-                <Field label="CVV" required>
+
+              {/* UPI fields — shown only when UPI is selected */}
+              {form.payment_method === "upi" ? (
+                <Field label="UPI VPA (Virtual Payment Address)" required>
                   <input
-                    value={form.cvv}
-                    onChange={(e) => set("cvv", e.target.value)}
-                    placeholder="123"
-                    maxLength={4}
+                    value={form.upi_vpa}
+                    onChange={(e) => set("upi_vpa", e.target.value)}
+                    placeholder="e.g. sunil@oksbi  or  9876543210@paytm"
                     className={`${inputClass} font-mono`}
                   />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    UPI with linked card — card details optional but improve fraud scoring
+                  </p>
                 </Field>
-                <Field label="Expiry Month">
-                  <input
-                    value={form.expiry_month}
-                    onChange={(e) => set("expiry_month", e.target.value)}
-                    placeholder="MM"
-                    maxLength={2}
-                    className={`${inputClass} font-mono`}
-                  />
-                </Field>
-                <Field label="Expiry Year">
-                  <input
-                    value={form.expiry_year}
-                    onChange={(e) => set("expiry_year", e.target.value)}
-                    placeholder="YY"
-                    maxLength={4}
-                    className={`${inputClass} font-mono`}
-                  />
-                </Field>
-              </div>
+              ) : null}
+
+              {/* Card fields — shown for Credit / Debit card, and optionally for UPI */}
+              {form.payment_method !== "upi" ? (
+                <>
+                  <Field label={`${form.payment_method === "credit_card" ? "Credit" : "Debit"} Card Number`} required>
+                    <input
+                      value={form.card_number}
+                      onChange={(e) => set("card_number", e.target.value)}
+                      placeholder="4111 1111 1111 1111"
+                      maxLength={19}
+                      className={`${inputClass} font-mono`}
+                    />
+                  </Field>
+                  <div className="grid grid-cols-3 gap-4">
+                    <Field label="CVV" required>
+                      <input
+                        value={form.cvv}
+                        onChange={(e) => set("cvv", e.target.value)}
+                        placeholder="123"
+                        maxLength={4}
+                        className={`${inputClass} font-mono`}
+                      />
+                    </Field>
+                    <Field label="Expiry Month">
+                      <input
+                        value={form.expiry_month}
+                        onChange={(e) => set("expiry_month", e.target.value)}
+                        placeholder="MM"
+                        maxLength={2}
+                        className={`${inputClass} font-mono`}
+                      />
+                    </Field>
+                    <Field label="Expiry Year">
+                      <input
+                        value={form.expiry_year}
+                        onChange={(e) => set("expiry_year", e.target.value)}
+                        placeholder="YY"
+                        maxLength={4}
+                        className={`${inputClass} font-mono`}
+                      />
+                    </Field>
+                  </div>
+                </>
+              ) : null}
 
               {/* ── Transaction section ──────────────────────────────────── */}
               <div className="flex items-center gap-2 mt-2 mb-1">
@@ -746,6 +956,267 @@ export default function TestMePage() {
                   </div>
                 </div>
 
+                {/* ── ML Model Breakdown ──────────────────────────────────── */}
+                {result.model_breakdown && (
+                  <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Brain size={14} className="text-[#8B5CF6]" />
+                      <div className="text-xs font-semibold text-white uppercase tracking-wide">
+                        ML Score Breakdown — Layer by Layer
+                      </div>
+                      <span className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-mono border ${
+                        result.model_breakdown.ml_available
+                          ? "text-[#00FF87] border-[#00FF87]/30 bg-[#00FF87]/8"
+                          : "text-[#F59E0B] border-[#F59E0B]/30 bg-[#F59E0B]/8"
+                      }`}>
+                        {result.model_breakdown.ml_available ? "ML Active" : "Rules-Only Mode"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {result.model_breakdown.layers.map((layer, idx) => {
+                        const pct = Math.round(layer.score * 100);
+                        const contribPct = Math.round(layer.contribution * 100);
+                        const barColor =
+                          layer.score < 0.30 ? "#22C55E" :
+                          layer.score < 0.60 ? "#F59E0B" :
+                          layer.score < 0.80 ? "#F97316" : "#EF4444";
+
+                        return (
+                          <div key={idx} className="rounded-xl border border-[#1E1E2E] bg-[#0A0A0F] p-3">
+                            {/* Layer header */}
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] bg-[#1E1E2E] text-gray-400 px-1.5 py-0.5 rounded font-mono">
+                                  L{idx + 1}
+                                </span>
+                                <span className="text-xs font-semibold text-white">{layer.name}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[10px] text-gray-500">
+                                  weight {Math.round(layer.weight * 100)}%
+                                </span>
+                                <span className="text-xs font-bold font-mono" style={{ color: barColor }}>
+                                  {pct}%
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Score bar */}
+                            <div className="h-2 bg-[#1E1E2E] rounded-full overflow-hidden mb-2">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{ width: `${pct}%`, backgroundColor: barColor }}
+                              />
+                            </div>
+
+                            {/* Description */}
+                            <div className="text-[10px] text-gray-500">{layer.description}</div>
+
+                            {/* Triggered rules inline tags */}
+                            {layer.triggered_rules && layer.triggered_rules.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {layer.triggered_rules.map((r) => (
+                                  <span key={r} className="text-[9px] bg-[#EF4444]/10 text-[#EF4444] border border-[#EF4444]/20 px-1.5 py-0.5 rounded font-mono">
+                                    {r.replace(/_/g, " ")}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Individual ML model scores */}
+                            {layer.individual_models && Object.keys(layer.individual_models).length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {Object.entries(layer.individual_models).map(([modelId, score]) => {
+                                  const mPct = Math.round((score as number) * 100);
+                                  const mColor =
+                                    (score as number) < 0.30 ? "#22C55E" :
+                                    (score as number) < 0.60 ? "#F59E0B" :
+                                    (score as number) < 0.80 ? "#F97316" : "#EF4444";
+                                  return (
+                                    <div key={modelId} className="flex items-center gap-2">
+                                      <span className="text-[10px] text-gray-600 w-28 truncate capitalize font-mono">
+                                        {modelId.replace(/_/g, " ")}
+                                      </span>
+                                      <div className="flex-1 h-1 bg-[#1E1E2E] rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full rounded-full"
+                                          style={{ width: `${mPct}%`, backgroundColor: mColor }}
+                                        />
+                                      </div>
+                                      <span className="text-[10px] font-mono w-8 text-right" style={{ color: mColor }}>
+                                        {mPct}%
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Contribution to final score */}
+                            <div className="mt-2 pt-2 border-t border-[#1E1E2E] flex items-center justify-between">
+                              <span className="text-[10px] text-gray-600">Contribution to final score</span>
+                              <span className="text-[10px] font-mono text-gray-400">
+                                {pct}% × {Math.round(layer.weight * 100)}% = <span className="text-white font-bold">{contribPct}%</span>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Final ensemble row */}
+                    <div className="mt-3 rounded-xl border p-3 flex items-center justify-between"
+                      style={{
+                        borderColor: `${decisionColor}30`,
+                        backgroundColor: `${decisionColor}08`,
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] bg-[#1E1E2E] text-gray-400 px-1.5 py-0.5 rounded font-mono">∑</span>
+                        <span className="text-xs font-semibold text-white">Ensemble Final Score</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="h-2 w-32 bg-[#1E1E2E] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.round(result.model_breakdown.final_score * 100)}%`,
+                              backgroundColor: decisionColor,
+                            }}
+                          />
+                        </div>
+                        <span className="text-sm font-black font-mono" style={{ color: decisionColor }}>
+                          {Math.round(result.model_breakdown.final_score * 100)}%
+                        </span>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ color: decisionColor, backgroundColor: `${decisionColor}15` }}>
+                          {result.model_breakdown.final_decision}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Conclusion ─────────────────────────────────────────────── */}
+                {result.conclusion && (
+                  <div className="rounded-2xl border p-4" style={{
+                    borderColor: `${decisionColor}30`,
+                    backgroundColor: `${decisionColor}06`,
+                  }}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Brain size={14} style={{ color: decisionColor }} />
+                      <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: decisionColor }}>
+                        ML Conclusion
+                      </div>
+                    </div>
+
+                    {/* Headline */}
+                    <div className="text-sm font-semibold text-white mb-2 leading-snug">
+                      {result.conclusion.headline}
+                    </div>
+
+                    {/* Detailed explanation */}
+                    <div className="text-xs text-gray-400 leading-relaxed mb-3">
+                      {result.conclusion.detail}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Risk factors */}
+                      {result.conclusion.risk_factors.length > 0 && (
+                        <div>
+                          <div className="text-[10px] text-[#EF4444] font-semibold uppercase tracking-wide mb-1.5">
+                            Risk Signals Fired
+                          </div>
+                          <div className="space-y-1">
+                            {result.conclusion.risk_factors.map((f, i) => (
+                              <div key={i} className="flex items-start gap-1.5 text-[10px] text-gray-400">
+                                <span className="text-[#EF4444] mt-0.5 shrink-0">▲</span>
+                                {f}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Mitigating factors */}
+                      {result.conclusion.mitigating_factors.length > 0 && (
+                        <div>
+                          <div className="text-[10px] text-[#22C55E] font-semibold uppercase tracking-wide mb-1.5">
+                            Risk Factors Absent
+                          </div>
+                          <div className="space-y-1">
+                            {result.conclusion.mitigating_factors.map((f, i) => (
+                              <div key={i} className="flex items-start gap-1.5 text-[10px] text-gray-400">
+                                <span className="text-[#22C55E] mt-0.5 shrink-0">✓</span>
+                                {f}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Score footnote */}
+                    <div className="mt-3 pt-3 border-t border-[#1E1E2E] flex items-center gap-4 text-[10px] text-gray-600 font-mono">
+                      <span>Rules score: <span className="text-gray-400">{Math.round((result.conclusion.rules_score || 0) * 100)}%</span></span>
+                      <span>Final score: <span style={{ color: decisionColor }}>{Math.round((result.conclusion.final_score || 0) * 100)}%</span></span>
+                      <span className={result.conclusion.ml_available ? "text-[#00FF87]" : "text-[#F59E0B]"}>
+                        {result.conclusion.ml_available ? "✓ ML active" : "⚠ Rules-only mode"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Transaction Summary — cardholder, card (masked), payment method */}
+                <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
+                  <div className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">
+                    Transaction Summary
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                    <div>
+                      <span className="text-gray-500">Cardholder</span>
+                      <div className="text-white font-semibold mt-0.5">{form.cardholder_name || "—"}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Email</span>
+                      <div className="text-white font-mono mt-0.5 truncate">{form.email || "—"}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Payment Method</span>
+                      <div className="mt-0.5">
+                        {form.payment_method === "credit_card" && <span className="text-[#8B5CF6] font-semibold">💳 Credit Card</span>}
+                        {form.payment_method === "debit_card"  && <span className="text-[#3B82F6] font-semibold">🏧 Debit Card</span>}
+                        {form.payment_method === "upi"         && <span className="text-[#00FF87] font-semibold">📲 UPI</span>}
+                      </div>
+                    </div>
+                    <div>
+                      {form.payment_method === "upi" ? (
+                        <>
+                          <span className="text-gray-500">UPI VPA</span>
+                          <div className="text-white font-mono mt-0.5">{form.upi_vpa || "—"}</div>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-gray-500">Card (Masked)</span>
+                          <div className="text-white font-mono mt-0.5">
+                            {form.card_number
+                              ? `**** **** **** ${form.card_number.replace(/\s|\*/g, "").slice(-4)}`
+                              : "—"}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Amount</span>
+                      <div className="text-white font-semibold mt-0.5">₹{parseFloat(form.amount || "0").toLocaleString("en-IN")}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Mobile</span>
+                      <div className="text-white font-mono mt-0.5">{form.mobile_number || "—"}</div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Detection Journey */}
                 {result.journey && Object.keys(result.journey).length > 0 && (
                   <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
@@ -785,34 +1256,57 @@ export default function TestMePage() {
                   </div>
                 )}
 
-                {/* Fraud Signals */}
+                {/* Why detected as fraud */}
                 {result.reasons && result.reasons.length > 0 && (
                   <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
-                    <div className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">
-                      Fraud Signals ({result.reasons.length})
+                    <div className="flex items-center gap-2 mb-3">
+                      <Brain size={14} className="text-[#EF4444]" />
+                      <div className="text-xs font-semibold text-white uppercase tracking-wide">
+                        Why Was This {result.decision === "PASS" ? "Passed" : "Detected as Fraud"}?
+                      </div>
+                      <span className="ml-auto text-[10px] bg-[#1E1E2E] text-gray-400 px-2 py-0.5 rounded-full font-mono">
+                        {result.reasons.length} signal{result.reasons.length !== 1 ? "s" : ""}
+                      </span>
                     </div>
                     <div className="space-y-3">
                       {result.reasons.map((r, i) => {
                         const sevColor = r.severity === "critical" ? "#EF4444"
                           : r.severity === "high"     ? "#F97316"
                           : r.severity === "medium"   ? "#F59E0B"
-                          : "#6B7280";
+                          : "#22C55E";
+                        const sevLabel = r.severity === "critical" ? "CRITICAL"
+                          : r.severity === "high"     ? "HIGH"
+                          : r.severity === "medium"   ? "MEDIUM"
+                          : "LOW";
                         return (
-                          <div key={i} className="flex items-start gap-2">
-                            <AlertTriangle size={12} className="shrink-0 mt-0.5" style={{ color: sevColor }} />
-                            <div>
-                              <div className="text-xs font-semibold" style={{ color: sevColor }}>{r.title}</div>
-                              <div className="text-xs text-gray-400 mt-0.5 leading-relaxed">{r.detail}</div>
+                          <div key={i} className="rounded-xl border p-3" style={{ borderColor: `${sevColor}25`, backgroundColor: `${sevColor}06` }}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <AlertTriangle size={11} style={{ color: sevColor }} className="shrink-0" />
+                              <div className="text-xs font-semibold flex-1" style={{ color: sevColor }}>{r.title}</div>
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ color: sevColor, backgroundColor: `${sevColor}15` }}>
+                                {sevLabel}
+                              </span>
                             </div>
+                            <div className="text-xs text-gray-400 leading-relaxed pl-4">{r.detail}</div>
                           </div>
                         );
                       })}
+                    </div>
+                    {/* Plain-English summary */}
+                    <div className="mt-3 pt-3 border-t border-[#1E1E2E] text-xs text-gray-500 leading-relaxed">
+                      {result.decision === "PASS"
+                        ? "✅ All fraud signals are within normal parameters. The ML ensemble scored this transaction as low risk."
+                        : result.decision === "BLOCK"
+                        ? "🚫 This transaction was BLOCKED because one or more critical fraud signals exceeded the safety threshold. The ML ensemble confirmed high fraud probability."
+                        : result.decision === "ALERT"
+                        ? "⚠️ This transaction was FLAGGED for review. Medium-to-high fraud signals detected — requires analyst verification before proceeding."
+                        : "🔶 This transaction was FLAGGED as suspicious. Monitor for further activity from this customer."}
                     </div>
                   </div>
                 )}
 
                 {/* SHAP */}
-                {result.shap_explanation && Object.keys(result.shap_explanation).length > 0 && (
+                {result.shap_explanation && result.shap_explanation.length > 0 && (
                   <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">
@@ -821,16 +1315,17 @@ export default function TestMePage() {
                       <Info size={12} className="text-gray-600" />
                     </div>
                     <div className="space-y-2">
-                      {Object.entries(result.shap_explanation)
-                        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                      {result.shap_explanation
+                        .slice()
+                        .sort((a, b) => Math.abs(b.shap_value) - Math.abs(a.shap_value))
                         .slice(0, 8)
-                        .map(([feat, val]) => {
-                          const isPositive = val > 0;
-                          const barWidth = Math.min(100, Math.abs(val) * 100);
+                        .map((entry) => {
+                          const isPositive = entry.shap_value > 0;
+                          const barWidth = Math.min(100, Math.abs(entry.shap_value) * 100);
                           return (
-                            <div key={feat} className="flex items-center gap-3">
+                            <div key={entry.feature} className="flex items-center gap-3">
                               <div className="w-36 text-xs text-gray-500 truncate shrink-0 capitalize">
-                                {feat.replace(/^feat_/, "").replace(/_/g, " ")}
+                                {entry.feature.replace(/^feat_/, "").replace(/_/g, " ")}
                               </div>
                               <div className="flex-1 bg-[#0A0A0F] rounded-full h-1.5 overflow-hidden">
                                 <div
@@ -845,7 +1340,7 @@ export default function TestMePage() {
                                 className="text-xs font-mono w-16 text-right shrink-0"
                                 style={{ color: isPositive ? "#EF4444" : "#00FF87" }}
                               >
-                                {isPositive ? "+" : ""}{val.toFixed(3)}
+                                {isPositive ? "+" : ""}{entry.shap_value.toFixed(3)}
                               </div>
                             </div>
                           );

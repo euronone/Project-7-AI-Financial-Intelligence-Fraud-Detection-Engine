@@ -776,6 +776,171 @@ async def insert_to_db(customers: list[dict], transactions: list[dict], tenant_i
     await engine.dispose()
 
 
+# ── Phase 4b: Generate & insert payment methods ───────────────────────────────
+
+UPI_PROVIDERS_SEED = [
+    ("gpay",    "@okicici"),
+    ("phonepe", "@ybl"),
+    ("paytm",   "@paytm"),
+    ("sbi",     "@oksbi"),
+    ("axis",    "@axisbank"),
+    ("hdfc",    "@hdfcbank"),
+    ("airtel",  "@airtel"),
+]
+
+CARD_BANKS_SEED = [
+    "HDFC Bank", "SBI", "ICICI Bank", "Axis Bank", "Kotak Bank",
+    "Punjab National Bank", "Bank of Baroda", "Canara Bank",
+    "IndusInd Bank", "Yes Bank",
+]
+
+
+def generate_payment_methods_for_customer(customer_id: str, profile_type: str, phone_number: str) -> list[dict]:
+    """Return 1-3 payment methods (UPI + credit/debit) for a customer."""
+    methods = []
+    # Derive phone last-10 digits for UPI VPA
+    digits = "".join(c for c in phone_number if c.isdigit())[-10:]
+
+    # 80% chance of having UPI
+    if random.random() < 0.80:
+        provider, suffix = random.choice(UPI_PROVIDERS_SEED)
+        vpa = f"{digits}{suffix}"
+        methods.append({
+            "id":           str(uuid.uuid4()),
+            "customer_id":  customer_id,
+            "payment_type": "upi",
+            "upi_vpa":      vpa,
+            "upi_provider": provider,
+            "card_last4":   None,
+            "card_network": None,
+            "card_expiry_month": None,
+            "card_expiry_year":  None,
+            "card_bank_name":    None,
+            "is_primary":   len(methods) == 0,
+        })
+
+    # 70% chance of a credit card
+    if random.random() < 0.70:
+        net   = random.choices(["visa", "mastercard", "rupay", "amex"], weights=[0.40,0.35,0.20,0.05])[0]
+        last4 = str(random.randint(1000, 9999))
+        exp_m = random.randint(1, 12)
+        exp_y = 2026 + random.randint(1, 5)
+        methods.append({
+            "id":           str(uuid.uuid4()),
+            "customer_id":  customer_id,
+            "payment_type": "credit_card",
+            "upi_vpa":      None,
+            "upi_provider": None,
+            "card_last4":   last4,
+            "card_network": net,
+            "card_expiry_month": exp_m,
+            "card_expiry_year":  exp_y,
+            "card_bank_name":    random.choice(CARD_BANKS_SEED),
+            "is_primary":   len(methods) == 0,
+        })
+
+    # 60% chance of a debit card
+    if random.random() < 0.60:
+        net   = random.choices(["visa", "mastercard", "rupay"], weights=[0.35, 0.30, 0.35])[0]
+        last4 = str(random.randint(1000, 9999))
+        exp_m = random.randint(1, 12)
+        exp_y = 2025 + random.randint(1, 4)
+        methods.append({
+            "id":           str(uuid.uuid4()),
+            "customer_id":  customer_id,
+            "payment_type": "debit_card",
+            "upi_vpa":      None,
+            "upi_provider": None,
+            "card_last4":   last4,
+            "card_network": net,
+            "card_expiry_month": exp_m,
+            "card_expiry_year":  exp_y,
+            "card_bank_name":    random.choice(CARD_BANKS_SEED),
+            "is_primary":   len(methods) == 0,
+        })
+
+    # Ensure at least one method exists
+    if not methods:
+        digits_fallback = digits if digits else "9876543210"
+        methods.append({
+            "id":           str(uuid.uuid4()),
+            "customer_id":  customer_id,
+            "payment_type": "upi",
+            "upi_vpa":      f"{digits_fallback}@oksbi",
+            "upi_provider": "sbi",
+            "card_last4":   None, "card_network": None,
+            "card_expiry_month": None, "card_expiry_year": None,
+            "card_bank_name": None,
+            "is_primary":   True,
+        })
+
+    return methods
+
+
+async def insert_payment_methods(customers: list[dict], tenant_id: str):
+    engine = create_async_engine(DB_URL, echo=False)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        # Ensure table exists (it's created by SQLAlchemy metadata on startup,
+        # but seed script runs standalone so we create it explicitly here)
+        await session.execute(text("""
+            CREATE TABLE IF NOT EXISTS customer_payment_methods (
+                id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                payment_type TEXT NOT NULL,
+                upi_vpa TEXT,
+                upi_provider TEXT,
+                card_last4 TEXT,
+                card_network TEXT,
+                card_expiry_month INTEGER,
+                card_expiry_year INTEGER,
+                card_bank_name TEXT,
+                is_primary INTEGER DEFAULT 0,
+                created_at TEXT
+            )
+        """))
+
+        total_pm = 0
+        for c in customers:
+            methods = generate_payment_methods_for_customer(
+                c["customer_id"], c["profile_type"], c.get("phone_number", "")
+            )
+            for m in methods:
+                await session.execute(text("""
+                    INSERT OR IGNORE INTO customer_payment_methods
+                      (id, customer_id, tenant_id, payment_type,
+                       upi_vpa, upi_provider,
+                       card_last4, card_network, card_expiry_month, card_expiry_year,
+                       card_bank_name, is_primary, created_at)
+                    VALUES
+                      (:id, :cid, :tid, :ptype,
+                       :upi_vpa, :upi_prov,
+                       :c_last4, :c_net, :c_exp_m, :c_exp_y,
+                       :c_bank, :primary, :now)
+                """), {
+                    "id":       m["id"],
+                    "cid":      m["customer_id"],
+                    "tid":      tenant_id,
+                    "ptype":    m["payment_type"],
+                    "upi_vpa":  m["upi_vpa"],
+                    "upi_prov": m["upi_provider"],
+                    "c_last4":  m["card_last4"],
+                    "c_net":    m["card_network"],
+                    "c_exp_m":  m["card_expiry_month"],
+                    "c_exp_y":  m["card_expiry_year"],
+                    "c_bank":   m["card_bank_name"],
+                    "primary":  1 if m["is_primary"] else 0,
+                    "now":      datetime.now(timezone.utc).isoformat(),
+                })
+                total_pm += 1
+        await session.commit()
+        print(f"  Inserted {total_pm} payment methods into DB")
+
+    await engine.dispose()
+
+
 # ── Phase 5: Create fraud alerts for flagged transactions ─────────────────────
 
 async def insert_fraud_alerts(transactions: list[dict], tenant_id: str):
@@ -930,6 +1095,7 @@ async def main():
     print(f"\n[5/5] Inserting into SQLite DB ({DB_URL})...")
     await insert_to_db(customers, transactions, tenant_id)
     await insert_fraud_alerts(transactions, tenant_id)
+    await insert_payment_methods(customers, tenant_id)
 
     # Summary
     print("\n" + "="*60)

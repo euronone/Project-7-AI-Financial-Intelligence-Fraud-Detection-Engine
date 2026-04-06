@@ -20,6 +20,7 @@ from app.dependencies import CurrentUser
 from app.models.customer import Customer
 from app.models.transaction import Transaction
 from app.models.fraud_alert import FraudAlert
+from app.models.payment_method import CustomerPaymentMethod
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
@@ -323,14 +324,42 @@ async def get_top_risky_customers(
     )
 
     rows = await db.execute(query)
+    raw_rows = rows.all()
+
+    # Bulk-fetch primary payment methods for all customers in this page
+    customer_ids = [row[0].id for row in raw_rows]
+    pm_map: dict[str, dict] = {}
+    if customer_ids:
+        pm_res = await db.execute(
+            select(CustomerPaymentMethod)
+            .where(
+                CustomerPaymentMethod.customer_id.in_(customer_ids),
+                CustomerPaymentMethod.tenant_id == tid,
+            )
+            .order_by(
+                CustomerPaymentMethod.customer_id,
+                CustomerPaymentMethod.is_primary.desc(),
+            )
+        )
+        for pm in pm_res.scalars().all():
+            if pm.customer_id not in pm_map:
+                pm_map[pm.customer_id] = pm.to_dict()
+
     items = []
-    for row in rows.all():
+    for row in raw_rows:
         cust = row[0]
         risk = float(cust.risk_score or 0)
+        primary_pm = pm_map.get(cust.id)
+
+        # Build payment_methods summary label
+        payment_type  = primary_pm["payment_type"]  if primary_pm else None
+        payment_label = primary_pm["display_label"] if primary_pm else None
+
         items.append({
             "customer_id": cust.id,
             "full_name": cust.full_name,
             "email": cust.email,
+            "phone_number": cust.phone_number,
             "city": cust.city,
             "account_type": cust.account_type,
             "kyc_status": cust.kyc_status,
@@ -343,6 +372,9 @@ async def get_top_risky_customers(
             "fraud_flags": int(row[2]),
             "open_alerts": int(row[3]),
             "created_at": cust.created_at.isoformat() if cust.created_at else None,
+            # Payment method info
+            "primary_payment_type":  payment_type,
+            "primary_payment_label": payment_label,
         })
 
     return {

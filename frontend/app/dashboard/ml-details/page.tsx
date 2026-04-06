@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuthStore } from "@/store/auth-store";
+import { useAuthStore, isAdmin, type AuthUser } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import {
@@ -53,20 +53,20 @@ interface SampleTransaction {
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ plan, user, clearAuth, router }: {
   plan: string;
-  user: { avatar_initials: string; full_name: string; email: string; plan: string };
+  user: AuthUser;
   clearAuth: () => void;
   router: ReturnType<typeof useRouter>;
 }) {
   const planColor = plan === "advanced" ? "#8B5CF6" : plan === "pro" ? "#3B82F6" : "#00FF87";
   const navItems = [
-    { icon: Activity,      label: "Dashboard",    href: "/dashboard",             active: false },
-    { icon: TrendingUp,    label: "Transactions",  href: "/dashboard/transactions", active: false },
-    { icon: AlertTriangle, label: "Fraud Alerts",  href: "/dashboard/alerts",       active: false },
-    { icon: FlaskConical,  label: "Test Me",       href: "/dashboard/test-me",      active: false },
-    { icon: Users,         label: "Customers",     href: "/dashboard/customers",    active: false },
-    { icon: Database,      label: "Data Sources",  href: "/dashboard/data-sources", active: false },
-    { icon: Brain,         label: "ML Details",    href: "/dashboard/ml-details",   active: true  },
-    { icon: Settings,      label: "Settings",      href: "/dashboard/settings",     active: false },
+    { icon: Activity,      label: "Dashboard",    href: "/dashboard",             active: false, adminOnly: false },
+    { icon: TrendingUp,    label: "Transactions",  href: "/dashboard/transactions", active: false, adminOnly: false },
+    { icon: AlertTriangle, label: "Fraud Alerts",  href: "/dashboard/alerts",       active: false, adminOnly: false },
+    { icon: FlaskConical,  label: "Test Me",       href: "/dashboard/test-me",      active: false, adminOnly: true },
+    { icon: Users,         label: "Customers",     href: "/dashboard/customers",    active: false, adminOnly: false },
+    { icon: Database,      label: "Data Sources",  href: "/dashboard/data-sources", active: false, adminOnly: false },
+    { icon: Brain,         label: "ML Details",    href: "/dashboard/ml-details",   active: true,  adminOnly: false },
+    { icon: Settings,      label: "Settings",      href: "/dashboard/settings",     active: false, adminOnly: false },
   ];
   return (
     <aside className="fixed left-0 top-0 h-full w-60 bg-[#0D0D15] border-r border-[#1E1E2E] flex flex-col z-10">
@@ -77,7 +77,9 @@ function Sidebar({ plan, user, clearAuth, router }: {
         </div>
       </div>
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map(({ icon: Icon, label, href, active }) => (
+        {navItems
+          .filter(({ adminOnly }) => !adminOnly || isAdmin(user))
+          .map(({ icon: Icon, label, href, active }) => (
           <Link key={label} href={href}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
               active

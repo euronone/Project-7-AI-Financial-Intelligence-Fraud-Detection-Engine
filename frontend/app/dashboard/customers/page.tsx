@@ -1,12 +1,12 @@
 "use client";
 
-import { useAuthStore } from "@/store/auth-store";
+import { useAuthStore, isAdmin, type AuthUser } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import {
   Shield, LogOut, Settings, AlertTriangle, TrendingUp, Activity,
   Users, Database, FlaskConical, Loader2, RefreshCw, Brain,
-  UserCheck, UserX, AlertCircle, TrendingDown,
+  UserCheck, UserX, AlertCircle, TrendingDown, Table,
 } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
@@ -28,31 +28,35 @@ interface Customer {
   customer_id: string;
   full_name: string;
   email: string;
+  phone_number?: string;
   city: string;
   risk_score: number;
   account_type: string;
   kyc_status: string;
-  fraud_flags: number;        // backend returns "fraud_flags"
-  transaction_count: number;  // backend returns "transaction_count"
+  fraud_flags: number;
+  transaction_count: number;
+  primary_payment_type?: string | null;
+  primary_payment_label?: string | null;
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ plan, user, clearAuth, router }: {
   plan: string;
-  user: { avatar_initials: string; full_name: string; email: string; plan: string };
+  user: AuthUser;
   clearAuth: () => void;
   router: ReturnType<typeof useRouter>;
 }) {
   const planColor = plan === "advanced" ? "#8B5CF6" : plan === "pro" ? "#3B82F6" : "#00FF87";
   const navItems = [
-    { icon: Activity,      label: "Dashboard",    href: "/dashboard",             active: false },
-    { icon: TrendingUp,    label: "Transactions",  href: "/dashboard/transactions", active: false },
-    { icon: AlertTriangle, label: "Fraud Alerts",  href: "/dashboard/alerts",       active: false },
-    { icon: FlaskConical,  label: "Test Me",       href: "/dashboard/test-me",      active: false },
-    { icon: Users,         label: "Customers",     href: "/dashboard/customers",    active: true  },
-    { icon: Database,      label: "Data Sources",  href: "/dashboard/data-sources", active: false },
-    { icon: Brain,         label: "ML Details",    href: "/dashboard/ml-details",   active: false },
-    { icon: Settings,      label: "Settings",      href: "/dashboard/settings",     active: false },
+    { icon: Activity,      label: "Dashboard",    href: "/dashboard",             active: false, adminOnly: false },
+    { icon: TrendingUp,    label: "Transactions",  href: "/dashboard/transactions", active: false, adminOnly: false },
+    { icon: AlertTriangle, label: "Fraud Alerts",  href: "/dashboard/alerts",       active: false, adminOnly: false },
+    { icon: FlaskConical,  label: "Test Me",       href: "/dashboard/test-me",      active: false, adminOnly: true },
+    { icon: Users,         label: "Customers",     href: "/dashboard/customers",    active: true,  adminOnly: false },
+    { icon: Database,      label: "Data Sources",  href: "/dashboard/data-sources", active: false, adminOnly: false },
+    { icon: Table,         label: "Data Schema",   href: "/dashboard/data-schema",  active: false, adminOnly: false },
+    { icon: Brain,         label: "ML Training",   href: "/dashboard/ml-training",  active: false, adminOnly: false },
+    { icon: Settings,      label: "Settings",      href: "/dashboard/settings",     active: false, adminOnly: false },
   ];
   return (
     <aside className="fixed left-0 top-0 h-full w-60 bg-[#0D0D15] border-r border-[#1E1E2E] flex flex-col z-10">
@@ -63,7 +67,9 @@ function Sidebar({ plan, user, clearAuth, router }: {
         </div>
       </div>
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map(({ icon: Icon, label, href, active }) => (
+        {navItems
+          .filter(({ adminOnly }) => !adminOnly || isAdmin(user))
+          .map(({ icon: Icon, label, href, active }) => (
           <Link key={label} href={href}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
               active
@@ -377,7 +383,7 @@ export default function CustomersPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-[#1E1E2E]">
-                  {["Name", "Email", "City", "Type", "KYC", "Risk Score", "Fraud Flags", "Transactions"].map(h => (
+                  {["Name", "Email", "City", "Payment Method", "Type", "KYC", "Risk Score", "Fraud Flags", "Transactions"].map(h => (
                     <th key={h} className="text-left text-gray-500 font-medium pb-2 pr-4">{h}</th>
                   ))}
                 </tr>
@@ -386,7 +392,7 @@ export default function CustomersPage() {
                 {tableLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 8 }).map((__, j) => (
+                      {Array.from({ length: 9 }).map((__, j) => (
                         <td key={j} className="py-3 pr-4">
                           <div className="h-3 bg-[#1E1E2E] rounded animate-pulse" style={{ width: `${40 + j * 10}%` }} />
                         </td>
@@ -395,7 +401,7 @@ export default function CustomersPage() {
                   ))
                 ) : customers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-gray-600">
+                    <td colSpan={9} className="py-12 text-center text-gray-600">
                       <UserCheck size={32} className="mx-auto mb-2 text-gray-700" />
                       No customers found
                     </td>
@@ -407,10 +413,33 @@ export default function CustomersPage() {
                     return (
                       <tr key={c.customer_id} className="border-b border-[#1E1E2E]/50 hover:bg-[#0A0A0F] transition-all">
                         <td className="py-3 pr-4 font-medium text-white">{c.full_name || "—"}</td>
-                        <td className="py-3 pr-4 text-gray-400 font-mono">{c.email}</td>
+                        <td className="py-3 pr-4 text-gray-400 font-mono text-xs">{c.email}</td>
                         <td className="py-3 pr-4 text-gray-400">{c.city || "—"}</td>
+                        {/* Payment Method column */}
                         <td className="py-3 pr-4">
-                          <span className="capitalize bg-[#3B82F6]/10 text-[#3B82F6] px-2 py-0.5 rounded-full">
+                          {c.primary_payment_type ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${
+                                c.primary_payment_type === "upi"
+                                  ? "bg-[#00FF87]/10 text-[#00FF87]"
+                                  : c.primary_payment_type === "credit_card"
+                                  ? "bg-[#8B5CF6]/10 text-[#8B5CF6]"
+                                  : "bg-[#3B82F6]/10 text-[#3B82F6]"
+                              }`}>
+                                {c.primary_payment_type === "upi" ? "UPI" : c.primary_payment_type === "credit_card" ? "Credit Card" : "Debit Card"}
+                              </span>
+                              {c.primary_payment_label && (
+                                <span className="text-[9px] text-gray-500 font-mono truncate max-w-[120px]" title={c.primary_payment_label}>
+                                  {c.primary_payment_label}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-600 text-xs">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span className="capitalize bg-[#3B82F6]/10 text-[#3B82F6] px-2 py-0.5 rounded-full text-xs">
                             {c.account_type}
                           </span>
                         </td>

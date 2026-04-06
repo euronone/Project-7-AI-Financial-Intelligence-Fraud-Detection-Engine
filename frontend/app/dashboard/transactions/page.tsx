@@ -1,12 +1,12 @@
 "use client";
 
-import { useAuthStore } from "@/store/auth-store";
+import { useAuthStore, isAdmin } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import {
   Shield, LogOut, Settings, AlertTriangle, TrendingUp, Activity,
   Bell, Users, Database, FlaskConical, Search, RefreshCw, Loader2,
-  ChevronLeft, ChevronRight, Brain,
+  ChevronLeft, ChevronRight, Brain, Table,
 } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
@@ -116,15 +116,18 @@ export default function TransactionsPage() {
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {[
-            { icon: Activity,       label: "Dashboard",    href: "/dashboard",             active: false },
-            { icon: TrendingUp,     label: "Transactions", href: "/dashboard/transactions", active: true  },
-            { icon: AlertTriangle,  label: "Fraud Alerts", href: "/dashboard/alerts",       active: false },
-            { icon: FlaskConical,   label: "Test Me",      href: "/dashboard/test-me",      active: false },
-            { icon: Users,          label: "Customers",    href: "/dashboard/customers",    active: false },
-            { icon: Database,       label: "Data Sources", href: "/dashboard/data-sources", active: false },
-            { icon: Brain,          label: "ML Details",   href: "/dashboard/ml-details",   active: false },
-            { icon: Settings,       label: "Settings",     href: "/dashboard/settings",     active: false },
-          ].map(({ icon: Icon, label, href, active }) => (
+            { icon: Activity,       label: "Dashboard",    href: "/dashboard",             active: false, adminOnly: false },
+            { icon: TrendingUp,     label: "Transactions", href: "/dashboard/transactions", active: true,  adminOnly: false },
+            { icon: AlertTriangle,  label: "Fraud Alerts", href: "/dashboard/alerts",       active: false, adminOnly: false },
+            { icon: FlaskConical,   label: "Test Me",      href: "/dashboard/test-me",      active: false, adminOnly: true  },
+            { icon: Users,          label: "Customers",    href: "/dashboard/customers",    active: false, adminOnly: false },
+            { icon: Database,       label: "Data Sources", href: "/dashboard/data-sources", active: false, adminOnly: false },
+            { icon: Table,          label: "Data Schema",  href: "/dashboard/data-schema",  active: false, adminOnly: false },
+            { icon: Brain,          label: "ML Training",  href: "/dashboard/ml-training",  active: false, adminOnly: false },
+            { icon: Settings,       label: "Settings",     href: "/dashboard/settings",     active: false, adminOnly: false },
+          ]
+            .filter(({ adminOnly }) => !adminOnly || isAdmin(user))
+            .map(({ icon: Icon, label, href, active }) => (
             <Link key={label} href={href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 active

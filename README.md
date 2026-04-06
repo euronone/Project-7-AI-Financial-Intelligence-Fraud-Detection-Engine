@@ -104,6 +104,7 @@ poetry install
 cd backend
 # On Windows PowerShell:
 $env:PYTHONPATH="."
+
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload
 
 # On Linux/macOS:
@@ -134,7 +135,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<key already set>
 
 ```bash
 cd frontend
+
 npm install        # only needed on first run
+npm run dev
 npm run dev
 ```
 

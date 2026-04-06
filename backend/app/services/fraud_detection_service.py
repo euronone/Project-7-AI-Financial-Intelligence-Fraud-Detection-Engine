@@ -107,6 +107,22 @@ def _severity_for_score(score: float) -> str:
 # Haversine distance helper
 # ---------------------------------------------------------------------------
 
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normalise a datetime to UTC-aware.
+
+    SQLite stores timestamps without timezone info; SQLAlchemy returns
+    them as naive datetime objects.  Subtracting a naive datetime from an
+    aware one raises TypeError.  This helper treats naive timestamps as UTC
+    and returns timezone-aware datetimes so all comparisons are safe.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
     Calculate great-circle distance in kilometres between two GPS coordinates.
@@ -218,11 +234,11 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
 
         cnt_10m = sum(
             1 for t in recent_txns
-            if t.transaction_timestamp and t.transaction_timestamp >= ten_min_ago
+            if _ensure_utc(t.transaction_timestamp) and _ensure_utc(t.transaction_timestamp) >= ten_min_ago
         )
         cnt_1h = sum(
             1 for t in recent_txns
-            if t.transaction_timestamp and t.transaction_timestamp >= one_hour_ago
+            if _ensure_utc(t.transaction_timestamp) and _ensure_utc(t.transaction_timestamp) >= one_hour_ago
         )
 
         if cnt_1h >= 8:
@@ -247,8 +263,8 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
         now_utc = datetime.now(timezone.utc)
         recent_24h = [
             t for t in recent_txns
-            if t.transaction_timestamp
-            and t.transaction_timestamp >= now_utc - timedelta(hours=24)
+            if _ensure_utc(t.transaction_timestamp)
+            and _ensure_utc(t.transaction_timestamp) >= now_utc - timedelta(hours=24)
         ]
         near_threshold_prev = [
             t for t in recent_24h
@@ -271,7 +287,7 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
                     and txn.transaction_timestamp
                 ):
                     elapsed_min = abs(
-                        (txn.transaction_timestamp - prev.transaction_timestamp).total_seconds() / 60
+                        (_ensure_utc(txn.transaction_timestamp) - _ensure_utc(prev.transaction_timestamp)).total_seconds() / 60
                     )
                     if elapsed_min < 180 and elapsed_min > 0:
                         dist_km = _haversine_km(
@@ -302,7 +318,7 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
                 and country
             ):
                 elapsed_min = abs(
-                    (txn.transaction_timestamp - last.transaction_timestamp).total_seconds() / 60
+                    (_ensure_utc(txn.transaction_timestamp) - _ensure_utc(last.transaction_timestamp)).total_seconds() / 60
                 )
                 if elapsed_min < 90 and last.country_code.upper() != country:
                     score += 0.75
@@ -383,7 +399,8 @@ async def score_transaction(
     recent_txns: list[Transaction] = []
     if customer_id:
         try:
-            since = datetime.now(timezone.utc) - timedelta(days=30)
+            # Use naive UTC datetime for DB comparison (SQLite stores timestamps without TZ)
+            since = datetime.utcnow() - timedelta(days=30)
             result = await db.execute(
                 select(Transaction)
                 .where(
@@ -505,7 +522,48 @@ async def score_transaction(
             txn.id, final_score, alert.severity,
         )
 
-    # ---- Step 7: WebSocket broadcast (fire-and-forget) ----------------------
+    # ---- Step 7: Send notifications (fire-and-forget, non-blocking) ----------
+    if alert and not txn.is_test:
+        try:
+            import asyncio
+            from app.services.notification_service import send_fraud_alert_notifications
+            from app.models.customer import Customer
+            from app.models.user import Tenant
+            from sqlalchemy import select as sa_select
+            cust_res = await db.execute(sa_select(Customer).where(Customer.id == txn.customer_id))
+            cust = cust_res.scalar_one_or_none()
+            # Pull tenant-configured company alert email
+            tenant_res = await db.execute(sa_select(Tenant).where(Tenant.id == txn.tenant_id))
+            tenant_obj = tenant_res.scalar_one_or_none()
+            tenant_alert_email: str | None = None
+            if tenant_obj and tenant_obj.db_config_json:
+                tenant_alert_email = (
+                    tenant_obj.db_config_json
+                    .get("notifications", {})
+                    .get("company_alert_email", "") or None
+                )
+            asyncio.create_task(
+                send_fraud_alert_notifications(
+                    alert_id=alert.id,
+                    tenant_id=txn.tenant_id,
+                    transaction_id=txn.id,
+                    fraud_score=final_score,
+                    severity=alert.severity,
+                    decision=decision,
+                    amount=float(txn.amount),
+                    merchant_name=txn.merchant_name,
+                    triggered_rules=triggered_rules,
+                    customer_name=cust.full_name if cust else None,
+                    customer_email=cust.email if cust else None,
+                    customer_phone=cust.phone_number if cust else None,
+                    analyst_email=tenant_alert_email,
+                    is_test=txn.is_test,
+                )
+            )
+        except Exception as _notif_exc:
+            logger.debug("Notification dispatch error: %s", _notif_exc)
+
+    # ---- Step 8: WebSocket broadcast (fire-and-forget) ----------------------
     if broadcast_fn is not None:
         try:
             import asyncio
@@ -528,6 +586,71 @@ async def score_transaction(
         except Exception as exc:
             logger.debug("WebSocket broadcast skipped: %s", exc)
 
+    # Build per-layer score breakdown for the Test Me panel.
+    # The pipeline._format_result() returns scores under these exact keys:
+    #   anomaly_score  → Isolation Forest / LOF anomaly layer
+    #   xgb_score      → XGBoost classifier
+    #   rf_score       → Random Forest classifier
+    #   nn_score       → Neural Network (MLP) classifier
+    ml_individual: dict = {}
+    if ml_result:
+        key_map = {
+            "anomaly_score": "Anomaly Detector",
+            "xgb_score":     "XGBoost",
+            "rf_score":      "Random Forest",
+            "nn_score":      "Neural Network",
+        }
+        for key, label in key_map.items():
+            val = ml_result.get(key)
+            if val is not None:
+                ml_individual[label] = round(float(val), 4)
+
+    # Final ensemble weight allocation (approximate, matches pipeline defaults)
+    if ml_result:
+        rules_weight = 0.25
+        ml_weight    = 0.75
+    else:
+        rules_weight = 1.0
+        ml_weight    = 0.0
+
+    model_breakdown = {
+        "layers": [
+            {
+                "name":    "Rules Engine",
+                "layer":   "rules",
+                "score":   round(rules_score, 4),
+                "weight":  rules_weight,
+                "contribution": round(rules_score * rules_weight, 4),
+                "triggered_rules": triggered_rules,
+                "description": (
+                    f"{len(triggered_rules)} rule(s) triggered"
+                    if triggered_rules else "No rules triggered"
+                ),
+            },
+            {
+                "name":    "ML Ensemble" if ml_result else "ML Model (unavailable)",
+                "layer":   "ml",
+                "score":   round(float(ml_result.get("fraud_score", 0)) if ml_result else 0, 4),
+                "weight":  ml_weight,
+                "contribution": round(
+                    float(ml_result.get("fraud_score", 0)) * ml_weight if ml_result else 0,
+                    4,
+                ),
+                "individual_models": ml_individual,
+                "description": (
+                    f"Trained ensemble · {len(ml_individual)} model(s): "
+                    + ", ".join(ml_individual.keys())
+                    if ml_result and ml_individual else
+                    ("Ensemble active (scores loading)" if ml_result else "ML pipeline not loaded — rules-only mode")
+                ),
+            },
+        ],
+        "final_score":    round(final_score, 4),
+        "final_decision": decision,
+        "rules_score":    round(rules_score, 4),
+        "ml_available":   ml_result is not None,
+    }
+
     return {
         "transaction_id": txn.id,
         "fraud_score": txn.fraud_score,
@@ -539,4 +662,7 @@ async def score_transaction(
         "model_version": model_version,
         "processing_ms": processing_ms,
         "shap_explanation": shap_values,
+        # ── Breakdown exposed for Test Me / explainability UI ──────────────
+        "rules_score": round(rules_score, 4),
+        "model_breakdown": model_breakdown,
     }

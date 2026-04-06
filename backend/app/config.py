@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
+    # Fraud alert notification targets
+    ALERT_COMPANY_EMAIL: str = ""   # Where company fraud alerts are sent
+    ALERT_SMS_ENABLED: bool = True  # Toggle Twilio SMS for fraud alerts
+
     # ML
     ML_MODEL_PATH: str = "app/ml/models"
     ML_FRAUD_MODEL_VERSION: str = "latest"

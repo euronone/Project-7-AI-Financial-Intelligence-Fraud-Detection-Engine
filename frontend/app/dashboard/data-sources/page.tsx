@@ -1,15 +1,206 @@
 "use client";
 
-import { useAuthStore } from "@/store/auth-store";
+import { useAuthStore, isAdmin, type AuthUser } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import {
   Shield, LogOut, Settings, AlertTriangle, TrendingUp, Activity,
   Users, Database, FlaskConical, Loader2, RefreshCw, Brain,
-  CheckCircle2, XCircle, Clock, Table2, List,
+  CheckCircle2, XCircle, Clock, Table2, List, X, BookOpen, Table,
 } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
+
+// ── ML Schema definitions (canonical FinShield expected columns) ─────────────
+interface SchemaSpec {
+  field: string;
+  type: string;
+  required: boolean;
+  ml_category: string;
+  description: string;
+}
+
+const CUSTOMER_SCHEMA_SPEC: SchemaSpec[] = [
+  { field: "customer_id",          type: "UUID",       required: true,  ml_category: "Entity",       description: "Unique customer identifier — used to join transaction history" },
+  { field: "full_name",            type: "STRING",     required: false, ml_category: "Entity",       description: "Customer full name — used for notification only" },
+  { field: "email",                type: "STRING",     required: false, ml_category: "Entity",       description: "Email address — used for fraud alert delivery" },
+  { field: "phone_number",         type: "STRING",     required: false, ml_category: "Entity",       description: "Mobile number (E.164 format) — used for SMS alerts" },
+  { field: "date_of_birth",        type: "DATE",       required: false, ml_category: "Behavioral",   description: "Date of birth — used to compute customer age as an ML feature" },
+  { field: "city",                 type: "STRING",     required: false, ml_category: "Geographic",   description: "City of residence — used for impossible travel baseline" },
+  { field: "state_province",       type: "STRING",     required: false, ml_category: "Geographic",   description: "State / province — used in geographic risk scoring" },
+  { field: "country_code",         type: "STRING(2)",  required: false, ml_category: "Geographic",   description: "ISO-2 country code — used for cross-border fraud detection" },
+  { field: "account_type",         type: "ENUM",       required: false, ml_category: "Entity",       description: "personal / business / merchant — affects spend pattern baseline" },
+  { field: "account_opening_date", type: "DATE",       required: false, ml_category: "Entity",       description: "Account age in days — new accounts have higher fraud risk" },
+  { field: "account_status",       type: "ENUM",       required: false, ml_category: "Entity",       description: "active / inactive / suspended — blocked accounts flag anomalies" },
+  { field: "kyc_status",           type: "ENUM",       required: false, ml_category: "Compliance",   description: "pending / verified / rejected — unverified accounts get higher risk weight" },
+  { field: "risk_score",           type: "DECIMAL",    required: false, ml_category: "ML Output",    description: "Existing risk score (0–1) — used as a prior in ensemble scoring" },
+  { field: "customer_tier",        type: "ENUM",       required: false, ml_category: "Entity",       description: "standard / premium / vip — affects amount anomaly thresholds" },
+  { field: "balance_amount",       type: "DECIMAL",    required: false, ml_category: "Amount",       description: "Account balance — used to compute amount-to-balance ratio feature" },
+  { field: "active_card_count",    type: "INTEGER",    required: false, ml_category: "Entity",       description: "Number of active cards — multiple cards increase risk exposure" },
+];
+
+const TRANSACTION_SCHEMA_SPEC: SchemaSpec[] = [
+  { field: "transaction_id",           type: "UUID",        required: true,  ml_category: "Identifier",   description: "Unique transaction ID — primary key" },
+  { field: "customer_id",              type: "UUID",        required: true,  ml_category: "Entity Link",  description: "Foreign key to customers — required for all velocity/behavioral features" },
+  { field: "amount",                   type: "DECIMAL",     required: true,  ml_category: "Amount ★",     description: "Transaction amount — most important ML feature; used in z-score, ratio, velocity sum" },
+  { field: "currency",                 type: "STRING(3)",   required: true,  ml_category: "Amount",       description: "ISO-3 currency code (e.g. INR, USD) — used for currency mismatch detection" },
+  { field: "transaction_type",         type: "ENUM",        required: true,  ml_category: "Behavioral",   description: "purchase / withdrawal / transfer / refund — each type has different fraud patterns" },
+  { field: "channel",                  type: "ENUM ★",      required: true,  ml_category: "Channel ★",    description: "pos_physical / online / atm / mobile — channel is a top-5 fraud predictor" },
+  { field: "merchant_category_code",   type: "STRING(4)",   required: false, ml_category: "Behavioral",   description: "MCC code — unusual category for a customer flags behavioral anomaly" },
+  { field: "merchant_name",            type: "STRING",      required: false, ml_category: "Behavioral",   description: "Merchant name — used for new-merchant-category detection" },
+  { field: "transaction_location_lat", type: "DECIMAL",     required: false, ml_category: "Geographic ★", description: "Latitude — critical for impossible travel detection (requires lng pair)" },
+  { field: "transaction_location_lng", type: "DECIMAL",     required: false, ml_category: "Geographic ★", description: "Longitude — critical for impossible travel detection (requires lat pair)" },
+  { field: "transaction_country_code", type: "STRING(2)",   required: false, ml_category: "Geographic",   description: "Country of transaction — cross-border detection, high-risk country scoring" },
+  { field: "ip_address",               type: "INET",        required: false, ml_category: "Network",      description: "Client IP — used for proxy/VPN/Tor detection and IP reputation scoring" },
+  { field: "device_fingerprint",       type: "STRING ★",    required: false, ml_category: "Device ★",     description: "Device fingerprint hash — is_new_device feature is top-3 fraud predictor" },
+  { field: "device_type",              type: "ENUM",        required: false, ml_category: "Device",       description: "mobile / desktop / tablet / pos_terminal — device type affects risk baseline" },
+  { field: "status",                   type: "ENUM",        required: true,  ml_category: "Status",       description: "pending / completed / blocked — FinShield writes back status = blocked on fraud" },
+  { field: "transaction_timestamp",    type: "TIMESTAMPTZ ★", required: true, ml_category: "Temporal ★",  description: "Transaction time — used for velocity windows, hour-of-day, impossible travel timing" },
+  { field: "fraud_score",              type: "DECIMAL",     required: false, ml_category: "ML Output",    description: "FinShield writes fraud score (0–1) here after scoring" },
+  { field: "fraud_category",           type: "ENUM",        required: false, ml_category: "ML Output",    description: "FinShield writes: legitimate / suspicious / fraudulent / unscored" },
+  { field: "fraud_risk_level",         type: "ENUM",        required: false, ml_category: "ML Output",    description: "FinShield writes: low / medium / high / critical" },
+  { field: "is_test",                  type: "BOOLEAN",     required: false, ml_category: "System",       description: "Flag for test transactions — excluded from model training data" },
+];
+
+// ── ML Schema Modal ──────────────────────────────────────────────────────────
+function MLSchemaModal({
+  title,
+  subtitle,
+  schema,
+  onClose,
+}: {
+  title: string;
+  subtitle: string;
+  schema: SchemaSpec[];
+  onClose: () => void;
+}) {
+  const categoryColor: Record<string, string> = {
+    "Amount ★":      "#00FF87",
+    "Amount":        "#00FF87",
+    "Channel ★":     "#3B82F6",
+    "Geographic ★":  "#F97316",
+    "Geographic":    "#F97316",
+    "Device ★":      "#8B5CF6",
+    "Device":        "#8B5CF6",
+    "Temporal ★":    "#EF4444",
+    "Behavioral":    "#F59E0B",
+    "Entity":        "#6B7280",
+    "Entity Link":   "#6B7280",
+    "Network":       "#06B6D4",
+    "Compliance":    "#10B981",
+    "ML Output":     "#00FF87",
+    "Identifier":    "#4B5563",
+    "Status":        "#4B5563",
+    "System":        "#4B5563",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative bg-[#111118] border border-[#1E1E2E] rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-[#1E1E2E]">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <BookOpen size={16} className="text-[#00FF87]" />
+              <h2 className="text-base font-black">{title}</h2>
+            </div>
+            <p className="text-xs text-gray-500">{subtitle}</p>
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-[10px] text-gray-600">★ = top ML feature</span>
+              <span className="flex items-center gap-1 text-[10px] text-[#EF4444]">
+                <span className="w-2 h-2 rounded-full bg-[#EF4444] inline-block" /> Required
+              </span>
+              <span className="flex items-center gap-1 text-[10px] text-gray-500">
+                <span className="w-2 h-2 rounded-full bg-gray-600 inline-block" /> Optional
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-600 hover:text-white transition-colors mt-1">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-y-auto flex-1 p-1">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-[#111118] z-10">
+              <tr className="border-b border-[#1E1E2E]">
+                {["Column Name", "Data Type", "Required", "ML Category", "How It&apos;s Used in ML"].map((h) => (
+                  <th key={h} className="text-left text-gray-500 font-medium py-2.5 px-3 first:pl-4">
+                    {h.replace("&apos;", "'")}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {schema.map((row, i) => {
+                const catColor = categoryColor[row.ml_category] || "#6B7280";
+                const isOutput = row.ml_category === "ML Output";
+                return (
+                  <tr
+                    key={i}
+                    className={`border-b border-[#1E1E2E]/40 hover:bg-[#0A0A0F] transition-all ${
+                      isOutput ? "opacity-60" : ""
+                    }`}
+                  >
+                    <td className="py-2 px-3 pl-4">
+                      <span className="font-mono text-white">{row.field}</span>
+                      {isOutput && (
+                        <span className="ml-1.5 text-[9px] text-[#00FF87] border border-[#00FF87]/30 px-1 rounded">
+                          written by FinShield
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3">
+                      <span className="font-mono text-[#8B5CF6] bg-[#8B5CF6]/10 px-1.5 py-0.5 rounded text-[10px]">
+                        {row.type}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3">
+                      {row.required ? (
+                        <span className="flex items-center gap-1 text-[#EF4444] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" /> Yes
+                        </span>
+                      ) : (
+                        <span className="text-gray-600">Optional</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-3">
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-medium"
+                        style={{ backgroundColor: `${catColor}15`, color: catColor }}
+                      >
+                        {row.ml_category}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-gray-400 leading-relaxed">{row.description}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-[#1E1E2E] flex items-center justify-between">
+          <span className="text-xs text-gray-600">
+            {schema.filter((s) => s.required).length} required · {schema.filter((s) => !s.required).length} optional · {schema.length} total columns
+          </span>
+          <button
+            onClick={onClose}
+            className="text-xs bg-[#1E1E2E] hover:bg-[#2E2E3E] text-white px-4 py-2 rounded-xl transition-all"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface TableInfo { name: string; row_count: number; size_kb: number; }
@@ -40,20 +231,21 @@ interface FieldMapEntry {
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ plan, user, clearAuth, router }: {
   plan: string;
-  user: { avatar_initials: string; full_name: string; email: string; plan: string };
+  user: AuthUser;
   clearAuth: () => void;
   router: ReturnType<typeof useRouter>;
 }) {
   const planColor = plan === "advanced" ? "#8B5CF6" : plan === "pro" ? "#3B82F6" : "#00FF87";
   const navItems = [
-    { icon: Activity,      label: "Dashboard",    href: "/dashboard",             active: false },
-    { icon: TrendingUp,    label: "Transactions",  href: "/dashboard/transactions", active: false },
-    { icon: AlertTriangle, label: "Fraud Alerts",  href: "/dashboard/alerts",       active: false },
-    { icon: FlaskConical,  label: "Test Me",       href: "/dashboard/test-me",      active: false },
-    { icon: Users,         label: "Customers",     href: "/dashboard/customers",    active: false },
-    { icon: Database,      label: "Data Sources",  href: "/dashboard/data-sources", active: true  },
-    { icon: Brain,         label: "ML Details",    href: "/dashboard/ml-details",   active: false },
-    { icon: Settings,      label: "Settings",      href: "/dashboard/settings",     active: false },
+    { icon: Activity,      label: "Dashboard",    href: "/dashboard",             active: false, adminOnly: false },
+    { icon: TrendingUp,    label: "Transactions",  href: "/dashboard/transactions", active: false, adminOnly: false },
+    { icon: AlertTriangle, label: "Fraud Alerts",  href: "/dashboard/alerts",       active: false, adminOnly: false },
+    { icon: FlaskConical,  label: "Test Me",       href: "/dashboard/test-me",      active: false, adminOnly: true },
+    { icon: Users,         label: "Customers",     href: "/dashboard/customers",    active: false, adminOnly: false },
+    { icon: Database,      label: "Data Sources",  href: "/dashboard/data-sources", active: true,  adminOnly: false },
+    { icon: Table,         label: "Data Schema",   href: "/dashboard/data-schema",  active: false, adminOnly: false },
+    { icon: Brain,         label: "ML Training",   href: "/dashboard/ml-training",  active: false, adminOnly: false },
+    { icon: Settings,      label: "Settings",      href: "/dashboard/settings",     active: false, adminOnly: false },
   ];
   return (
     <aside className="fixed left-0 top-0 h-full w-60 bg-[#0D0D15] border-r border-[#1E1E2E] flex flex-col z-10">
@@ -64,7 +256,9 @@ function Sidebar({ plan, user, clearAuth, router }: {
         </div>
       </div>
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map(({ icon: Icon, label, href, active }) => (
+        {navItems
+          .filter(({ adminOnly }) => !adminOnly || isAdmin(user))
+          .map(({ icon: Icon, label, href, active }) => (
           <Link key={label} href={href}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
               active
@@ -114,6 +308,7 @@ export default function DataSourcesPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"schema" | "fieldmap">("schema");
   const [schemaFilter, setSchemaFilter] = useState("");
+  const [mlModal, setMlModal] = useState<"customers" | "transactions" | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) { router.replace("/login"); }
@@ -292,6 +487,82 @@ export default function DataSourcesPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* ML Schema Requirements card */}
+        <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <BookOpen size={15} className="text-[#00FF87]" />
+                <span className="text-sm font-bold">ML Schema Requirements</span>
+              </div>
+              <p className="text-xs text-gray-500 max-w-lg">
+                FinShield&apos;s ML engine expects specific columns in your Customer and Transaction tables.
+                View the full list of expected fields, their types, and how each one powers fraud detection.
+              </p>
+            </div>
+            <div className="flex gap-3 shrink-0 ml-6">
+              <button
+                onClick={() => setMlModal("customers")}
+                className="flex items-center gap-2 text-xs font-semibold border border-[#3B82F6]/40 text-[#3B82F6] bg-[#3B82F6]/08 hover:bg-[#3B82F6]/15 px-4 py-2.5 rounded-xl transition-all"
+              >
+                <Users size={13} />
+                Customer Schema
+                <span className="text-[10px] text-[#3B82F6]/60 font-mono">
+                  {CUSTOMER_SCHEMA_SPEC.length} cols
+                </span>
+              </button>
+              <button
+                onClick={() => setMlModal("transactions")}
+                className="flex items-center gap-2 text-xs font-semibold border border-[#8B5CF6]/40 text-[#8B5CF6] bg-[#8B5CF6]/08 hover:bg-[#8B5CF6]/15 px-4 py-2.5 rounded-xl transition-all"
+              >
+                <Database size={13} />
+                Transaction Schema
+                <span className="text-[10px] text-[#8B5CF6]/60 font-mono">
+                  {TRANSACTION_SCHEMA_SPEC.length} cols
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick stat pills */}
+          <div className="flex gap-3 mt-4 flex-wrap">
+            {[
+              { label: "Amount",      color: "#00FF87", note: "Top ML signal" },
+              { label: "Channel",     color: "#3B82F6", note: "Top-5 predictor" },
+              { label: "Device fingerprint", color: "#8B5CF6", note: "Top-3 predictor" },
+              { label: "Geo coordinates",    color: "#F97316", note: "Impossible travel" },
+              { label: "Timestamp",   color: "#EF4444", note: "Velocity windows" },
+            ].map(({ label, color, note }) => (
+              <span
+                key={label}
+                className="flex items-center gap-1.5 text-[10px] px-2.5 py-1 rounded-full font-medium"
+                style={{ backgroundColor: `${color}12`, color, border: `1px solid ${color}30` }}
+              >
+                ★ {label}
+                <span className="text-[9px] opacity-60">— {note}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* ML Schema Modals */}
+        {mlModal === "customers" && (
+          <MLSchemaModal
+            title="Expected Customer Table Columns"
+            subtitle="These are the columns FinShield reads from your customers table to build ML features. Missing columns degrade model accuracy."
+            schema={CUSTOMER_SCHEMA_SPEC}
+            onClose={() => setMlModal(null)}
+          />
+        )}
+        {mlModal === "transactions" && (
+          <MLSchemaModal
+            title="Expected Transaction Table Columns"
+            subtitle="These are the columns FinShield reads from your transactions table. Columns marked ★ are the top fraud predictors — ensure they are populated."
+            schema={TRANSACTION_SCHEMA_SPEC}
+            onClose={() => setMlModal(null)}
+          />
         )}
 
         {/* Tabs: Schema / Field Map */}

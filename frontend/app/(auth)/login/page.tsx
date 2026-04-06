@@ -9,6 +9,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Shield, Zap, AlertCircle, Loader2, KeyRound } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
+import { apiClient } from "@/lib/api-client";
+import PrivacyBanner from "@/components/shared/PrivacyBanner";
 
 const schema = z.object({
   email:    z.string().email("Enter a valid email"),
@@ -61,53 +63,36 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003/api/v1";
+      const json = await apiClient.login(data.email, data.password);
+      const u = json.user as Record<string, unknown>;
 
-      const res = await fetch(`${apiBase}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: data.email, password: data.password }),
-      });
+      setUser(
+        {
+          id:               u.id as string,
+          email:            u.email as string,
+          full_name:        u.full_name as string,
+          phone_number:     u.phone_number as string,
+          role:             u.role as "admin" | "analyst" | "viewer",
+          institution_name: (u.institution_name as string) || "FinShield Demo Bank",
+          institution_type: (u.institution_type as string) || "bank",
+          plan:             (u.plan as "free" | "pro" | "advanced") || "free",
+          avatar_initials:  (u.avatar_initials as string) || (u.full_name as string).slice(0, 2).toUpperCase(),
+          must_change_password: u.must_change_password as boolean,
+        },
+        json.access_token
+      );
 
-      if (res.ok) {
-        const json = await res.json();
-        const u = json.user;
-        setUser(
-          {
-            id:               u.id,
-            email:            u.email,
-            full_name:        u.full_name,
-            phone_number:     u.phone_number,
-            role:             u.role,
-            institution_name: u.institution_name || "FinShield Demo Bank",
-            institution_type: u.institution_type || "bank",
-            plan:             u.plan || "free",
-            avatar_initials:  u.avatar_initials || u.full_name.slice(0, 2).toUpperCase(),
-            must_change_password: u.must_change_password,
-          },
-          json.access_token
-        );
+      if (u.has_completed_onboarding) {
+        completeOnboarding({ db_type: "supabase", db_url: "" });
+      }
 
-        if (u.has_completed_onboarding) {
-          completeOnboarding({ db_type: "supabase", db_url: "" });
-        }
-
-        // If admin forced a password reset, redirect to change-password first
-        if (u.must_change_password) {
-          router.push("/reset-password?forced=true");
-          return;
-        }
-
-        // Role-based redirect:
-        // Admin → full dashboard (with Test Me accessible)
-        // User (analyst/viewer) → dashboard (Test Me hidden)
-        router.push("/dashboard");
+      // If admin forced a password reset, redirect to change-password first
+      if (u.must_change_password) {
+        router.push("/reset-password?forced=true");
         return;
       }
 
-      // Backend returned error
-      const errJson = await res.json().catch(() => ({}));
-      throw new Error(errJson?.detail || `Login failed (${res.status})`);
+      router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed. Check credentials.");
     } finally {
@@ -250,6 +235,8 @@ export default function LoginPage() {
           Create one free
         </Link>
       </p>
+
+      <PrivacyBanner variant="footer" />
     </motion.div>
   );
 }

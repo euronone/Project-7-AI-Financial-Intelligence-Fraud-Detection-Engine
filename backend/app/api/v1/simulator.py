@@ -36,6 +36,7 @@ from app.db.session import get_db
 from app.dependencies import CurrentUser
 from app.models.transaction import Transaction
 from app.models.customer import Customer
+from app.models.payment_method import CustomerPaymentMethod
 from app.services.fraud_detection_service import (
     score_transaction,
     _score_to_category,
@@ -60,12 +61,20 @@ class SimulatorRequest(BaseModel):
     email: Optional[str] = Field(None, description="Cardholder email")
     mobile_number: Optional[str] = Field(None, description="Mobile number for SMS alert (e.g. +919876543210)")
 
-    # ── Card details (NOT persisted) ─────────────────────────────────────
-    card_number: str = Field(..., min_length=13, max_length=19, description="Card number (digits only)")
+    # ── Payment method ────────────────────────────────────────────────────
+    payment_method: str = Field(
+        "credit_card",
+        description="credit_card | debit_card | upi",
+    )
+    # UPI virtual payment address (only when payment_method == 'upi')
+    upi_vpa: Optional[str] = Field(None, max_length=100, description="e.g. sunil@oksbi")
+
+    # ── Card details (NOT persisted) — required for credit_card / debit_card ──
+    card_number: str = Field("0000000000000000", min_length=13, max_length=19, description="Card number (digits only)")
     card_type: str = Field("visa", description="visa | mastercard | rupay | amex")
-    cvv: str = Field(..., min_length=3, max_length=4, description="CVV / CVC")
-    expiry_month: int = Field(..., ge=1, le=12)
-    expiry_year: int = Field(..., ge=2024, le=2035)
+    cvv: str = Field("000", min_length=3, max_length=4, description="CVV / CVC")
+    expiry_month: int = Field(12, ge=1, le=12)
+    expiry_year: int = Field(2030, ge=2024, le=2035)
 
     # ── Transaction details ───────────────────────────────────────────────
     amount: float = Field(..., gt=0, description="Transaction amount in INR")
@@ -173,12 +182,25 @@ async def lookup_customer_by_phone(
                    "Try a different number or fill the form manually.",
         )
 
-    # Mask preferred card token for display (show only last 4)
+    # Fetch payment methods for this customer
+    pm_result = await db.execute(
+        select(CustomerPaymentMethod)
+        .where(CustomerPaymentMethod.customer_id == customer.id)
+        .order_by(CustomerPaymentMethod.is_primary.desc())
+    )
+    payment_methods = [pm.to_dict() for pm in pm_result.scalars().all()]
+
+    # Fallback: derive card_last4 from preferred_card_token if no payment methods
     card_last4 = "****"
     if customer.preferred_card_token:
         tok = re.sub(r"\D", "", customer.preferred_card_token)
         if len(tok) >= 4:
             card_last4 = tok[-4:]
+    elif payment_methods:
+        # Use primary payment method's card_last4 if available
+        primary = payment_methods[0]
+        if primary.get("card_last4"):
+            card_last4 = primary["card_last4"]
 
     return {
         "found": True,
@@ -189,13 +211,15 @@ async def lookup_customer_by_phone(
         "country_code": (customer.country_code or "IN").upper(),
         "state_province": customer.state_province or "",
         "card_last4": card_last4,
-        "card_type": "visa",          # Default — card network not stored separately
+        "card_type": payment_methods[0].get("card_network", "visa") if payment_methods else "visa",
         "risk_score": float(customer.risk_score or 0),
         "customer_tier": customer.customer_tier,
         "kyc_status": customer.kyc_status,
         "account_type": customer.account_type,
         "balance_amount": float(customer.balance_amount or 0),
         "active_card_count": customer.active_card_count or 0,
+        # ── Payment methods list ──────────────────────────────────────────────
+        "payment_methods": payment_methods,
     }
 
 
@@ -321,7 +345,23 @@ async def predict_fraud(
         fraud_score=final_score,
     )
 
-    processing_ms = int((time.time() - t_start) * 1000)
+    rules_score    = score_result.get("rules_score", 0.0)
+    model_breakdown = score_result.get("model_breakdown") or {}
+    processing_ms  = int((time.time() - t_start) * 1000)
+
+    # ── 5b. Build ML conclusion (natural-language explanation) ──────────
+    conclusion = _build_conclusion(
+        decision=decision,
+        final_score=final_score,
+        rules_score=rules_score,
+        triggered_rules=list(triggered_rules),
+        amount=body.amount,
+        channel=body.channel,
+        country_code=body.country_code,
+        is_new_device=body.is_new_device,
+        expiry_expired=expiry_expired,
+        ml_available=model_breakdown.get("ml_available", False),
+    )
 
     # ── 6. Twilio SMS (if configured and decision is BLOCK/ALERT) ───────
     sms_result = "skipped"
@@ -349,17 +389,24 @@ async def predict_fraud(
         "model_version": model_version,
         "processing_ms": processing_ms,
 
-        # Card summary (masked)
+        # Payment method + card summary (masked)
+        "payment_method": body.payment_method,
+        "upi_vpa": body.upi_vpa if body.payment_method == "upi" else None,
         "card_summary": {
-            "masked_number": card_masked,
-            "card_type": body.card_type.upper(),
-            "expiry": f"{body.expiry_month:02d}/{body.expiry_year}",
-            "expired": expiry_expired,
+            "masked_number": card_masked if body.payment_method != "upi" else None,
+            "card_type": body.card_type.upper() if body.payment_method != "upi" else None,
+            "expiry": f"{body.expiry_month:02d}/{body.expiry_year}" if body.payment_method != "upi" else None,
+            "expired": expiry_expired if body.payment_method != "upi" else False,
         },
 
         # Why fraud / why pass
         "reasons": reasons,
         "triggered_rules": triggered_rules,
+
+        # Per-layer ML breakdown (new — for the right-side panel)
+        "rules_score":      round(rules_score, 4),
+        "model_breakdown":  model_breakdown,
+        "conclusion":       conclusion,
 
         # SHAP explanation
         "shap_explanation": shap,
@@ -385,6 +432,57 @@ async def predict_fraud(
             "step_sms":             {"ok": sms_result == "sent", "status": sms_result},
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/simulator/sample-customers
+# ---------------------------------------------------------------------------
+
+@router.get("/sample-customers")
+async def get_sample_customers(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns up to 5 real customers from the current tenant so the user
+    can pick one to auto-fill the simulator form via phone lookup.
+    """
+    from sqlalchemy import func
+    result = await db.execute(
+        select(Customer)
+        .where(
+            Customer.tenant_id == current_user.tenant_id,
+            Customer.phone_number.isnot(None),
+        )
+        .order_by(func.random())
+        .limit(5)
+    )
+    customers = result.scalars().all()
+
+    # For each sample customer, fetch their primary payment method
+    samples = []
+    for c in customers:
+        pm_res = await db.execute(
+            select(CustomerPaymentMethod)
+            .where(CustomerPaymentMethod.customer_id == c.id)
+            .order_by(CustomerPaymentMethod.is_primary.desc())
+            .limit(3)
+        )
+        payment_methods = [pm.to_dict() for pm in pm_res.scalars().all()]
+        primary_pm = payment_methods[0] if payment_methods else None
+
+        samples.append({
+            "phone_number": c.phone_number,
+            "full_name":    c.full_name,
+            "city":         c.city or "India",
+            "risk_score":   float(c.risk_score or 0),
+            "customer_tier": c.customer_tier,
+            # Primary payment method summary for chip display
+            "primary_payment_type":  primary_pm["payment_type"] if primary_pm else None,
+            "primary_payment_label": primary_pm["display_label"] if primary_pm else None,
+        })
+
+    return {"samples": samples}
 
 
 # ---------------------------------------------------------------------------
@@ -692,6 +790,162 @@ def _build_reasons(
         })
 
     return reasons
+
+
+def _build_conclusion(
+    *,
+    decision: str,
+    final_score: float,
+    rules_score: float,
+    triggered_rules: list[str],
+    amount: float,
+    channel: str,
+    country_code: str,
+    is_new_device: bool,
+    expiry_expired: bool,
+    ml_available: bool,
+) -> dict:
+    """
+    Build a structured natural-language conclusion explaining the final decision.
+
+    Returns:
+      {
+        "verdict":  "PASSED" | "FLAGGED" | "ALERTED" | "BLOCKED",
+        "headline": short one-line reason,
+        "detail":   multi-sentence explanation (the "why"),
+        "mitigating_factors": list[str]  — what DIDN'T fire (explains unexpected PASS),
+        "risk_factors":       list[str]  — what DID fire,
+      }
+    """
+    is_domestic = country_code.upper() in ("IN", "")
+    is_online   = channel in ("online", "mobile")
+    score_pct   = f"{final_score:.0%}"
+    amount_fmt  = f"₹{amount:,.0f}"
+
+    # Collect what didn't fire (mitigating factors that kept score low)
+    mitigating: list[str] = []
+    if is_domestic and "foreign_transaction" not in triggered_rules:
+        mitigating.append("Domestic transaction — no foreign-country risk")
+    if not is_new_device and "new_device" not in triggered_rules:
+        mitigating.append("Known / previously seen device fingerprint")
+    if "unusual_hour" not in triggered_rules:
+        mitigating.append("Normal business hours — no unusual timing")
+    if "velocity_spike_1h" not in triggered_rules and "rapid_successive" not in triggered_rules:
+        mitigating.append("No velocity spike in recent transaction history")
+    if "impossible_travel" not in triggered_rules and "suspicious_travel_speed" not in triggered_rules:
+        mitigating.append("No impossible-travel or geo-anomaly detected")
+    if not expiry_expired:
+        mitigating.append("Card is not expired")
+
+    # Risk factors that did fire
+    risk_factors: list[str] = []
+    rule_label_map = {
+        "large_amount":              f"Transaction amount {amount_fmt} is above normal threshold",
+        "unusual_hour":              "Transaction at unusual hour (1–5 AM)",
+        "foreign_transaction":       f"Foreign country detected ({country_code})",
+        "high_risk_country":         f"High-risk jurisdiction ({country_code})",
+        "new_device":                "New / unrecognised device fingerprint",
+        "velocity_spike_1h":         "5+ transactions in the past hour (velocity spike)",
+        "velocity_moderate":         "Elevated transaction frequency in past hour",
+        "rapid_successive":          "Rapid consecutive transactions within 10 minutes",
+        "structuring_pattern":       "Structuring pattern near ₹8,00,000 reporting threshold",
+        "impossible_travel":         "Impossible travel — location physically unreachable in elapsed time",
+        "suspicious_travel_speed":   "Suspicious travel speed between consecutive locations",
+        "card_not_present_high_value": f"High-value online/CNP transaction ({amount_fmt})",
+        "high_risk_merchant_category": "High-risk merchant category (crypto, wire, gambling)",
+        "large_atm_withdrawal":      f"Large ATM withdrawal of {amount_fmt}",
+        "foreign_wire_transfer":     f"International wire transfer to {country_code}",
+        "round_amount_pattern":      "Repeated round-amount structuring pattern",
+        "expired_card":              "Expired card presented",
+    }
+    for rule in triggered_rules:
+        label = rule_label_map.get(rule)
+        if label:
+            risk_factors.append(label)
+
+    # ── Build verdict + headline + detail ─────────────────────────────────────
+
+    if decision == "PASS":
+        headline = f"Transaction PASSED — fraud score {score_pct} is below the 30% threshold"
+
+        if "large_amount" in triggered_rules:
+            # This is the key "large amount but passed" case the user is confused about
+            detail = (
+                f"The transaction amount of {amount_fmt} did raise a preliminary risk signal "
+                f"in the rules engine (rules score: {rules_score:.0%}). However, the overall "
+                f"fraud score of {score_pct} remained below the 30% FLAG threshold because "
+                f"all other risk dimensions were clean: the transaction is domestic, "
+                f"the device is recognised, no velocity anomalies were detected, and timing "
+                f"is normal. The ML ensemble confirmed that, in isolation, a large amount "
+                f"from a trusted profile does not constitute fraud — only the combination "
+                f"of multiple signals (foreign + new device + unusual hour) would push "
+                f"this above the threshold. "
+            )
+            if not ml_available:
+                detail += (
+                    "Note: ML models are not currently loaded — the decision is based solely "
+                    "on the rules engine. Training and promoting a custom ML model via the "
+                    "ML Training page will improve scoring accuracy."
+                )
+        elif not triggered_rules:
+            detail = (
+                f"No fraud signals were triggered. The transaction amount ({amount_fmt}), "
+                f"location ({country_code}), device, timing, and velocity all fall within "
+                f"this customer's normal behavioural profile. The fraud score ({score_pct}) "
+                f"is in the low-risk zone."
+            )
+        else:
+            detail = (
+                f"Minor signals were detected (rules score: {rules_score:.0%}) but the "
+                f"combined fraud probability ({score_pct}) stayed below the 30% FLAG threshold. "
+                f"The mitigating factors listed above offset the risk signals."
+            )
+
+    elif decision == "FLAG":
+        headline = f"Transaction FLAGGED — suspicious signals detected (score: {score_pct})"
+        detail = (
+            f"The fraud score of {score_pct} exceeds the 30% FLAG threshold but remains "
+            f"below the 60% ALERT threshold. "
+            f"The transaction is not blocked but has been marked suspicious and queued "
+            f"for analyst review. "
+            f"{len(triggered_rules)} rule(s) contributed to this score. "
+            f"If the analyst confirms fraud, the customer's risk score will be updated."
+        )
+
+    elif decision == "ALERT":
+        headline = f"Transaction ALERTED — high-risk signals detected (score: {score_pct})"
+        detail = (
+            f"The fraud score of {score_pct} exceeds the 60% ALERT threshold. "
+            f"The transaction has been allowed to proceed but a high-priority alert has been "
+            f"created. {len(triggered_rules)} fraud signal(s) fired, with the highest-impact "
+            f"signals listed above. Immediate analyst review is recommended. "
+            f"Customer and analyst notifications have been triggered."
+        )
+
+    else:  # BLOCK
+        headline = f"Transaction BLOCKED — critical fraud signals detected (score: {score_pct})"
+        detail = (
+            f"The fraud score of {score_pct} exceeds the 80% BLOCK threshold. "
+            f"The transaction has been rejected and marked as 'blocked' in the database. "
+            f"{len(triggered_rules)} fraud signal(s) fired. "
+            f"The combination of signals (see above) indicates a high probability of fraud "
+            f"— specifically, the simultaneous presence of "
+            + (", ".join(triggered_rules[:3]) or "multiple critical signals")
+            + " pushed the score into the critical zone. "
+            f"The customer and fraud analyst team have been notified. "
+            f"The transaction is recorded with is_test=True so it will not affect live fraud rates."
+        )
+
+    return {
+        "verdict":            decision,
+        "headline":           headline,
+        "detail":             detail,
+        "risk_factors":       risk_factors,
+        "mitigating_factors": mitigating,
+        "rules_score":        round(rules_score, 4),
+        "final_score":        round(final_score, 4),
+        "ml_available":       ml_available,
+    }
 
 
 async def _send_twilio_sms(

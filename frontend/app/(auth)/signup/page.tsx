@@ -13,6 +13,8 @@ import {
   ShieldCheck, Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
+import { apiClient } from "@/lib/api-client";
+import PrivacyBanner from "@/components/shared/PrivacyBanner";
 
 /* ─── Schemas ─────────────────────────────────────────── */
 const step1Schema = z.object({
@@ -161,43 +163,32 @@ function SignupPage() {
     setError("");
     setLoading(true);
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003/api/v1";
-      const res = await fetch(`${apiBase}/auth/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email:            formData.email,
-          password:         formData.password,
-          full_name:        formData.full_name,
-          phone_number:     `${dialCode} ${formData.phone_number}`,
-          institution_name: formData.institution_name,
-          institution_type: formData.institution_type,
-          subscription_plan:selectedPlan,
-          country_code:     formData.country === "India" ? "IN" : "US",
-          signup_role:      signupRole,
-        }),
+      const json = await apiClient.signup({
+        email:            formData.email,
+        password:         formData.password,
+        full_name:        formData.full_name,
+        phone_number:     `${dialCode} ${formData.phone_number}`,
+        institution_name: formData.institution_name,
+        institution_type: formData.institution_type,
+        subscription_plan:selectedPlan,
+        country_code:     formData.country === "India" ? "IN" : "US",
+        signup_role:      signupRole,
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || `Signup failed (${res.status})`);
-      }
-
-      const json = await res.json();
-      const u = json.user;
+      const u = json.user as Record<string, unknown>;
 
       setUser(
         {
-          id:               u.id,
-          email:            u.email,
-          full_name:        u.full_name,
-          phone_number:     u.phone_number,
-          role:             u.role,
-          institution_name: u.institution_name,
-          institution_type: u.institution_type,
-          plan:             u.plan,
-          avatar_initials:  u.avatar_initials,
-          must_change_password: u.must_change_password,
+          id:               u.id as string,
+          email:            u.email as string,
+          full_name:        u.full_name as string,
+          phone_number:     u.phone_number as string,
+          role:             u.role as "admin" | "analyst" | "viewer",
+          institution_name: u.institution_name as string,
+          institution_type: u.institution_type as string,
+          plan:             u.plan as "free" | "pro" | "advanced",
+          avatar_initials:  u.avatar_initials as string,
+          must_change_password: u.must_change_password as boolean,
         },
         json.access_token
       );
@@ -597,6 +588,10 @@ function SignupPage() {
                 <AlertCircle size={14} /> {error}
               </motion.div>
             )}
+
+            <div className="flex justify-center mb-4">
+              <PrivacyBanner variant="modal" />
+            </div>
 
             <p className="text-xs text-gray-600 text-center mb-4">
               By creating an account, you agree to our{" "}

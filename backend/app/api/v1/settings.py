@@ -316,3 +316,210 @@ async def test_connection(
         message="Configuration accepted — validate by running a test transaction",
         latency_ms=latency,
     )
+
+
+# ---------------------------------------------------------------------------
+# Notification settings endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/notifications")
+async def get_notification_settings(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return notification configuration (secrets masked)."""
+    from app.config import get_settings
+    settings = get_settings()
+    result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+    tenant = result.scalar_one_or_none()
+    notif_config = (tenant.db_config_json or {}).get("notifications", {}) if tenant else {}
+    return {
+        "company_alert_email": notif_config.get("company_alert_email", getattr(settings, "ALERT_COMPANY_EMAIL", "")),
+        "has_twilio":         bool(getattr(settings, "TWILIO_ACCOUNT_SID", "")),
+        "has_resend":         bool(getattr(settings, "RESEND_API_KEY", "")),
+        "sms_enabled":        notif_config.get("sms_enabled", True),
+        "email_customer":     notif_config.get("email_customer", True),
+        "email_company":      notif_config.get("email_company", True),
+    }
+
+
+@router.put("/notifications")
+async def update_notification_settings(
+    body: dict,
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Save notification preferences (company email, toggles)."""
+    result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("Tenant")
+
+    config = tenant.db_config_json or {}
+    config["notifications"] = {
+        "company_alert_email": body.get("company_alert_email", ""),
+        "sms_enabled":         body.get("sms_enabled", True),
+        "email_customer":      body.get("email_customer", True),
+        "email_company":       body.get("email_company", True),
+    }
+    tenant.db_config_json = config
+    await db.commit()
+    return {"success": True, "message": "Notification settings saved"}
+
+
+# ---------------------------------------------------------------------------
+# Schema Mapping endpoints
+# ---------------------------------------------------------------------------
+
+# FinShield canonical schema definition — static, used as the "FinShield Column" side
+FINSHIELD_CUSTOMER_SCHEMA = [
+    {"field": "customer_id",          "type": "UUID",       "required": True,  "description": "Unique customer identifier"},
+    {"field": "full_name",             "type": "STRING",     "required": True,  "description": "Customer's full legal name"},
+    {"field": "email",                 "type": "STRING",     "required": False, "description": "Email address"},
+    {"field": "phone_number",          "type": "STRING",     "required": False, "description": "Mobile phone number (E.164 format: +91XXXXXXXXXX)"},
+    {"field": "date_of_birth",         "type": "DATE",       "required": False, "description": "Date of birth (YYYY-MM-DD)"},
+    {"field": "address_line_1",        "type": "STRING",     "required": False, "description": "Street address"},
+    {"field": "city",                  "type": "STRING",     "required": False, "description": "City name"},
+    {"field": "state_province",        "type": "STRING",     "required": False, "description": "State or province"},
+    {"field": "postal_code",           "type": "STRING",     "required": False, "description": "Postal / ZIP code"},
+    {"field": "country_code",          "type": "STRING(2)",  "required": False, "description": "ISO 3166-1 alpha-2 country code (e.g. IN, US)"},
+    {"field": "account_type",          "type": "ENUM",       "required": False, "description": "personal | business | merchant"},
+    {"field": "account_opening_date",  "type": "DATE",       "required": False, "description": "Date account was opened"},
+    {"field": "account_status",        "type": "ENUM",       "required": False, "description": "active | inactive | suspended | closed"},
+    {"field": "kyc_status",            "type": "ENUM",       "required": False, "description": "pending | verified | rejected | expired"},
+    {"field": "risk_score",            "type": "DECIMAL",    "required": False, "description": "Current risk score (0.0–1.0); computed by FinShield"},
+    {"field": "customer_tier",         "type": "ENUM",       "required": False, "description": "standard | premium | vip"},
+    {"field": "balance_amount",        "type": "DECIMAL",    "required": False, "description": "Current account balance"},
+    {"field": "active_card_count",     "type": "INTEGER",    "required": False, "description": "Number of active payment cards"},
+    {"field": "preferred_card_token",  "type": "STRING",     "required": False, "description": "Tokenised primary card identifier (no raw card numbers)"},
+]
+
+FINSHIELD_TRANSACTION_SCHEMA = [
+    {"field": "transaction_id",        "type": "UUID",       "required": True,  "description": "Unique transaction identifier"},
+    {"field": "customer_id",           "type": "UUID",       "required": True,  "description": "Reference to customers.customer_id"},
+    {"field": "amount",                "type": "DECIMAL",    "required": True,  "description": "Transaction amount (base currency units)"},
+    {"field": "currency",              "type": "STRING(3)",  "required": True,  "description": "ISO 4217 currency code (e.g. INR, USD)"},
+    {"field": "transaction_type",      "type": "ENUM",       "required": True,  "description": "purchase | withdrawal | transfer | refund | reversal"},
+    {"field": "channel",               "type": "ENUM",       "required": True,  "description": "pos_physical | online | atm | mobile | wire | ach"},
+    {"field": "merchant_name",         "type": "STRING",     "required": False, "description": "Merchant or payee name"},
+    {"field": "merchant_category_code","type": "STRING(4)",  "required": False, "description": "ISO 18245 Merchant Category Code (MCC)"},
+    {"field": "transaction_timestamp", "type": "TIMESTAMP",  "required": True,  "description": "When the transaction occurred (UTC ISO 8601)"},
+    {"field": "location_lat",          "type": "DECIMAL",    "required": False, "description": "GPS latitude of transaction location"},
+    {"field": "location_lng",          "type": "DECIMAL",    "required": False, "description": "GPS longitude of transaction location"},
+    {"field": "city",                  "type": "STRING",     "required": False, "description": "City where transaction occurred"},
+    {"field": "country_code",          "type": "STRING(2)",  "required": False, "description": "ISO country code of transaction location"},
+    {"field": "ip_address",            "type": "STRING",     "required": False, "description": "IPv4/IPv6 address of originating device"},
+    {"field": "device_fingerprint",    "type": "STRING",     "required": False, "description": "Unique device identifier / fingerprint hash"},
+    {"field": "device_type",           "type": "ENUM",       "required": False, "description": "mobile | desktop | tablet | pos_terminal | unknown"},
+    {"field": "status",                "type": "ENUM",       "required": False, "description": "pending | completed | failed | reversed | flagged | blocked"},
+    # FinShield-computed columns (written back by the platform)
+    {"field": "fraud_score",           "type": "DECIMAL",    "required": False, "description": "[FinShield writes] Fraud probability (0.0–1.0)"},
+    {"field": "fraud_risk_level",      "type": "ENUM",       "required": False, "description": "[FinShield writes] low | medium | high | critical"},
+    {"field": "fraud_category",        "type": "ENUM",       "required": False, "description": "[FinShield writes] legitimate | suspicious | fraudulent | unscored"},
+    {"field": "is_flagged",            "type": "BOOLEAN",    "required": False, "description": "[FinShield writes] True if transaction was flagged"},
+    {"field": "is_blocked",            "type": "BOOLEAN",    "required": False, "description": "[FinShield writes] True if transaction was blocked"},
+    {"field": "model_version",         "type": "STRING",     "required": False, "description": "[FinShield writes] ML model version used for scoring"},
+    {"field": "triggered_rule_ids",    "type": "JSON",       "required": False, "description": "[FinShield writes] List of rule IDs that fired"},
+    {"field": "fraud_scored_at",       "type": "TIMESTAMP",  "required": False, "description": "[FinShield writes] When fraud scoring was performed"},
+]
+
+
+@router.get("/schema-definition")
+async def get_schema_definition(_: CurrentUser):
+    """Return FinShield's canonical column definitions for both schemas."""
+    return {
+        "customers":    FINSHIELD_CUSTOMER_SCHEMA,
+        "transactions": FINSHIELD_TRANSACTION_SCHEMA,
+    }
+
+
+def _normalize_field_mapping(raw: dict) -> dict:
+    """
+    Migrate old-format { field: "client_col_string" } to new-format
+    { field: { "client_column": str, "enabled": bool } }.
+    New-format entries are returned as-is.
+    """
+    out: dict = {}
+    for field, value in raw.items():
+        if isinstance(value, str):
+            out[field] = {"client_column": value, "enabled": True}
+        elif isinstance(value, dict):
+            out[field] = {
+                "client_column": value.get("client_column", ""),
+                "enabled": bool(value.get("enabled", True)),
+            }
+    return out
+
+
+@router.get("/schema-mapping")
+async def get_schema_mapping(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return the tenant's current column mapping.
+
+    Response format (v2):
+    {
+      "customers":          { field: { client_column, enabled } },
+      "transactions":       { field: { client_column, enabled } },
+      "customers_custom":   [ { field, type, description, client_column, enabled } ],
+      "transactions_custom":[ { field, type, description, client_column, enabled } ],
+      "last_updated": "ISO timestamp | null"
+    }
+    """
+    result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+    tenant = result.scalar_one_or_none()
+    mapping = (tenant.schema_mapping_json or {}) if tenant else {}
+
+    return {
+        "customers":           _normalize_field_mapping(mapping.get("customers", {})),
+        "transactions":        _normalize_field_mapping(mapping.get("transactions", {})),
+        "customers_custom":    mapping.get("customers_custom", []),
+        "transactions_custom": mapping.get("transactions_custom", []),
+        "last_updated":        mapping.get("_updated_at"),
+    }
+
+
+@router.put("/schema-mapping")
+async def save_schema_mapping(
+    body: dict,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Save the tenant's column name mapping (v2 format).
+
+    Body format:
+    {
+      "customers":          { field: { "client_column": str, "enabled": bool } },
+      "transactions":       { field: { "client_column": str, "enabled": bool } },
+      "customers_custom":   [ { "field", "type", "description", "client_column", "enabled" } ],
+      "transactions_custom":[ ... ]
+    }
+    """
+    from datetime import datetime, timezone
+    result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException("Tenant")
+
+    existing = tenant.schema_mapping_json or {}
+
+    # Normalise incoming canonical-field mappings (accept both old & new client shapes)
+    incoming_customers = body.get("customers", existing.get("customers", {}))
+    incoming_transactions = body.get("transactions", existing.get("transactions", {}))
+
+    existing.update({
+        "customers":           _normalize_field_mapping(incoming_customers),
+        "transactions":        _normalize_field_mapping(incoming_transactions),
+        "customers_custom":    body.get("customers_custom", existing.get("customers_custom", [])),
+        "transactions_custom": body.get("transactions_custom", existing.get("transactions_custom", [])),
+        "_updated_at":         datetime.now(timezone.utc).isoformat(),
+    })
+    tenant.schema_mapping_json = existing
+    await db.commit()
+
+    return {"success": True, "message": "Schema mapping saved"}

@@ -29,11 +29,71 @@ const nextConfig: NextConfig = {
 
   // Expose root .env NEXT_PUBLIC_* vars explicitly so they are available at
   // build time (required for static export and server components).
+  // NOTE: NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL are read from .env.local
+  // and must NOT be set here with fallbacks — the env block runs before
+  // .env.local is parsed, so any ?? fallback here would silently override
+  // the .env.local value.
   env: {
     NEXT_PUBLIC_SUPABASE_URL:      process.env.NEXT_PUBLIC_SUPABASE_URL      ?? "",
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-    NEXT_PUBLIC_API_URL:           process.env.NEXT_PUBLIC_API_URL           ?? "http://localhost:8000/api/v1",
-    NEXT_PUBLIC_WS_URL:            process.env.NEXT_PUBLIC_WS_URL            ?? "ws://localhost:8000",
+  },
+
+  // Performance optimizations
+  compress: true,
+
+  // Image optimization
+  images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60 * 60 * 24 * 365, // 1 year
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+  },
+
+  // Turbopack configuration (Next.js 16 default)
+  // Leave empty to use Turbopack defaults with no webpack config
+  turbopack: {},
+
+  // Headers for better caching
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "X-Frame-Options",
+            value: "DENY",
+          },
+          {
+            key: "X-XSS-Protection",
+            value: "1; mode=block",
+          },
+        ],
+      },
+      {
+        source: "/static/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ];
+  },
+
+  // Redirects
+  async redirects() {
+    return [
+      {
+        source: "/app",
+        destination: "/dashboard",
+        permanent: false,
+      },
+    ];
   },
 };
 

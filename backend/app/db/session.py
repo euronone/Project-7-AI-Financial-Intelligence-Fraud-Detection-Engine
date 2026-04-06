@@ -1,4 +1,5 @@
 """Async SQLAlchemy session factory."""
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from app.config import get_settings
@@ -42,6 +43,26 @@ async def get_db() -> AsyncSession:
 
 
 async def create_all_tables() -> None:
-    """Create all tables (used in dev/test — production uses Alembic)."""
+    """Create all tables (used in dev/test — production uses Alembic).
+
+    Also applies additive column migrations for SQLite which doesn't support
+    ALTER TABLE ADD COLUMN IF NOT EXISTS — we use try/except instead.
+    """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # ── Additive SQLite column migrations ────────────────────────────────
+        # Run each ALTER TABLE in its own try/except so a duplicate column
+        # error on subsequent startups is silently ignored.
+        _new_columns = [
+            "ALTER TABLE tenants ADD COLUMN schema_mapping_json TEXT",
+            # training_jobs table columns (added progressively; create_all handles the table)
+            "ALTER TABLE training_jobs ADD COLUMN parent_job_id TEXT",
+            "ALTER TABLE training_jobs ADD COLUMN use_custom_columns INTEGER DEFAULT 1",
+            "ALTER TABLE training_jobs ADD COLUMN feature_count INTEGER DEFAULT 0",
+        ]
+        for ddl in _new_columns:
+            try:
+                await conn.execute(text(ddl))
+            except Exception:
+                pass  # Column already exists — safe to ignore
