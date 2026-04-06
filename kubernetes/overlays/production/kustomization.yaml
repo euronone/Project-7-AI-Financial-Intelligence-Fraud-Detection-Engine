@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: finshield
+
+bases:
+  - ../../base
+
+replicas:
+  - name: finshield-backend
+    count: 3
+  - name: finshield-frontend
+    count: 3
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+
+configMapGenerator:
+  - name: finshield-config
+    behavior: merge
+    literals:
+      - app-env=production
+      - log-level=INFO
+      - api-url=https://api.finshield.ai/api/v1
+
+images:
+  - name: finshield-backend
+    newName: YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/finshield-backend
+    newTag: latest
+  - name: finshield-frontend
+    newName: YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/finshield-frontend
+    newTag: latest
+
+commonLabels:
+  environment: production
+
+commonAnnotations:
+  environment: production
+  tier: production

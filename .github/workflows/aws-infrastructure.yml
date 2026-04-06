@@ -1,0 +1,197 @@
+name: AWS Infrastructure (CloudFormation)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infrastructure/cloudformation/**"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "CloudFormation action"
+        required: true
+        type: choice
+        options:
+          - create-stack
+          - update-stack
+          - delete-stack
+      environment:
+        description: "Environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  validate-templates:
+    name: Validate CloudFormation Templates
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate VPC template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://infrastructure/cloudformation/vpc.yaml
+
+      - name: Validate ECS template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://infrastructure/cloudformation/ecs.yaml
+
+      - name: Validate EKS template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://infrastructure/cloudformation/eks.yaml
+
+      - name: Validate RDS template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://infrastructure/cloudformation/rds.yaml
+
+      - name: Validate Monitoring template
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://infrastructure/cloudformation/monitoring.yaml
+
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: validate-templates
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy VPC Stack
+        run: |
+          STACK_NAME=finshield-vpc-${{ github.event.inputs.environment || 'staging' }}
+
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            ACTION="update-stack"
+          else
+            ACTION="create-stack"
+          fi
+
+          aws cloudformation $ACTION \
+            --stack-name $STACK_NAME \
+            --template-body file://infrastructure/cloudformation/vpc.yaml \
+            --region ${{ env.AWS_REGION }} \
+            --parameters ParameterKey=Environment,ParameterValue=${{ github.event.inputs.environment || 'staging' }}
+
+          aws cloudformation wait stack-$ACTION-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }} || true
+
+      - name: Deploy ECS Stack
+        run: |
+          STACK_NAME=finshield-ecs-${{ github.event.inputs.environment || 'staging' }}
+
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            ACTION="update-stack"
+          else
+            ACTION="create-stack"
+          fi
+
+          aws cloudformation $ACTION \
+            --stack-name $STACK_NAME \
+            --template-body file://infrastructure/cloudformation/ecs.yaml \
+            --region ${{ env.AWS_REGION }} \
+            --parameters ParameterKey=Environment,ParameterValue=${{ github.event.inputs.environment || 'staging' }}
+
+          aws cloudformation wait stack-$ACTION-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }} || true
+
+      - name: Deploy EKS Stack
+        run: |
+          STACK_NAME=finshield-eks-${{ github.event.inputs.environment || 'staging' }}
+
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            ACTION="update-stack"
+          else
+            ACTION="create-stack"
+          fi
+
+          aws cloudformation $ACTION \
+            --stack-name $STACK_NAME \
+            --template-body file://infrastructure/cloudformation/eks.yaml \
+            --region ${{ env.AWS_REGION }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameters ParameterKey=Environment,ParameterValue=${{ github.event.inputs.environment || 'staging' }}
+
+          aws cloudformation wait stack-$ACTION-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }} || true
+
+      - name: Deploy RDS Stack
+        run: |
+          STACK_NAME=finshield-rds-${{ github.event.inputs.environment || 'staging' }}
+
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            ACTION="update-stack"
+          else
+            ACTION="create-stack"
+          fi
+
+          aws cloudformation $ACTION \
+            --stack-name $STACK_NAME \
+            --template-body file://infrastructure/cloudformation/rds.yaml \
+            --region ${{ env.AWS_REGION }} \
+            --parameters \
+              ParameterKey=Environment,ParameterValue=${{ github.event.inputs.environment || 'staging' }} \
+              ParameterKey=DBPassword,ParameterValue=${{ secrets.RDS_PASSWORD }}
+
+          aws cloudformation wait stack-$ACTION-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }} || true
+
+      - name: Deploy Monitoring Stack
+        run: |
+          STACK_NAME=finshield-monitoring-${{ github.event.inputs.environment || 'staging' }}
+
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            ACTION="update-stack"
+          else
+            ACTION="create-stack"
+          fi
+
+          aws cloudformation $ACTION \
+            --stack-name $STACK_NAME \
+            --template-body file://infrastructure/cloudformation/monitoring.yaml \
+            --region ${{ env.AWS_REGION }}
+
+          aws cloudformation wait stack-$ACTION-complete \
+            --stack-name $STACK_NAME \
+            --region ${{ env.AWS_REGION }} || true
+
+      - name: Output stack info
+        run: |
+          echo "=== Stack Outputs ==="
+          for stack in finshield-vpc finshield-ecs finshield-eks finshield-rds finshield-monitoring; do
+            echo "--- $stack ---"
+            aws cloudformation describe-stacks \
+              --stack-name $stack-${{ github.event.inputs.environment || 'staging' }} \
+              --region ${{ env.AWS_REGION }} \
+              --query 'Stacks[0].Outputs' \
+              --output table 2>/dev/null || echo "Stack not found"
+          done

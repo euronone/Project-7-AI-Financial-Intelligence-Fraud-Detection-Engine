@@ -1,0 +1,178 @@
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY_BACKEND: finshield-backend
+  ECR_REGISTRY_FRONTEND: finshield-frontend
+
+jobs:
+  build-push-ecr:
+    name: Build & Push to ECR
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Get Git SHA (short)
+        id: git-sha
+        run: echo "short-sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build, tag, and push backend image to Amazon ECR
+        id: build-backend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.git-sha.outputs.short-sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:latest \
+            -f backend/Dockerfile \
+            ./backend
+
+          docker push $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:latest
+
+          echo "image=$ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build, tag, and push frontend image to Amazon ECR
+        id: build-frontend
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.git-sha.outputs.short-sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:latest \
+            -f frontend/Dockerfile \
+            ./frontend
+
+          docker push $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:latest
+
+          echo "image=$ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  deploy-ecs:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: build-push-ecr
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download task definition (backend)
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition finshield-backend-task \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-def-backend.json
+
+      - name: Update task definition with new image (backend)
+        id: task-def-backend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def-backend.json
+          container-name: finshield-backend
+          image: ${{ needs.build-push-ecr.outputs.backend-image }}
+
+      - name: Deploy backend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-backend.outputs.task-definition }}
+          service: finshield-backend-service
+          cluster: finshield-cluster
+          wait-for-service-stability: true
+
+      - name: Download task definition (frontend)
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition finshield-frontend-task \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-def-frontend.json
+
+      - name: Update task definition with new image (frontend)
+        id: task-def-frontend
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def-frontend.json
+          container-name: finshield-frontend
+          image: ${{ needs.build-push-ecr.outputs.frontend-image }}
+
+      - name: Deploy frontend to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def-frontend.outputs.task-definition }}
+          service: finshield-frontend-service
+          cluster: finshield-cluster
+          wait-for-service-stability: true
+
+      - name: Verify ECS deployment health
+        run: |
+          echo "Checking ECS service health..."
+          aws ecs describe-services \
+            --cluster finshield-cluster \
+            --services finshield-backend-service finshield-frontend-service \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[*].{Name:serviceName,Status:status,RunningCount:runningCount,DesiredCount:desiredCount}'
+
+  verify-deployment:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: deploy-ecs
+    steps:
+      - name: Check backend health
+        run: |
+          echo "Backend health check will be performed..."
+          # Replace with actual ALB/service endpoint
+          max_attempts=30
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            health=$(curl -s -o /dev/null -w "%{http_code}" https://${{ secrets.BACKEND_ALB_ENDPOINT }}/api/v1/health || echo "000")
+            if [ "$health" = "200" ]; then
+              echo "✓ Backend health check passed"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts: status=$health"
+            sleep 10
+          done
+          echo "✗ Backend health check failed"
+          exit 1
+
+      - name: Send deployment notification
+        if: success()
+        run: |
+          echo "✓ Deployment completed successfully"

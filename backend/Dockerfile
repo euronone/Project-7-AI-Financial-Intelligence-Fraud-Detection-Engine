@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     postgresql-client \
     libpq5 \
+    dumb-init \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
@@ -59,6 +60,9 @@ EXPOSE 8000
 # Health check (requires curl)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Run startup script (migrations + server)
 CMD ["bash", "/app/start.sh"]

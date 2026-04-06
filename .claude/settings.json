@@ -75,7 +75,15 @@
       "Bash(set PYTHONPATH=.)",
       "Bash(.venv/Scripts/python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload)",
       "Bash(pkill -f \"npm run dev\")",
-      "Read(//c/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/backend/app/core/**)"
+      "Read(//c/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/backend/app/core/**)",
+      "Bash(awk -F'/' '{print}')",
+      "Bash(rm -f AWS_DEPLOYMENT.md)",
+      "Bash(rm -f DOCKER_DEPLOYMENT_SUMMARY.md)",
+      "Bash(rm -f TEST_ME_IMPROVEMENTS.md)",
+      "Bash(rm -f IMPLEMENTATION_COMPLETE.md)",
+      "Bash(rm -f GITHUB_ACTIONS_QUICKSTART.md)",
+      "Bash(rmdir ./frontend/app/landing)",
+      "Bash(rmdir ./frontend/components/ui)"
     ],
     "additionalDirectories": [
       "\\tmp",

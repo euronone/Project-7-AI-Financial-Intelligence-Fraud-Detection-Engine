@@ -1,0 +1,231 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS PostgreSQL Database for FinShield'
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Description: RDS Master Password
+
+  VpcId:
+    Type: String
+    Description: VPC ID
+
+  PrivateSubnet1:
+    Type: String
+    Description: Private Subnet 1
+
+  PrivateSubnet2:
+    Type: String
+    Description: Private Subnet 2
+
+Mappings:
+  EnvConfig:
+    staging:
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.small
+      BackupRetentionPeriod: 7
+      MultiAZ: false
+      StorageType: gp3
+    production:
+      AllocatedStorage: 100
+      DBInstanceClass: db.t3.medium
+      BackupRetentionPeriod: 30
+      MultiAZ: true
+      StorageType: gp3
+
+Resources:
+  # Database Security Group
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS Security Group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 10.0.0.0/16  # VPC CIDR
+      Tags:
+        - Key: Name
+          Value: !Sub 'finshield-db-sg-${Environment}'
+
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub 'finshield-db-subnet-${Environment}'
+      DBSubnetGroupDescription: Subnet group for FinShield RDS
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub 'finshield-db-subnet-${Environment}'
+
+  # RDS Instance
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub 'finshield-db-${Environment}'
+      DBInstanceClass: !FindInMap [EnvConfig, !Ref Environment, DBInstanceClass]
+      Engine: postgres
+      EngineVersion: '15.3'
+      AllocatedStorage: !FindInMap [EnvConfig, !Ref Environment, AllocatedStorage]
+      StorageType: !FindInMap [EnvConfig, !Ref Environment, StorageType]
+      DBName: finshield
+      MasterUsername: postgres
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      MultiAZ: !FindInMap [EnvConfig, !Ref Environment, MultiAZ]
+      BackupRetentionPeriod: !FindInMap [EnvConfig, !Ref Environment, BackupRetentionPeriod]
+      PreferredBackupWindow: "03:00-04:00"
+      PreferredMaintenanceWindow: "mon:04:00-mon:05:00"
+      EnableCloudwatchLogsExports:
+        - postgresql
+      EnableIAMDatabaseAuthentication: true
+      StorageEncrypted: true
+      CopyTagsToSnapshot: true
+      DeletionProtection: !If [IsProduction, true, false]
+      EnableDeletionProtection: !If [IsProduction, true, false]
+      Tags:
+        - Key: Name
+          Value: !Sub 'finshield-db-${Environment}'
+
+  # ElastiCache Redis Cluster
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for FinShield Redis
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub 'finshield-redis-subnet-${Environment}'
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Redis Security Group
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: 10.0.0.0/16  # VPC CIDR
+      Tags:
+        - Key: Name
+          Value: !Sub 'finshield-redis-sg-${Environment}'
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheClusterId: !Sub 'finshield-redis-${Environment}'
+      CacheNodeType: !If [IsProduction, 'cache.t3.medium', 'cache.t3.small']
+      Engine: redis
+      EngineVersion: '7.0'
+      NumCacheNodes: !If [IsProduction, 3, 1]
+      AutomaticFailover: !If [IsProduction, true, false]
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      PreferredMaintenanceWindow: 'sun:04:00-sun:05:00'
+      NotificationTopicArn: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:finshield-alarms'
+      Tags:
+        - Key: Name
+          Value: !Sub 'finshield-redis-${Environment}'
+
+  # RDS Enhanced Monitoring Role
+  RDSMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
+      Tags:
+        - Key: Name
+          Value: !Sub 'finshield-rds-monitoring-${Environment}'
+
+  # Secrets Manager for DB credentials
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'finshield/db/credentials-${Environment}'
+      Description: RDS credentials for FinShield
+      SecretString: !Sub |
+        {
+          "username": "postgres",
+          "password": "${DBPassword}",
+          "engine": "postgres",
+          "host": "${RDSInstance.Endpoint.Address}",
+          "port": 5432,
+          "dbname": "finshield"
+        }
+
+  RedisSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub 'finshield/redis/credentials-${Environment}'
+      Description: Redis connection string for FinShield
+      SecretString: !Sub |
+        {
+          "engine": "redis",
+          "host": "${RedisCluster.RedisEndpoint.Address}",
+          "port": 6379,
+          "url": "redis://${RedisCluster.RedisEndpoint.Address}:6379/0"
+        }
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, production]
+
+Outputs:
+  DBEndpoint:
+    Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: !Sub 'finshield-db-endpoint-${Environment}'
+    Description: RDS Endpoint
+
+  DBPort:
+    Value: !GetAtt RDSInstance.Endpoint.Port
+    Export:
+      Name: !Sub 'finshield-db-port-${Environment}'
+    Description: RDS Port
+
+  RedisEndpoint:
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub 'finshield-redis-endpoint-${Environment}'
+    Description: Redis Endpoint
+
+  RedisPort:
+    Value: !GetAtt RedisCluster.RedisEndpoint.Port
+    Export:
+      Name: !Sub 'finshield-redis-port-${Environment}'
+    Description: Redis Port
+
+  DBSecretArn:
+    Value: !Ref DBSecret
+    Export:
+      Name: !Sub 'finshield-db-secret-arn-${Environment}'
+    Description: RDS Credentials Secret ARN
+
+  RedisSecretArn:
+    Value: !Ref RedisSecret
+    Export:
+      Name: !Sub 'finshield-redis-secret-arn-${Environment}'
+    Description: Redis Credentials Secret ARN

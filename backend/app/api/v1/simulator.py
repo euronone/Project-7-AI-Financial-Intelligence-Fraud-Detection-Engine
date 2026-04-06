@@ -202,6 +202,12 @@ async def lookup_customer_by_phone(
         if primary.get("card_last4"):
             card_last4 = primary["card_last4"]
 
+    # Extract primary payment method details (masked)
+    primary_pm = payment_methods[0] if payment_methods else {}
+    masked_cvv = "***" if primary_pm.get("cvv") else ""
+    masked_expiry_month = primary_pm.get("expiry_month", "")
+    masked_expiry_year = primary_pm.get("expiry_year", "")
+
     return {
         "found": True,
         "customer_id": customer.id,
@@ -212,6 +218,11 @@ async def lookup_customer_by_phone(
         "state_province": customer.state_province or "",
         "card_last4": card_last4,
         "card_type": payment_methods[0].get("card_network", "visa") if payment_methods else "visa",
+        # ── Masked card details for auto-population ──────────────────────────
+        "masked_cvv": masked_cvv,
+        "masked_expiry_month": masked_expiry_month,
+        "masked_expiry_year": masked_expiry_year,
+        # ──────────────────────────────────────────────────────────────────────
         "risk_score": float(customer.risk_score or 0),
         "customer_tier": customer.customer_tier,
         "kyc_status": customer.kyc_status,

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
+import { TransactionDetailsPanel } from "@/components/transaction-details-panel";
 
 // ── Country list ─────────────────────────────────────────────────────────────
 const COUNTRIES = [
@@ -414,6 +415,10 @@ export default function TestMePage() {
           card_number: primaryPm?.card_last4
             ? `**** **** **** ${primaryPm.card_last4}`
             : (f.card_number || `**** **** **** ${res.card_last4}`),
+          // Auto-fill masked CVV and expiry
+          cvv: res.masked_cvv || "***",
+          expiry_month: res.masked_expiry_month || f.expiry_month,
+          expiry_year: res.masked_expiry_year || f.expiry_year,
         }));
         const pmLabel = primaryPm ? ` · ${primaryPm.display_label}` : "";
         setLookupStatus("found");
@@ -461,6 +466,10 @@ export default function TestMePage() {
           card_number: primaryPm?.card_last4
             ? `**** **** **** ${primaryPm.card_last4}`
             : (f.card_number || `**** **** **** ${res.card_last4}`),
+          // Auto-fill masked CVV and expiry
+          cvv: res.masked_cvv || "***",
+          expiry_month: res.masked_expiry_month || f.expiry_month,
+          expiry_year: res.masked_expiry_year || f.expiry_year,
         }));
         const pmLabel = primaryPm ? ` · ${primaryPm.display_label}` : "";
         setLookupStatus("found");
@@ -549,7 +558,7 @@ export default function TestMePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-8">
+        <div className={`grid ${result ? "grid-cols-3" : "grid-cols-2"} gap-6`}>
           {/* ── LEFT: Form ──────────────────────────────────────────────────── */}
           <div>
             {/* Preset buttons */}
@@ -1390,6 +1399,27 @@ export default function TestMePage() {
               </div>
             )}
           </div>
+
+          {/* ── RIGHT: Transaction Details Panel (shows when result exists) ─ */}
+          {result && (
+            <TransactionDetailsPanel
+              transaction={{
+                transaction_id: result.transaction_id || "—",
+                cardholder_name: form.cardholder_name,
+                card_number: form.card_number,
+                amount: form.amount,
+                merchant_name: form.merchant_name,
+                city: form.city,
+                country_code: form.country_code,
+                channel: form.channel,
+                purchase_type: form.purchase_type,
+                device_type: form.device_type,
+                is_new_device: form.is_new_device,
+              }}
+              result={result}
+              decisionColor={decisionColor}
+            />
+          )}
         </div>
       </main>
     </div>

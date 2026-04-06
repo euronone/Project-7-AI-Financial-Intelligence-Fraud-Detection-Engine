@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finshield-backend
+spec:
+  template:
+    spec:
+      containers:
+      - name: finshield-backend
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finshield-frontend
+spec:
+  template:
+    spec:
+      containers:
+      - name: finshield-frontend
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

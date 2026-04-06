@@ -1,0 +1,303 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudWatch Monitoring and Alarms for FinShield'
+
+Parameters:
+  AlarmEmail:
+    Type: String
+    Description: Email for SNS notifications
+    Default: ops@finshield.ai
+
+Resources:
+  # SNS Topic for Alarms
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: FinShield Alarms
+      TopicName: finshield-alarms
+      Subscription:
+        - Endpoint: !Ref AlarmEmail
+          Protocol: email
+
+  # Dashboard
+  FinShieldDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: finshield-main-dashboard
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/ECS", "CPUUtilization", {"stat": "Average"}],
+                  [".", "MemoryUtilization", {"stat": "Average"}],
+                  ["AWS/ApplicationELB", "TargetResponseTime"],
+                  [".", "RequestCount"],
+                  [".", "HTTPCode_Target_2XX_Count"],
+                  [".", "HTTPCode_Target_4XX_Count"],
+                  [".", "HTTPCode_Target_5XX_Count"]
+                ],
+                "period": 60,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "ECS & Load Balancer Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  [{"expression": "m1/m2*100", "label": "Error Rate %", "id": "e1"}],
+                  ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", {"id": "m1"}],
+                  [".", "RequestCount", {"id": "m2"}]
+                ],
+                "period": 60,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Error Rate"
+              }
+            },
+            {
+              "type": "log",
+              "properties": {
+                "query": "fields @timestamp, @message, @duration | stats count() by @duration",
+                "region": "${AWS::Region}",
+                "title": "API Response Time Distribution"
+              }
+            }
+          ]
+        }
+
+  # ECS CPU Alarm
+  ECSHighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: finshield-ecs-high-cpu
+      AlarmDescription: ECS cluster CPU utilization is high
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # ECS Memory Alarm
+  ECSHighMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: finshield-ecs-high-memory
+      AlarmDescription: ECS cluster memory utilization is high
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # ALB High Latency Alarm
+  ALBHighLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: finshield-alb-high-latency
+      AlarmDescription: ALB response time is high
+      MetricName: TargetResponseTime
+      Namespace: AWS/ApplicationELB
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1.0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # ALB High Error Rate Alarm
+  ALBHighErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: finshield-alb-high-error-rate
+      AlarmDescription: ALB error rate is high
+      MetricName: HTTPCode_Target_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # RDS CPU Alarm
+  RDSHighCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: finshield-rds-high-cpu
+      AlarmDescription: RDS CPU utilization is high
+      MetricName: CPUUtilization
+      Namespace: AWS/RDS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # RDS Storage Alarm
+  RDSLowStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: finshield-rds-low-storage
+      AlarmDescription: RDS free storage is low
+      MetricName: FreeStorageSpace
+      Namespace: AWS/RDS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10737418240  # 10GB
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
+      TreatMissingData: notBreaching
+
+  # Log Group for Custom Metrics
+  CustomMetricsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /finshield/custom-metrics
+      RetentionInDays: 30
+
+  # Metric Filter for Fraud Detections
+  FraudDetectionMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, level = "FRAUD_DETECTED", ...]'
+      LogGroupName: !Ref CustomMetricsLogGroup
+      MetricTransformations:
+        - MetricName: FraudDetectionCount
+          MetricNamespace: FinShield
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Metric Filter for API Errors
+  APIErrorMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, level = "ERROR" || level = "EXCEPTION", ...]'
+      LogGroupName: !Ref CustomMetricsLogGroup
+      MetricTransformations:
+        - MetricName: APIErrorCount
+          MetricNamespace: FinShield
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # Metric Filter for Model Inference Time
+  ModelInferenceTimeMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      FilterPattern: '[timestamp, request_id, ..., inference_time > 0, ...]'
+      LogGroupName: !Ref CustomMetricsLogGroup
+      MetricTransformations:
+        - MetricName: ModelInferenceTime
+          MetricNamespace: FinShield
+          MetricValue: '$inference_time'
+          DefaultValue: 0
+
+  # Log Insight Queries (stored as comments)
+  LogInsightQueries:
+    Type: AWS::CloudWatch::QueryDefinition
+    Properties:
+      Name: finshield-fraud-analysis
+      QueryString: |
+        fields @timestamp, @message, fraud_score, fraud_category, decision
+        | filter ispresent(fraud_score)
+        | stats count() as total,
+                sum(case when decision = 'BLOCK' then 1 else 0 end) as blocked,
+                sum(case when fraud_category = 'fraudulent' then 1 else 0 end) as fraudulent,
+                avg(fraud_score) as avg_score
+                by bin(5m)
+      LogGroupNames:
+        - /ecs/finshield-backend-staging
+        - /ecs/finshield-backend-production
+
+  APILatencyQuery:
+    Type: AWS::CloudWatch::QueryDefinition
+    Properties:
+      Name: finshield-api-latency
+      QueryString: |
+        fields @duration
+        | filter @duration > 0
+        | stats pct(@duration, 50) as p50,
+                pct(@duration, 95) as p95,
+                pct(@duration, 99) as p99,
+                max(@duration) as max_duration
+      LogGroupNames:
+        - /ecs/finshield-backend-staging
+        - /ecs/finshield-backend-production
+
+  # IAM Role for Grafana
+  GrafanaEC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:DescribeAlarmsForMetric
+                  - cloudwatch:DescribeMetricAlarms
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:StartQuery
+                  - logs:StopQuery
+                  - logs:TestMetricFilter
+                  - logs:DescribeMetricFilters
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeInstances
+                Resource: '*'
+
+Outputs:
+  DashboardURL:
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=finshield-main-dashboard'
+    Description: CloudWatch Dashboard URL
+
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic
+    Export:
+      Name: finshield-alarm-topic-arn
+
+  CustomMetricsLogGroup:
+    Value: !Ref CustomMetricsLogGroup
+    Export:
+      Name: finshield-custom-metrics-log-group
