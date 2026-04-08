@@ -173,7 +173,7 @@ export default function FraudLogicSection() {
 
             {/* Animated gauge */}
             <div className="bg-[#111118] border border-[#1E1E2E] rounded-xl p-5">
-              <div className="text-xs text-gray-500 font-mono mb-3">// Live fraud score gauge</div>
+              <div className="text-xs text-gray-500 font-mono mb-3">{"// Live fraud score gauge"}</div>
               <div className="relative h-3 bg-[#1E1E2E] rounded-full overflow-hidden mb-2">
                 <div className="absolute inset-0 bg-gradient-to-r from-[#00FF87] via-[#F59E0B] to-[#EF4444]" />
                 <motion.div

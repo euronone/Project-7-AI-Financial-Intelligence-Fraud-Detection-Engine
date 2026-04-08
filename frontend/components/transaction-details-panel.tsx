@@ -21,7 +21,7 @@ interface TransactionDetailsPanelProps {
     fraud_risk_level?: string | null;
     is_blocked?: boolean;
     is_flagged?: boolean;
-    journey?: Record<string, any>;
+    journey?: Record<string, { ok?: boolean; ms?: number; [key: string]: unknown }>;
     transaction_id?: string;
   };
   decisionColor?: string;
@@ -176,7 +176,7 @@ export function TransactionDetailsPanel({ transaction = {}, result = {}, decisio
               <span className="text-xs text-gray-500 font-medium">Processing</span>
             </div>
             <div className="pl-4 space-y-1">
-              {Object.entries(result.journey).map(([step, data]: [string, any]) => (
+              {Object.entries(result.journey).map(([step, data]) => (
                 <div key={step} className="text-xs text-gray-400">
                   <span className="capitalize">{step.replace(/_/g, ' ')}:</span>
                   {data?.ok ? (

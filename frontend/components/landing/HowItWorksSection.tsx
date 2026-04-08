@@ -116,7 +116,7 @@ export default function HowItWorksSection() {
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ delay: 0.8 }}
         >
-          <div className="text-gray-500 mb-3">// 4-Layer ML Detection Pipeline</div>
+          <div className="text-gray-500 mb-3">{"// 4-Layer ML Detection Pipeline"}</div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-[#3B82F6]">Rules Engine</span>
             <span className="text-gray-600">→</span>

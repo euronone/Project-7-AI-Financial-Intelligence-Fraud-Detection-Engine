@@ -210,10 +210,10 @@ export default function OnboardingPage() {
                 Welcome, {user?.full_name?.split(" ")[0] || "there"}! 👋
               </h1>
               <p className="text-gray-400 text-base mb-2">
-                Let's connect <strong className="text-white">{user?.institution_name || "your institution"}</strong> to FinShield AI.
+                Let&apos;s connect <strong className="text-white">{user?.institution_name || "your institution"}</strong> to FinShield AI.
               </p>
               <p className="text-gray-500 text-sm mb-10 max-w-md mx-auto">
-                We'll link your transaction database so the ML engine can start scoring fraud in real time. You can change this anytime from Settings.
+                We&apos;ll link your transaction database so the ML engine can start scoring fraud in real time. You can change this anytime from Settings.
               </p>
 
               {/* What happens next */}

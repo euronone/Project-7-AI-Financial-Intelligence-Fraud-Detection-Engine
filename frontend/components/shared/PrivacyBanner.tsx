@@ -20,7 +20,7 @@ export default function PrivacyBanner({
       <div className="text-center text-xs text-gray-500 pt-6 border-t border-[#1E1E2E]">
         <p className="flex items-center justify-center gap-1">
           <Lock size={12} className="text-[#00FF87]" />
-          We don't save or store any of your transaction data
+          We don&apos;t save or store any of your transaction data
         </p>
         <p className="text-[11px] text-gray-600 mt-1">
           FinShield uses your data only for real-time fraud detection
@@ -43,7 +43,7 @@ export default function PrivacyBanner({
               Your Privacy is Protected
             </p>
             <p className="text-xs text-gray-300">
-              We don't save or store transaction data. Your information is encrypted
+              We don&apos;t save or store transaction data. Your information is encrypted
               and used only for real-time fraud detection. Learn more in our{" "}
               <a href="#" className="underline hover:opacity-80">
                 privacy policy
