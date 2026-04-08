@@ -119,6 +119,7 @@ curl http://localhost:8003/api/v1/health
 # Expected: {"status":"ok","app":"FinShield AI","version":"1.0.0"}
 ```
 
+
 ### Step 5 — Configure the frontend environment
 
 The `.env.local` already exists at `frontend/.env.local`. It points to the backend at port 8001:
