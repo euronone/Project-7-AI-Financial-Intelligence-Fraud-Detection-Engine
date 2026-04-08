@@ -17,8 +17,6 @@ Requires:
 import os
 import sys
 import uuid
-import json
-from datetime import datetime, timezone, timedelta
 
 # Allow running from /backend directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -26,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from dotenv import load_dotenv
 load_dotenv()
 
-from supabase import create_client, Client
+from supabase import create_client, Client  # noqa: E402
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
@@ -59,7 +57,7 @@ else:
 # ── 2. Create users ───────────────────────────────────────────────────────────
 print("\n[2/6] Creating user accounts...")
 
-from app.core.security import hash_password
+from app.core.security import hash_password  # noqa: E402
 
 USERS = [
     {
@@ -184,7 +182,7 @@ print("\n[4/6] Checking for unscored transactions...")
 
 unscored = sb.table("transactions").select("id,fraud_category").is_("fraud_score", "null").limit(1).execute()
 if unscored.data:
-    print(f"  Found unscored transactions — loading ML pipeline...")
+    print("  Found unscored transactions — loading ML pipeline...")
     try:
         from app.ml.pipeline import FraudScoringPipeline
         pipeline = FraudScoringPipeline.get_instance()
@@ -243,7 +241,7 @@ for txn in fraud_txns:
 
     if len(alerts_to_insert) >= 100:
         sb.table("fraud_alerts").insert(alerts_to_insert).execute()
-        print(f"  Inserted batch of 100 alerts...")
+        print("  Inserted batch of 100 alerts...")
         alerts_to_insert = []
 
 if alerts_to_insert:

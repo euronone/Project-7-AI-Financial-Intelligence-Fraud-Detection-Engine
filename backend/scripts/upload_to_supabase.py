@@ -37,7 +37,7 @@ def load_csv(filename: str) -> list[dict]:
     path = os.path.join(DATA_DIR, filename)
     if not os.path.exists(path):
         print(f"  [!] File not found: {path}")
-        print(f"      Run: python scripts/seed_data.py first")
+        print("      Run: python scripts/seed_data.py first")
         return []
     with open(path, "r", encoding="utf-8") as f:
         return list(csv.DictReader(f))
@@ -195,7 +195,7 @@ async def upload():
         return
 
     # ── Step 2: Upload customers (card details embedded) ─────────────────────
-    print(f"\n[2/3] Uploading customers (with embedded card details)...")
+    print("\n[2/3] Uploading customers (with embedded card details)...")
     customers_raw = load_csv("customers_100.csv")
     if not customers_raw:
         return
@@ -203,7 +203,7 @@ async def upload():
     c_uploaded = upload_table(client, "customers", customers, "customers")
 
     # ── Step 3: Upload transactions ───────────────────────────────────────────
-    print(f"\n[3/3] Uploading 10,000 transactions (this may take ~2-3 min)...")
+    print("\n[3/3] Uploading 10,000 transactions (this may take ~2-3 min)...")
     transactions_raw = load_csv("transactions_10000.csv")
     if not transactions_raw:
         return

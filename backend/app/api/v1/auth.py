@@ -171,7 +171,7 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Email/password login — returns JWT tokens."""
     result = await db.execute(
-        select(User).where(User.email == body.email, User.is_active == True)
+        select(User).where(User.email == body.email, User.is_active == True)  # noqa: E712
     )
     user = result.scalar_one_or_none()
 
@@ -212,7 +212,7 @@ async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)
         raise UnauthorizedException("Not a refresh token")
 
     user_id = payload.get("sub")
-    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
+    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))  # noqa: E712
     user = result.scalar_one_or_none()
     if not user:
         raise UnauthorizedException("User not found")
@@ -264,7 +264,7 @@ async def forgot_password(
     Always returns 200 — never reveals whether the email exists (anti-enumeration).
     """
     result = await db.execute(
-        select(User).where(User.email == body.email, User.is_active == True)
+        select(User).where(User.email == body.email, User.is_active == True)  # noqa: E712
     )
     user = result.scalar_one_or_none()
 
@@ -304,7 +304,7 @@ async def reset_password(
 ):
     """Validate reset token and update password."""
     result = await db.execute(
-        select(User).where(User.id == body.uid, User.is_active == True)
+        select(User).where(User.id == body.uid, User.is_active == True)  # noqa: E712
     )
     user = result.scalar_one_or_none()
     if not user:

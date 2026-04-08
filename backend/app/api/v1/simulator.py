@@ -836,7 +836,6 @@ def _build_conclusion(
       }
     """
     is_domestic = country_code.upper() in ("IN", "")
-    is_online   = channel in ("online", "mobile")
     score_pct   = f"{final_score:.0%}"
     amount_fmt  = f"₹{amount:,.0f}"
 
@@ -950,8 +949,8 @@ def _build_conclusion(
             f"— specifically, the simultaneous presence of "
             + (", ".join(triggered_rules[:3]) or "multiple critical signals")
             + " pushed the score into the critical zone. "
-            f"The customer and fraud analyst team have been notified. "
-            f"The transaction is recorded with is_test=True so it will not affect live fraud rates."
+            "The customer and fraud analyst team have been notified. "
+            "The transaction is recorded with is_test=True so it will not affect live fraud rates."
         )
 
     return {
@@ -990,7 +989,8 @@ async def _send_twilio_sms(
         return "skipped:no_key"
 
     try:
-        import httpx, base64
+        import httpx
+        import base64
         body_text = (
             f"FinShield Simulator: {decision} — ₹{amount:,.0f} at {merchant}. "
             f"Fraud Score: {score:.0%}. Ref: {str(alert_id)[:8]}"

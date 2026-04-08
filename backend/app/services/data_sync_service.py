@@ -305,9 +305,6 @@ async def _upsert_transactions(db_session, tenant_id: str, rows: list[dict]) -> 
     if no explicit transaction_id — deduplication by external_txn_id in JSON notes).
     """
     from app.models.transaction import Transaction
-    from sqlalchemy import cast
-    from sqlalchemy.dialects.postgresql import JSONB
-    import decimal
 
     upserted = 0
     for row in rows:

@@ -1,7 +1,6 @@
 """Transaction schemas."""
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
-from typing import Literal
 
 
 class TransactionCreate(BaseModel):

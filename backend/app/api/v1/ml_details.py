@@ -10,15 +10,13 @@ Provides:
 from __future__ import annotations
 
 import json
-import os
 import logging
 from pathlib import Path
-from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from app.db.session import get_db
 from app.dependencies import CurrentUser
@@ -106,7 +104,7 @@ async def get_sample_transactions(
                 select(Transaction).where(
                     Transaction.tenant_id == tid,
                     Transaction.fraud_category == "fraudulent",
-                    Transaction.is_test == False,
+                    Transaction.is_test == False,  # noqa: E712
                 ).order_by(Transaction.fraud_score.desc()).limit(6)
             )
             fraud_txns = fraud_res.scalars().all()
@@ -116,7 +114,7 @@ async def get_sample_transactions(
                 select(Transaction).where(
                     Transaction.tenant_id == tid,
                     Transaction.fraud_category == "legitimate",
-                    Transaction.is_test == False,
+                    Transaction.is_test == False,  # noqa: E712
                 ).order_by(Transaction.transaction_timestamp.desc()).limit(6)
             )
             legit_txns = legit_res.scalars().all()
@@ -371,7 +369,8 @@ def _safe_list(value) -> list:
         return []
     if isinstance(value, list):
         return value
-    import ast, json
+    import ast
+    import json
     try:
         return json.loads(value)
     except Exception:

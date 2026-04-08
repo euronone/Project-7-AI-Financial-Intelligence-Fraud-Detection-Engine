@@ -5,7 +5,6 @@ Uses Fernet (symmetric encryption) to encrypt/decrypt API keys and secrets
 before storing/retrieving from the database.
 """
 import logging
-from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
 from app.config import get_settings
 

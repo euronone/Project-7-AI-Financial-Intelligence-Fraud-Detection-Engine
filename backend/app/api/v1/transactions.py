@@ -79,7 +79,8 @@ async def create_transaction(
         await score_transaction(txn, db, broadcast_fn=_broadcast)
         await db.refresh(txn)
     except Exception as _score_err:
-        import traceback, logging
+        import traceback
+        import logging
         logging.getLogger(__name__).error("Fraud scoring failed: %s\n%s", _score_err, traceback.format_exc())
 
     return txn

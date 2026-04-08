@@ -241,7 +241,8 @@ async def test_connection(
         host = body.host or "localhost"
         port = body.port or 6379
         try:
-            import asyncio, socket
+            import asyncio
+            import socket
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, lambda: socket.create_connection((host, port), timeout=4))
             latency = round((time.time() - start) * 1000, 1)

@@ -14,13 +14,10 @@ Routes (all under /api/v1/ml/training/):
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db
 from app.dependencies import CurrentUser, AdminUser
 from app.services.ml_training_service import (
     ALGORITHM_CATALOGUE,

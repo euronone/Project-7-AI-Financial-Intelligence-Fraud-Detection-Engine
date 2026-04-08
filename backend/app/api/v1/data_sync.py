@@ -16,7 +16,7 @@ upserts into FinShield's internal tables so ML training has fresh data.
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field

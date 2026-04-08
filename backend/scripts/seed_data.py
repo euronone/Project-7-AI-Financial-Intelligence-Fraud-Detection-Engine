@@ -590,14 +590,6 @@ def generate_transactions(customers: list[dict], all_cards: list[dict]) -> tuple
         # Clamp timestamp to valid range
         ts = max(base_date, min(ts, datetime.now(timezone.utc)))
 
-        # Pick a card for this customer (use compromised card for fraud patterns)
-        cust_card_ids = customer_cards.get(cust["customer_id"], [])
-        if is_fraud and pattern in ("card_not_present", "account_takeover") and len(cust_card_ids) > 0:
-            # Fraudster uses the first (possibly compromised) card
-            chosen_card_id = cust_card_ids[0]
-        else:
-            chosen_card_id = random.choice(cust_card_ids) if cust_card_ids else None
-
         txn_id = str(uuid.uuid4())
         txn = {
             "transaction_id":     txn_id,
@@ -1023,7 +1015,7 @@ async def main():
     test_customers, test_cards = build_test_customers()
     customers  = customers + test_customers
     all_cards  = all_cards + test_cards
-    print(f"       + 10 test customers    10 customers (easy card numbers)")
+    print("       + 10 test customers    10 customers (easy card numbers)")
     print(f"       Total cards generated: {len(all_cards)}")
 
     # Step 3: Generate transactions
@@ -1107,10 +1099,10 @@ async def main():
     print(f"  Fraud cases:      {fraud_count} ({fraud_count/NUM_TRANSACTIONS*100:.1f}%)")
     print(f"  Fraud alerts:     {fraud_count}")
     print(f"  CSV dir:          {OUTPUT_DIR}")
-    print(f"    customers_100.csv  (card embedded in cols 2-9)")
-    print(f"    transactions_10000.csv  (card_last4 + card_network embedded)")
-    print(f"    cards_100.csv      (reference only)")
-    print(f"  DB:               finshield_dev.db")
+    print("    customers_100.csv  (card embedded in cols 2-9)")
+    print("    transactions_10000.csv  (card_last4 + card_network embedded)")
+    print("    cards_100.csv      (reference only)")
+    print("  DB:               finshield_dev.db")
     print("\n  Next: run python scripts/upload_to_supabase.py")
     print("="*60 + "\n")
 

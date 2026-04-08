@@ -175,7 +175,7 @@ def upgrade() -> None:
     sa.Column('is_blocked', sa.Boolean(), nullable=False),
     sa.Column('is_test', sa.Boolean(), nullable=False),
     sa.Column('model_version', sa.String(length=50), nullable=True),
-    sa.Column('triggered_rule_ids', app.models.transaction.SafeJSON(), nullable=True),
+    sa.Column('triggered_rule_ids', app.models.transaction.SafeJSON(), nullable=True),  # noqa: F821
     sa.Column('shap_values', sa.JSON(), nullable=True),
     sa.Column('fraud_scored_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('transaction_timestamp', sa.DateTime(timezone=True), nullable=False),

@@ -22,10 +22,7 @@ Running strategy (no Celery):
 from __future__ import annotations
 
 import asyncio
-import io
-import json
 import logging
-import os
 import pickle
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -845,7 +842,7 @@ class MLTrainingService:
             active_res = await db.execute(
                 select(MLModel).where(
                     MLModel.tenant_id == tenant_id,
-                    MLModel.is_active == True,
+                    MLModel.is_active == True,  # noqa: E712
                 )
             )
             for m in active_res.scalars().all():
@@ -896,10 +893,8 @@ class MLTrainingService:
         # Accept both raw model objects and our wrapped {"model": ..., "scaler": ...} dicts
         if isinstance(payload, dict):
             model = payload.get("model")
-            scaler = payload.get("scaler")
         else:
             model = payload
-            scaler = None
 
         if not hasattr(model, "predict"):
             raise ValueError(
@@ -919,7 +914,7 @@ class MLTrainingService:
             active_res = await db.execute(
                 select(MLModel).where(
                     MLModel.tenant_id == tenant_id,
-                    MLModel.is_active == True,
+                    MLModel.is_active == True,  # noqa: E712
                 )
             )
             for m in active_res.scalars().all():
@@ -1024,7 +1019,7 @@ class MLTrainingService:
             async with AsyncSessionLocal() as db:
                 txn_query = select(Transaction).where(
                     Transaction.tenant_id == tenant_id,
-                    Transaction.is_test == False,
+                    Transaction.is_test == False,  # noqa: E712
                 )
                 if data_window_days and data_window_days > 0:
                     from datetime import timedelta

@@ -83,7 +83,6 @@ class AnomalyDetector:
 
         # DBSCAN: measure distance to nearest training cluster center
         # Use average distance to nearest 5 training points
-        from sklearn.metrics import pairwise_distances_chunked
         db_scores = np.zeros(len(X_scaled))
         for i, x in enumerate(X_scaled):
             dists = np.linalg.norm(self._dbscan_train_X - x, axis=1)

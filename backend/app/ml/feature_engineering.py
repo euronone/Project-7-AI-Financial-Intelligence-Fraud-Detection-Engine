@@ -19,7 +19,6 @@ Feature categories (from CLAUDE.md spec):
 """
 
 import math
-from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
@@ -215,7 +214,6 @@ def batch_features(
     net_map = {"Visa": 0, "Mastercard": 1, "RuPay": 2, "Amex": 3}
     df["feat_card_network"]   = df.get("c_card_network", pd.Series(["Visa"] * len(df))).map(net_map).fillna(0)
 
-    card_status_map = {"active": 0, "compromised": 1, "blocked": 2, "expired": 3}
     df["feat_card_compromised"] = (df.get("c_card_status", pd.Series(["active"] * len(df))) == "compromised").astype(int)
 
     # ── Derived composite features ────────────────────────────────────────────

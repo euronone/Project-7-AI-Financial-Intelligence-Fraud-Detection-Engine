@@ -175,7 +175,8 @@ async def _send_twilio_sms(
     *, sid: str, token: str, from_num: str, to: str, body: str
 ) -> str:
     try:
-        import httpx, base64
+        import httpx
+        import base64
         creds = base64.b64encode(f"{sid}:{token}".encode()).decode()
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(

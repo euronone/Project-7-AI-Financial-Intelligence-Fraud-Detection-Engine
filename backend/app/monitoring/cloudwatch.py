@@ -1,6 +1,5 @@
 """CloudWatch metrics and logging integration."""
 
-import json
 import logging
 import time
 from typing import Any, Callable

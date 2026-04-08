@@ -9,7 +9,7 @@ from app.models.fraud_alert import FraudAlert
 from app.models.transaction import Transaction
 from app.models.customer import Customer
 from app.schemas.alert import AlertResponse, AlertUpdateRequest, AlertListResponse
-from app.dependencies import CurrentUser, AnalystUser, AdminUser
+from app.dependencies import CurrentUser, AnalystUser
 from app.core.exceptions import NotFoundException
 from datetime import datetime, timezone
 

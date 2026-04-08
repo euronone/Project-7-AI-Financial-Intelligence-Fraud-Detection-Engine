@@ -40,7 +40,7 @@ async def seed_supabase_auth():
         for user_data in test_users:
             try:
                 # Create user in Supabase Auth using proper API
-                response = supabase.auth.admin.create_user(
+                supabase.auth.admin.create_user(
                     {
                         "email": user_data["email"],
                         "password": user_data["password"],

@@ -1,7 +1,7 @@
 """Analytics endpoints — KPI dashboard data."""
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 from datetime import datetime, timedelta, timezone
 
 from app.db.session import get_db
@@ -26,7 +26,7 @@ async def get_overview(
         select(func.count(Transaction.id)).where(
             Transaction.tenant_id == tenant_id,
             Transaction.transaction_timestamp >= today_start,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
     )
 
@@ -35,7 +35,7 @@ async def get_overview(
         select(func.count(Transaction.id)).where(
             Transaction.tenant_id == tenant_id,
             Transaction.fraud_category == "fraudulent",
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
     )
 
@@ -43,7 +43,7 @@ async def get_overview(
     total_count = await db.execute(
         select(func.count(Transaction.id)).where(
             Transaction.tenant_id == tenant_id,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
     )
 
@@ -97,7 +97,7 @@ async def get_fraud_rate(
         ).where(
             Transaction.tenant_id == current_user.tenant_id,
             Transaction.transaction_timestamp >= since,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         ).group_by(func.date(Transaction.transaction_timestamp))
         .order_by(func.date(Transaction.transaction_timestamp))
     )

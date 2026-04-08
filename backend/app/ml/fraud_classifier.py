@@ -13,10 +13,9 @@ and ensemble supervised scores (0–1 probability of fraud).
 import os
 import pickle
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
-from sklearn.calibration import CalibratedClassifierCV
 
 import xgboost as xgb
 

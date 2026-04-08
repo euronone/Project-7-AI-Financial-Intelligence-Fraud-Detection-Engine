@@ -10,10 +10,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func, text, inspect
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_db, engine
+from app.db.session import get_db
 from app.dependencies import CurrentUser
 from app.models.customer import Customer
 from app.models.transaction import Transaction
@@ -78,7 +78,7 @@ async def get_data_sources(
     txn_res = await db.execute(
         select(func.count(Transaction.id)).where(
             Transaction.tenant_id == tid,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
     )
     alert_res = await db.execute(
@@ -234,7 +234,7 @@ async def get_schema(
     sample_txns = await db.execute(
         select(Transaction).where(
             Transaction.tenant_id == tid,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         ).limit(3)
     )
     txn_rows = sample_txns.scalars().all()
@@ -294,21 +294,21 @@ async def get_field_map(
     # Unique values in key enum columns
     channels_res = await db.execute(
         select(Transaction.channel, func.count(Transaction.id).label("cnt"))
-        .where(Transaction.tenant_id == tid, Transaction.is_test == False)
+        .where(Transaction.tenant_id == tid, Transaction.is_test == False)  # noqa: E712
         .group_by(Transaction.channel)
     )
     channels = [{"value": r.channel, "count": r.cnt} for r in channels_res.all()]
 
     device_res = await db.execute(
         select(Transaction.device_type, func.count(Transaction.id).label("cnt"))
-        .where(Transaction.tenant_id == tid, Transaction.is_test == False)
+        .where(Transaction.tenant_id == tid, Transaction.is_test == False)  # noqa: E712
         .group_by(Transaction.device_type)
     )
     devices = [{"value": r.device_type, "count": r.cnt} for r in device_res.all()]
 
     category_res = await db.execute(
         select(Transaction.fraud_category, func.count(Transaction.id).label("cnt"))
-        .where(Transaction.tenant_id == tid, Transaction.is_test == False)
+        .where(Transaction.tenant_id == tid, Transaction.is_test == False)  # noqa: E712
         .group_by(Transaction.fraud_category)
     )
     categories = [{"value": r.fraud_category, "count": r.cnt} for r in category_res.all()]
@@ -319,7 +319,7 @@ async def get_field_map(
             func.min(Transaction.amount).label("min"),
             func.max(Transaction.amount).label("max"),
             func.avg(Transaction.amount).label("avg"),
-        ).where(Transaction.tenant_id == tid, Transaction.is_test == False)
+        ).where(Transaction.tenant_id == tid, Transaction.is_test == False)  # noqa: E712
     )
     amt_row = amt_res.first()
     amount_stats = {

@@ -32,7 +32,7 @@ async def get_current_user(
     if not user_id:
         raise UnauthorizedException("Token missing subject")
 
-    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
+    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))  # noqa: E712
     user = result.scalar_one_or_none()
 
     if not user:

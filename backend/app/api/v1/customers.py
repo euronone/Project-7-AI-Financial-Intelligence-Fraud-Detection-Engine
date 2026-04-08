@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, func, case, and_
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -52,7 +52,7 @@ async def get_customer_stats(
         .where(
             Transaction.tenant_id == tid,
             Transaction.fraud_category == "fraudulent",
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
         .distinct()
         .subquery()
@@ -165,7 +165,7 @@ async def get_fraud_vs_legit(
         .where(
             Customer.tenant_id == tid,
             Transaction.tenant_id == tid,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
         .group_by(Customer.customer_tier)
     )
@@ -210,7 +210,7 @@ async def get_activity_over_time(
         .where(
             Transaction.tenant_id == tid,
             Transaction.transaction_timestamp >= since,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
         .group_by(func.date(Transaction.transaction_timestamp))
         .order_by(func.date(Transaction.transaction_timestamp))
@@ -264,7 +264,7 @@ async def get_top_risky_customers(
         )
         .where(
             Transaction.tenant_id == tid,
-            Transaction.is_test == False,
+            Transaction.is_test == False,  # noqa: E712
         )
         .group_by(Transaction.customer_id)
         .subquery()

@@ -34,14 +34,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "ml", "models")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-from app.ml.feature_engineering import batch_features, get_feature_names
-from app.ml.anomaly_detector    import AnomalyDetector
-from app.ml.fraud_classifier    import FraudClassifier
-from app.ml.risk_scorer         import EnsembleScorer
-from app.ml.explainability      import SHAPExplainer
-from app.ml.model_registry      import ModelRegistry
-from app.ml.training.data_prep  import load_data, split_data, get_class_weight
-from app.ml.training.evaluate   import evaluate_model, save_evaluation_report
+from app.ml.feature_engineering import batch_features  # noqa: E402
+from app.ml.anomaly_detector    import AnomalyDetector  # noqa: E402
+from app.ml.fraud_classifier    import FraudClassifier  # noqa: E402
+from app.ml.risk_scorer         import EnsembleScorer  # noqa: E402
+from app.ml.explainability      import SHAPExplainer  # noqa: E402
+from app.ml.model_registry      import ModelRegistry  # noqa: E402
+from app.ml.training.data_prep  import load_data, split_data, get_class_weight  # noqa: E402
+from app.ml.training.evaluate   import evaluate_model, save_evaluation_report  # noqa: E402
 
 
 def main():
@@ -179,13 +179,13 @@ def main():
     print(f"  Precision:       {metrics['precision']:.4f}")
     print(f"  Recall:          {metrics['recall']:.4f}")
     print(f"\n  Models saved to: {MODELS_DIR}/")
-    print(f"    anomaly_detector_v1.pkl")
-    print(f"    fraud_classifier_v1.pkl  (XGBoost + RF + NN)")
-    print(f"    ensemble_scorer_v1.pkl")
-    print(f"    shap_explainer_v1.pkl")
+    print("    anomaly_detector_v1.pkl")
+    print("    fraud_classifier_v1.pkl  (XGBoost + RF + NN)")
+    print("    ensemble_scorer_v1.pkl")
+    print("    shap_explainer_v1.pkl")
     print(f"    feature_names_v1.json   ({len(feat_cols)} features)")
-    print(f"    evaluation_report.json")
-    print(f"    model_registry.json")
+    print("    evaluation_report.json")
+    print("    model_registry.json")
     print("="*60 + "\n")
     print("  Next: python scripts/upload_to_supabase.py  (if not done yet)")
     print("        Then proceed to Step 5 — API + Frontend wiring\n")

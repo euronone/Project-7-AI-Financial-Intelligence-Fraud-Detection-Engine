@@ -407,7 +407,7 @@ async def score_transaction(
                     Transaction.customer_id == customer_id,
                     Transaction.id != txn.id,
                     Transaction.transaction_timestamp >= since,
-                    Transaction.is_test == False,
+                    Transaction.is_test == False,  # noqa: E712
                 )
                 .order_by(Transaction.transaction_timestamp.desc())
                 .limit(200)
