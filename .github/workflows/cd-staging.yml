@@ -291,16 +291,21 @@ jobs:
             echo "Create the service at: https://console.aws.amazon.com/ecs/v2/clusters/$ECS_CLUSTER/create-service"
           fi
 
-      # ── Step 5: Health check (only if backend URL secret is set) ───────────
+      # ── Step 5: Health check (skipped when STAGING_BACKEND_URL secret is empty) ─
       - name: Verify staging health
-        if: ${{ secrets.STAGING_BACKEND_URL != '' }}
+        env:
+          STAGING_BACKEND_URL: ${{ secrets.STAGING_BACKEND_URL }}
         run: |
+          if [ -z "$STAGING_BACKEND_URL" ]; then
+            echo "STAGING_BACKEND_URL secret not set — skipping health check"
+            exit 0
+          fi
           echo "Verifying staging deployment..."
           max_attempts=20
           attempt=0
           while [ $attempt -lt $max_attempts ]; do
             status=$(curl -s -o /dev/null -w "%{http_code}" \
-              https://${{ secrets.STAGING_BACKEND_URL }}/api/v1/health || echo "000")
+              "https://$STAGING_BACKEND_URL/api/v1/health" || echo "000")
             if [ "$status" = "200" ]; then
               echo "✓ Staging backend healthy"
               exit 0
