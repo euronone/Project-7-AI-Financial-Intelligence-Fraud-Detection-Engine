@@ -182,15 +182,20 @@ jobs:
               --query taskDefinition > task-def-backend.json
           fi
 
-          # Update image in the task definition
+          # Strip read-only fields returned by describe-task-definition
+          # (taskDefinitionArn, revision, status, etc. are rejected by register-task-definition)
+          jq 'del(.taskDefinitionArn,.revision,.status,.requiresAttributes,
+                  .compatibilities,.registeredAt,.registeredBy,.deregisteredAt)' \
+            task-def-backend.json > task-def-backend-clean.json
+
+          # Update image
           jq --arg IMAGE "$ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG" \
             '.containerDefinitions[0].image = $IMAGE' \
-            task-def-backend.json > task-def-backend-updated.json
-          mv task-def-backend-updated.json task-def-backend.json
+            task-def-backend-clean.json > task-def-backend-final.json
 
           # Register updated task definition and get ARN
           NEW_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://task-def-backend.json \
+            --cli-input-json file://task-def-backend-final.json \
             --region ${{ env.AWS_REGION }} \
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "arn=$NEW_ARN" >> $GITHUB_OUTPUT
@@ -226,13 +231,18 @@ jobs:
               --query taskDefinition > task-def-frontend.json
           fi
 
+          # Strip read-only fields
+          jq 'del(.taskDefinitionArn,.revision,.status,.requiresAttributes,
+                  .compatibilities,.registeredAt,.registeredBy,.deregisteredAt)' \
+            task-def-frontend.json > task-def-frontend-clean.json
+
+          # Update image
           jq --arg IMAGE "$ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG" \
             '.containerDefinitions[0].image = $IMAGE' \
-            task-def-frontend.json > task-def-frontend-updated.json
-          mv task-def-frontend-updated.json task-def-frontend.json
+            task-def-frontend-clean.json > task-def-frontend-final.json
 
           NEW_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://task-def-frontend.json \
+            --cli-input-json file://task-def-frontend-final.json \
             --region ${{ env.AWS_REGION }} \
             --query 'taskDefinition.taskDefinitionArn' --output text)
           echo "arn=$NEW_ARN" >> $GITHUB_OUTPUT
