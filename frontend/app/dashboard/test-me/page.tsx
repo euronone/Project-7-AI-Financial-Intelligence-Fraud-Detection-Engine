@@ -417,8 +417,8 @@ export default function TestMePage() {
             : (f.card_number || `**** **** **** ${res.card_last4}`),
           // Auto-fill masked CVV and expiry
           cvv: res.masked_cvv || "***",
-          expiry_month: res.masked_expiry_month || f.expiry_month,
-          expiry_year: res.masked_expiry_year || f.expiry_year,
+          expiry_month: res.masked_expiry_month != null ? String(res.masked_expiry_month) : f.expiry_month,
+          expiry_year:  res.masked_expiry_year  != null ? String(res.masked_expiry_year)  : f.expiry_year,
         }));
         const pmLabel = primaryPm ? ` · ${primaryPm.display_label}` : "";
         setLookupStatus("found");
@@ -468,8 +468,8 @@ export default function TestMePage() {
             : (f.card_number || `**** **** **** ${res.card_last4}`),
           // Auto-fill masked CVV and expiry
           cvv: res.masked_cvv || "***",
-          expiry_month: res.masked_expiry_month || f.expiry_month,
-          expiry_year: res.masked_expiry_year || f.expiry_year,
+          expiry_month: res.masked_expiry_month != null ? String(res.masked_expiry_month) : f.expiry_month,
+          expiry_year:  res.masked_expiry_year  != null ? String(res.masked_expiry_year)  : f.expiry_year,
         }));
         const pmLabel = primaryPm ? ` · ${primaryPm.display_label}` : "";
         setLookupStatus("found");
@@ -492,15 +492,26 @@ export default function TestMePage() {
     setError(null);
     try {
       const rawYear = parseInt(form.expiry_year || "27");
-      const expiryYear = rawYear < 100 ? 2000 + rawYear : rawYear;
+      const expiryYear = isNaN(rawYear) ? 2027 : (rawYear < 100 ? 2000 + rawYear : rawYear);
 
       const isUpi = form.payment_method === "upi";
+
+      // Strip spaces, dashes and asterisks from the card number.
+      // If the result is shorter than 13 digits (e.g. a masked "**** **** **** 5678"
+      // that stripped down to "5678"), fall back to a valid test card number so
+      // the backend min_length=13 validator always passes.
+      const strippedCard = form.card_number.replace(/[\s\-\*]/g, "");
+      const resolvedCard = strippedCard.length >= 13 ? strippedCard : "4111111111111111";
+
+      // Normalise CVV: replace "***" (masked placeholder from lookup) with "123"
+      const resolvedCvv = /^\*+$/.test(form.cvv || "") ? "123" : (form.cvv || "123");
+
       const payload: Record<string, unknown> = {
         cardholder_name: form.cardholder_name || "Test User",
         payment_method:  form.payment_method,
         // Card fields — use defaults for UPI so backend validation passes
-        card_number:     isUpi ? "0000000000000000" : (form.card_number.replace(/\s|\*/g, "") || "4111111111111111"),
-        cvv:             isUpi ? "000" : (form.cvv || "123"),
+        card_number:     isUpi ? "0000000000000000" : resolvedCard,
+        cvv:             isUpi ? "000" : resolvedCvv,
         expiry_month:    isUpi ? 12 : parseInt(form.expiry_month || "12"),
         expiry_year:     isUpi ? 2030 : expiryYear,
         amount:          parseFloat(form.amount),

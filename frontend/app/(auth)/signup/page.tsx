@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { apiClient } from "@/lib/api-client";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import PrivacyBanner from "@/components/shared/PrivacyBanner";
 
 /* ─── Schemas ─────────────────────────────────────────── */
@@ -158,11 +159,34 @@ function SignupPage() {
     setStep(4);
   });
 
-  /* Final submit — always calls backend API */
+  /* Final submit — registers in Supabase Auth first, then backend */
   const handleSubmit = async () => {
     setError("");
     setLoading(true);
     try {
+      // Step 1: Register in Supabase Auth (if configured)
+      let supabase_uid: string | undefined;
+      if (isSupabaseConfigured && formData.email && formData.password) {
+        const { data: sbData, error: sbError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              full_name: formData.full_name,
+              institution_name: formData.institution_name,
+            },
+          },
+        });
+        if (sbError) {
+          // If user already exists in Supabase, still allow backend creation
+          if (!sbError.message.toLowerCase().includes("already registered")) {
+            throw new Error(`Supabase: ${sbError.message}`);
+          }
+        }
+        supabase_uid = sbData?.user?.id;
+      }
+
+      // Step 2: Create user in FinShield backend (with Supabase UID linked)
       const json = await apiClient.signup({
         email:            formData.email,
         password:         formData.password,
@@ -173,6 +197,7 @@ function SignupPage() {
         subscription_plan:selectedPlan,
         country_code:     formData.country === "India" ? "IN" : "US",
         signup_role:      signupRole,
+        supabase_uid,
       });
 
       const u = json.user as Record<string, unknown>;

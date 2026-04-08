@@ -18,7 +18,7 @@ interface TransactionDetailsPanelProps {
     decision?: string;
     risk_score?: number;
     fraud_category?: string;
-    fraud_risk_level?: string;
+    fraud_risk_level?: string | null;
     is_blocked?: boolean;
     is_flagged?: boolean;
     journey?: Record<string, any>;

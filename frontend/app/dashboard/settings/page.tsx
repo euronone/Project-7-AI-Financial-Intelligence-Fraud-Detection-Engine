@@ -46,9 +46,11 @@ const DB_TYPES: DbTypeDef[] = [
     badge: "Recommended",
     docs: "https://supabase.com/docs/guides/getting-started",
     fields: [
-      { key: "supabase_url",         label: "Project URL",       placeholder: "https://xyzabc.supabase.co" },
-      { key: "supabase_anon_key",    label: "Anon / Public Key", placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", secret: true, hint: "Found in Project Settings → API → Project API keys" },
-      { key: "supabase_service_key", label: "Service Role Key",  placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", secret: true, hint: "Required for server-side writes and RLS bypass" },
+      { key: "supabase_url",              label: "Project URL",                   placeholder: "https://xyzabc.supabase.co",              hint: "Found in Project Settings → General → Reference ID — e.g. https://<ref>.supabase.co" },
+      { key: "supabase_anon_key",         label: "Anon / Public Key",             placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", secret: true, hint: "SUPABASE_ANON_KEY — safe to use in browser. Project Settings → API → anon public" },
+      { key: "supabase_service_key",      label: "Service Key",                   placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", secret: true, hint: "SUPABASE_SERVICE_KEY — server-side only. Project Settings → API → service_role secret" },
+      { key: "supabase_service_role_key", label: "Service Role Key",              placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...", secret: true, hint: "SUPABASE_SERVICE_ROLE_KEY — bypasses RLS. Same JWT as Service Key; enter once if yours are identical" },
+      { key: "supabase_db_password",      label: "Database Password",             placeholder: "your-database-password",                  secret: true, hint: "SUPABASE_DB_PASSWORD — Postgres password. Project Settings → Database → Connection string → Password" },
     ],
     advancedFields: [
       { key: "schema_name", label: "Schema", placeholder: "public", hint: "PostgreSQL schema (default: public)" },
@@ -325,6 +327,50 @@ export default function SettingsPage() {
   const [testMessage, setTestMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  // Tracks which secret field keys already have a saved value on the server
+  const [savedSecretKeys, setSavedSecretKeys] = useState<Set<string>>(new Set());
+
+  // ── Load saved DB settings from backend on mount ─────────────────────────
+  useEffect(() => {
+    if (!token) return;
+    apiClient.getDbConfig(token).then((data) => {
+      if (!data.db_type) return;
+      setSelectedType(data.db_type as import("@/store/auth-store").DbType);
+      if (data.label) setLabel(data.label);
+
+      // Pre-fill non-secret fields
+      const vals: Record<string, string> = {};
+      if (data.supabase_url) vals.supabase_url = data.supabase_url;
+      if (data.host)         vals.host          = data.host;
+      if (data.port)         vals.port          = String(data.port);
+      if (data.db_name)      vals.db_name       = data.db_name;
+      if (data.db_user)      vals.db_user       = data.db_user;
+      if (data.schema_name)  vals.schema_name   = data.schema_name;
+      if (data.ssl_mode)     vals.ssl_mode      = data.ssl_mode;
+      if (data.pool_size)    vals.pool_size     = String(data.pool_size);
+      setFormValues(vals);
+
+      // Map has_xxx flags → field keys for "saved" badge display
+      const HAS_MAP: Record<string, string> = {
+        has_password:             "db_password",
+        has_anon_key:             "supabase_anon_key",
+        has_service_key:          "supabase_service_key",
+        has_service_role_key:     "supabase_service_role_key",
+        has_supabase_db_password: "supabase_db_password",
+        has_api_key:              "api_key",
+        has_aws_secret:           "aws_secret_access_key",
+        has_service_account:      "service_account_json",
+        has_planetscale_pass:     "planetscale_password",
+        has_redis_password:       "redis_password",
+      };
+      const saved = new Set<string>();
+      for (const [hasKey, fieldKey] of Object.entries(HAS_MAP)) {
+        if ((data as unknown as Record<string, unknown>)[hasKey]) saved.add(fieldKey);
+      }
+      setSavedSecretKeys(saved);
+    }).catch(() => {});
+  }, [token]);
 
   // ── Notification settings state ──────────────────────────────────────────
   const [notifCompanyEmail, setNotifCompanyEmail] = useState("");
@@ -381,21 +427,32 @@ export default function SettingsPage() {
   const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
-    await new Promise((r) => setTimeout(r, 1800));
-    const hasValues = dbDef.fields.some((f) => fv(f.key)?.trim());
-    if (hasValues) {
-      setTestResult("success");
-      setTestMessage(`${dbDef.name} credentials accepted — connection test passed.`);
-    } else {
+    try {
+      const payload = {
+        db_type: selectedType,
+        ...Object.fromEntries(
+          [...dbDef.fields, ...(dbDef.advancedFields || [])].map((f) => [f.key, fv(f.key) || undefined])
+        ),
+      };
+      if (token) {
+        const res = await apiClient.testDbConnection(payload, token);
+        setTestResult(res.success ? "success" : "error");
+        setTestMessage(res.message + (res.latency_ms ? ` (${res.latency_ms}ms)` : ""));
+      } else {
+        setTestResult("error");
+        setTestMessage("Not authenticated — please log in again.");
+      }
+    } catch (e: unknown) {
       setTestResult("error");
-      setTestMessage("Fill in at least the required fields before testing.");
+      setTestMessage(e instanceof Error ? e.message : "Connection test failed.");
+    } finally {
+      setTesting(false);
     }
-    setTesting(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 400));
+    setSaveError("");
 
     const config: DbConfig = {
       db_type: selectedType,
@@ -405,10 +462,38 @@ export default function SettingsPage() {
       ),
     } as DbConfig;
 
-    updateDbConfig(config);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      if (token) {
+        await apiClient.saveDbConfig(config, token);
+        // Refresh saved-secret-keys after a successful save so badges update
+        const refreshed = await apiClient.getDbConfig(token);
+        const HAS_MAP: Record<string, string> = {
+          has_password: "db_password", has_anon_key: "supabase_anon_key",
+          has_service_key: "supabase_service_key", has_service_role_key: "supabase_service_role_key",
+          has_supabase_db_password: "supabase_db_password", has_api_key: "api_key",
+          has_aws_secret: "aws_secret_access_key", has_service_account: "service_account_json",
+          has_planetscale_pass: "planetscale_password", has_redis_password: "redis_password",
+        };
+        const updated = new Set<string>();
+        for (const [hk, fk] of Object.entries(HAS_MAP)) {
+          if ((refreshed as unknown as Record<string, unknown>)[hk]) updated.add(fk);
+        }
+        setSavedSecretKeys(updated);
+        // Clear secret fields from local form state (they're now saved)
+        setFormValues((prev) => {
+          const next = { ...prev };
+          for (const fk of updated) delete next[fk];
+          return next;
+        });
+      }
+      updateDbConfig(config);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : "Save failed — check your connection.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const planColor =
@@ -558,6 +643,7 @@ export default function SettingsPage() {
                     field={field}
                     value={fv(field.key)}
                     shown={showSecrets[field.key]}
+                    isSaved={field.secret ? savedSecretKeys.has(field.key) && !formValues[field.key] : false}
                     onChange={(val) => setFormValues((p) => ({ ...p, [field.key]: val }))}
                     onToggleSecret={() => setShowSecrets((p) => ({ ...p, [field.key]: !p[field.key] }))}
                   />
@@ -582,6 +668,7 @@ export default function SettingsPage() {
                           field={field}
                           value={fv(field.key)}
                           shown={showSecrets[field.key]}
+                          isSaved={field.secret ? savedSecretKeys.has(field.key) && !formValues[field.key] : false}
                           onChange={(val) => setFormValues((p) => ({ ...p, [field.key]: val }))}
                           onToggleSecret={() => setShowSecrets((p) => ({ ...p, [field.key]: !p[field.key] }))}
                         />
@@ -613,6 +700,16 @@ export default function SettingsPage() {
                 </button>
               </div>
 
+              {saveError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-4 flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444]"
+                >
+                  <AlertCircle size={14} />
+                  {saveError}
+                </motion.div>
+              )}
               {testResult && (
                 <motion.div
                   initial={{ opacity: 0, y: -6 }}
@@ -926,12 +1023,14 @@ function FieldInput({
   field,
   value,
   shown,
+  isSaved = false,
   onChange,
   onToggleSecret,
 }: {
   field: DbFieldDef;
   value: string;
   shown: boolean;
+  isSaved?: boolean;
   onChange: (v: string) => void;
   onToggleSecret: () => void;
 }) {
@@ -942,6 +1041,11 @@ function FieldInput({
     <div>
       <div className="flex items-center gap-2 mb-1.5">
         <label className="text-sm text-gray-400 font-medium">{field.label}</label>
+        {isSaved && (
+          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-mono bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/25">
+            🔒 Saved
+          </span>
+        )}
       </div>
       {field.hint && <div className="text-xs text-gray-600 mb-1.5">{field.hint}</div>}
       {field.type === "select" ? (
@@ -959,8 +1063,10 @@ function FieldInput({
             type={inputType}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            placeholder={field.placeholder}
-            className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors pr-10"
+            placeholder={isSaved ? "Enter new value to update…" : field.placeholder}
+            className={`w-full bg-[#111118] border rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors pr-10 ${
+              isSaved ? "border-[#00FF87]/25 focus:border-[#00FF87]/60" : "border-[#1E1E2E] focus:border-[#00FF87]/60"
+            }`}
           />
           {isSecret && (
             <button

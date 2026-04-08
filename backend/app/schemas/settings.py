@@ -53,7 +53,9 @@ class DbConnectionRequest(BaseModel):
     # ── Supabase ─────────────────────────────────────────────────────────
     supabase_url: Optional[str] = None
     supabase_anon_key: Optional[str] = None
-    supabase_service_key: Optional[str] = None
+    supabase_service_key: Optional[str] = None          # SUPABASE_SERVICE_KEY
+    supabase_service_role_key: Optional[str] = None     # SUPABASE_SERVICE_ROLE_KEY (same JWT, alternate env-var name)
+    supabase_db_password: Optional[str] = None          # SUPABASE_DB_PASSWORD (Postgres DB password)
 
     # ── Oracle specific ──────────────────────────────────────────────────
     oracle_service_name: Optional[str] = None          # Oracle service name or SID

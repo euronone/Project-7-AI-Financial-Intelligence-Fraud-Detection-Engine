@@ -83,7 +83,10 @@
       "Bash(rm -f IMPLEMENTATION_COMPLETE.md)",
       "Bash(rm -f GITHUB_ACTIONS_QUICKSTART.md)",
       "Bash(rmdir ./frontend/app/landing)",
-      "Bash(rmdir ./frontend/components/ui)"
+      "Bash(rmdir ./frontend/components/ui)",
+      "Bash(findstr \"8003\\\\|8000\\\\|8001\")",
+      "Bash(.venv/Scripts/python.exe -c \"import fastapi, uvicorn; print\\('Dependencies OK'\\)\")",
+      "Bash(.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8003 --host 0.0.0.0)"
     ],
     "additionalDirectories": [
       "\\tmp",

@@ -106,7 +106,12 @@ class SimulatorRequest(BaseModel):
     @field_validator("card_number")
     @classmethod
     def strip_spaces(cls, v: str) -> str:
-        return re.sub(r"\s+", "", v)
+        # Remove spaces, dashes, and asterisks (e.g. masked "**** **** **** 5678").
+        cleaned = re.sub(r"[\s\-\*]", "", v)
+        # If masked input reduced it below 13 digits, use a safe placeholder.
+        if len(cleaned) < 13:
+            return "0000000000000000"
+        return cleaned
 
     @field_validator("mobile_number")
     @classmethod
@@ -202,11 +207,13 @@ async def lookup_customer_by_phone(
         if primary.get("card_last4"):
             card_last4 = primary["card_last4"]
 
-    # Extract primary payment method details (masked)
+    # Extract primary payment method details (masked).
+    # to_dict() uses "card_expiry_month" / "card_expiry_year" keys.
+    # CVV is NEVER stored — always return placeholder "***".
     primary_pm = payment_methods[0] if payment_methods else {}
-    masked_cvv = "***" if primary_pm.get("cvv") else ""
-    masked_expiry_month = primary_pm.get("expiry_month", "")
-    masked_expiry_year = primary_pm.get("expiry_year", "")
+    masked_cvv = "***"  # CVV never stored; placeholder so frontend can show field
+    masked_expiry_month = primary_pm.get("card_expiry_month") or ""
+    masked_expiry_year = primary_pm.get("card_expiry_year") or ""
 
     return {
         "found": True,
