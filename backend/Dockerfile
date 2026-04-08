@@ -13,14 +13,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
-RUN pip install --no-cache-dir poetry==1.8.3
+RUN pip install --no-cache-dir "poetry>=1.8.0,<2.0.0"
 
 # Copy dependency files
-COPY pyproject.toml poetry.lock* ./
+COPY pyproject.toml poetry.lock ./
 
-# Install Python dependencies with Poetry
+# Install Python dependencies with Poetry (skip dev group)
 RUN poetry config virtualenvs.in-project true && \
-    poetry install --no-dev --no-interaction --no-ansi
+    poetry install --without dev --no-interaction --no-ansi
 
 # Stage 2: Runtime
 FROM python:3.12-slim

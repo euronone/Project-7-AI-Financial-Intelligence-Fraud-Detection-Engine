@@ -179,7 +179,7 @@ local.settings.json
 # ===========================================
 # DOCKER
 # ===========================================
-.dockerignore
+# .dockerignore  ← must be committed for CI Docker builds
 docker-compose.override.yml
 docker-compose.*.yml
 

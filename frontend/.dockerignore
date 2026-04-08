@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Node.js
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js
+.next
+out
+
+# Environment files (injected at runtime)
+.env
+.env.local
+.env*.local
+
+# Tests & CI
+__tests__
+*.test.*
+*.spec.*
+coverage
+.github
+.gitlab-ci.yml
+
+# Development tools
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Docs
+README.md
+*.md
+
+# Large generated files
+*.log

@@ -83,6 +83,13 @@ jobs:
         id: git-sha
         run: echo "short-sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+      - name: Ensure ECR repositories exist
+        run: |
+          aws ecr describe-repositories --repository-names $ECR_REGISTRY_BACKEND --region ${{ env.AWS_REGION }} 2>/dev/null || \
+            aws ecr create-repository --repository-name $ECR_REGISTRY_BACKEND --region ${{ env.AWS_REGION }}
+          aws ecr describe-repositories --repository-names $ECR_REGISTRY_FRONTEND --region ${{ env.AWS_REGION }} 2>/dev/null || \
+            aws ecr create-repository --repository-name $ECR_REGISTRY_FRONTEND --region ${{ env.AWS_REGION }}
+
       - name: Build & push backend image to ECR
         id: build-backend
         env:
