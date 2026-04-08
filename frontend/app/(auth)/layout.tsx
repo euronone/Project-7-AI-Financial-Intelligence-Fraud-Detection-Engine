@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Shield, Lock } from "lucide-react";
-import PrivacyBanner from "@/components/shared/PrivacyBanner";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (

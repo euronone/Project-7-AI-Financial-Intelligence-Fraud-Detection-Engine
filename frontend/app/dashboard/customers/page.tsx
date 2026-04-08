@@ -188,7 +188,6 @@ export default function CustomersPage() {
 
   const maxActivity = activityRows.length > 0 ? Math.max(...activityRows.map(r => r.total), 1) : 1;
   const maxRisk = riskDist.reduce((m, b) => Math.max(m, b.count), 1);
-  const maxFraudLegit = fraudLegit.reduce((m, t) => Math.max(m, t.fraud + t.legitimate), 1);
   const totalPages = Math.ceil(totalCustomers / pageSize);
 
   return (

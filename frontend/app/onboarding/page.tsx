@@ -153,8 +153,6 @@ export default function OnboardingPage() {
   const canProceedStep2 =
     selectedType !== null;
 
-  const canProceedStep3 =
-    dbDef.fields.every((f) => formValues[f]?.trim()) || true; // allow skip
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center px-4 py-12">

@@ -4,7 +4,7 @@ import { useAuthStore, isAdmin } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { Shield, LogOut, Loader2, Database, Settings, AlertTriangle,
-         TrendingUp, Activity, Bell, Users, FlaskConical, RefreshCw, Brain, Table } from "lucide-react";
+         TrendingUp, Activity, Users, FlaskConical, RefreshCw, Brain, Table } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
 

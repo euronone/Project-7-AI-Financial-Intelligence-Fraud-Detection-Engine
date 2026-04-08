@@ -8,11 +8,9 @@ import ArchitectureSection from "@/components/landing/ArchitectureSection";
 import FraudLogicSection from "@/components/landing/FraudLogicSection";
 import SecuritySection from "@/components/landing/SecuritySection";
 import PrivacySection from "@/components/landing/PrivacySection";
-import TestimonialsSection from "@/components/landing/TestimonialsSection";
 import CTASection from "@/components/landing/CTASection";
 
 // Lazy load non-critical sections for better performance
-const LazyPrivacySection = lazy(() => import("@/components/landing/PrivacySection"));
 const LazyTestimonialsSection = lazy(() => import("@/components/landing/TestimonialsSection"));
 
 function SectionLoader() {

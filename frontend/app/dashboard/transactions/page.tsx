@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import {
   Shield, LogOut, Settings, AlertTriangle, TrendingUp, Activity,
-  Bell, Users, Database, FlaskConical, Search, RefreshCw, Loader2,
+  Users, Database, FlaskConical, Search, RefreshCw, Loader2,
   ChevronLeft, ChevronRight, Brain, Table,
 } from "lucide-react";
 import Link from "next/link";

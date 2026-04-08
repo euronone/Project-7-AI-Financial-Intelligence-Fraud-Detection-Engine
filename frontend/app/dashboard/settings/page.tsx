@@ -6,7 +6,7 @@ import {
   Shield, Database, Save, Zap, Loader2, CheckCircle2,
   AlertCircle, Eye, EyeOff, ExternalLink, Settings, Bell,
   Key, User, CreditCard, ChevronDown, ChevronUp,
-  Mail, MessageSquare, Brain, Table,
+  Mail, MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuthStore, DbConfig, DbType } from "@/store/auth-store";
@@ -418,7 +418,6 @@ export default function SettingsPage() {
   };
 
   const dbDef = DB_TYPES.find((d) => d.id === selectedType)!;
-  const allFields = [...dbDef.fields, ...(showAdvanced ? (dbDef.advancedFields || []) : [])];
 
   function fv(key: string) {
     return formValues[key] ?? (dbConfig as Record<string, string> | null)?.[key] ?? "";

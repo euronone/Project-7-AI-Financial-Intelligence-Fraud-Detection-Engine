@@ -38,7 +38,6 @@ export function TransactionDetailsPanel({ transaction = {}, result = {}, decisio
   const countryCode = transaction?.country_code || "—";
   const channel = transaction?.channel || "—";
   const purchaseType = transaction?.purchase_type || "—";
-  const deviceType = transaction?.device_type || "—";
   const isNewDevice = transaction?.is_new_device === true;
   const decision = result?.decision || "—";
   const riskScore = result?.risk_score ?? 0;
