@@ -40,8 +40,8 @@ venv.bak/
 conda/
 env*/
 
-# Poetry
-poetry.lock
+# Poetry — lock file MUST be committed for reproducible CI installs
+# poetry.lock
 
 # Testing
 .coverage

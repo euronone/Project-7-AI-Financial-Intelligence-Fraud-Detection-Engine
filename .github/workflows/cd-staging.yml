@@ -47,18 +47,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/poetry.lock
-
-      - name: Install Poetry
-        run: pip install poetry
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: poetry install --no-interaction
 
       - name: Lint backend
-        run: poetry run ruff check backend/
+        # Install only ruff — no need to pull 123 ML packages just to lint
+        run: |
+          pip install ruff --quiet
+          ruff check backend/
 
   # ── AWS deploy (skipped for Dependabot — it cannot access secrets) ────────
   deploy-staging:
