@@ -87,7 +87,8 @@
       "Bash(findstr \"8003\\\\|8000\\\\|8001\")",
       "Bash(.venv/Scripts/python.exe -c \"import fastapi, uvicorn; print\\('Dependencies OK'\\)\")",
       "Bash(.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8003 --host 0.0.0.0)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(echo \"EXIT_CODE: $?\")"
     ],
     "additionalDirectories": [
       "\\tmp",
