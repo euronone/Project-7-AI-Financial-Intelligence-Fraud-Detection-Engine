@@ -17,6 +17,11 @@ env:
   AWS_REGION: us-east-1
   ECR_REGISTRY_BACKEND: finshield-backend
   ECR_REGISTRY_FRONTEND: finshield-frontend
+  ECS_CLUSTER: finshield-cluster-staging
+  ECS_SERVICE_BACKEND: finshield-backend-service-staging
+  ECS_SERVICE_FRONTEND: finshield-frontend-service-staging
+  TASK_DEF_BACKEND: finshield-backend-task
+  TASK_DEF_FRONTEND: finshield-frontend-task
 
 jobs:
   # ── CI gate (runs for ALL triggers including Dependabot) ──────────────────
@@ -83,13 +88,19 @@ jobs:
         id: git-sha
         run: echo "short-sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+      # ── Step 1: Ensure ECR repositories exist ──────────────────────────────
       - name: Ensure ECR repositories exist
         run: |
-          aws ecr describe-repositories --repository-names $ECR_REGISTRY_BACKEND --region ${{ env.AWS_REGION }} 2>/dev/null || \
-            aws ecr create-repository --repository-name $ECR_REGISTRY_BACKEND --region ${{ env.AWS_REGION }}
-          aws ecr describe-repositories --repository-names $ECR_REGISTRY_FRONTEND --region ${{ env.AWS_REGION }} 2>/dev/null || \
-            aws ecr create-repository --repository-name $ECR_REGISTRY_FRONTEND --region ${{ env.AWS_REGION }}
+          aws ecr describe-repositories --repository-names $ECR_REGISTRY_BACKEND \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || \
+            aws ecr create-repository --repository-name $ECR_REGISTRY_BACKEND \
+              --region ${{ env.AWS_REGION }}
+          aws ecr describe-repositories --repository-names $ECR_REGISTRY_FRONTEND \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || \
+            aws ecr create-repository --repository-name $ECR_REGISTRY_FRONTEND \
+              --region ${{ env.AWS_REGION }}
 
+      # ── Step 2: Build & push images ────────────────────────────────────────
       - name: Build & push backend image to ECR
         id: build-backend
         env:
@@ -118,53 +129,171 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:staging
           echo "image=$ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Download backend task definition
+      # ── Step 3: Bootstrap ECS infrastructure (first-run idempotent) ────────
+      - name: Bootstrap ECS cluster
         run: |
-          aws ecs describe-task-definition \
-            --task-definition finshield-backend-task \
+          STATUS=$(aws ecs describe-clusters \
+            --clusters $ECS_CLUSTER \
             --region ${{ env.AWS_REGION }} \
-            --query taskDefinition > task-def-backend.json
+            --query 'clusters[0].status' --output text 2>/dev/null || echo "MISSING")
+          if [ "$STATUS" != "ACTIVE" ]; then
+            echo "Creating ECS cluster: $ECS_CLUSTER"
+            aws ecs create-cluster \
+              --cluster-name $ECS_CLUSTER \
+              --region ${{ env.AWS_REGION }}
+          else
+            echo "Cluster $ECS_CLUSTER already ACTIVE"
+          fi
 
-      - name: Render backend task definition with new image
+      - name: Resolve AWS Account ID
+        id: account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+
+      - name: Register or update backend task definition
         id: task-def-backend
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-def-backend.json
-          container-name: finshield-backend
-          image: ${{ steps.build-backend.outputs.image }}
-
-      - name: Deploy backend to ECS staging
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def-backend.outputs.task-definition }}
-          service: finshield-backend-service-staging
-          cluster: finshield-cluster-staging
-          wait-for-service-stability: true
-
-      - name: Download frontend task definition
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ACCOUNT_ID: ${{ steps.account.outputs.id }}
+          IMAGE_TAG: ${{ steps.git-sha.outputs.short-sha }}
         run: |
-          aws ecs describe-task-definition \
-            --task-definition finshield-frontend-task \
-            --region ${{ env.AWS_REGION }} \
-            --query taskDefinition > task-def-frontend.json
+          # Check if task definition already exists
+          if aws ecs describe-task-definition \
+              --task-definition $TASK_DEF_BACKEND \
+              --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "Task definition exists — fetching current revision"
+            aws ecs describe-task-definition \
+              --task-definition $TASK_DEF_BACKEND \
+              --region ${{ env.AWS_REGION }} \
+              --query taskDefinition > task-def-backend.json
+          else
+            echo "Task definition not found — registering from template"
+            sed \
+              -e "s|ACCOUNT_ID|$ACCOUNT_ID|g" \
+              -e "s|BACKEND_IMAGE_PLACEHOLDER|$ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG|g" \
+              .aws/task-def-backend-template.json > task-def-register-backend.json
+            aws ecs register-task-definition \
+              --cli-input-json file://task-def-register-backend.json \
+              --region ${{ env.AWS_REGION }}
+            aws ecs describe-task-definition \
+              --task-definition $TASK_DEF_BACKEND \
+              --region ${{ env.AWS_REGION }} \
+              --query taskDefinition > task-def-backend.json
+          fi
 
-      - name: Render frontend task definition with new image
+          # Update image in the task definition
+          jq --arg IMAGE "$ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-def-backend.json > task-def-backend-updated.json
+          mv task-def-backend-updated.json task-def-backend.json
+
+          # Register updated task definition and get ARN
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-def-backend.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$NEW_ARN" >> $GITHUB_OUTPUT
+          echo "Registered: $NEW_ARN"
+
+      - name: Register or update frontend task definition
         id: task-def-frontend
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-def-frontend.json
-          container-name: finshield-frontend
-          image: ${{ steps.build-frontend.outputs.image }}
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ACCOUNT_ID: ${{ steps.account.outputs.id }}
+          IMAGE_TAG: ${{ steps.git-sha.outputs.short-sha }}
+        run: |
+          if aws ecs describe-task-definition \
+              --task-definition $TASK_DEF_FRONTEND \
+              --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            echo "Task definition exists — fetching current revision"
+            aws ecs describe-task-definition \
+              --task-definition $TASK_DEF_FRONTEND \
+              --region ${{ env.AWS_REGION }} \
+              --query taskDefinition > task-def-frontend.json
+          else
+            echo "Task definition not found — registering from template"
+            sed \
+              -e "s|ACCOUNT_ID|$ACCOUNT_ID|g" \
+              -e "s|FRONTEND_IMAGE_PLACEHOLDER|$ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG|g" \
+              .aws/task-def-frontend-template.json > task-def-register-frontend.json
+            aws ecs register-task-definition \
+              --cli-input-json file://task-def-register-frontend.json \
+              --region ${{ env.AWS_REGION }}
+            aws ecs describe-task-definition \
+              --task-definition $TASK_DEF_FRONTEND \
+              --region ${{ env.AWS_REGION }} \
+              --query taskDefinition > task-def-frontend.json
+          fi
+
+          jq --arg IMAGE "$ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-def-frontend.json > task-def-frontend-updated.json
+          mv task-def-frontend-updated.json task-def-frontend.json
+
+          NEW_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-def-frontend.json \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$NEW_ARN" >> $GITHUB_OUTPUT
+          echo "Registered: $NEW_ARN"
+
+      # ── Step 4: Deploy to ECS services (if they exist) ─────────────────────
+      - name: Deploy backend to ECS staging
+        run: |
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE_BACKEND \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")
+
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            echo "Updating ECS service with new task definition"
+            aws ecs update-service \
+              --cluster $ECS_CLUSTER \
+              --service $ECS_SERVICE_BACKEND \
+              --task-definition ${{ steps.task-def-backend.outputs.arn }} \
+              --region ${{ env.AWS_REGION }} \
+              --force-new-deployment
+            aws ecs wait services-stable \
+              --cluster $ECS_CLUSTER \
+              --services $ECS_SERVICE_BACKEND \
+              --region ${{ env.AWS_REGION }}
+            echo "Backend service updated and stable"
+          else
+            echo "⚠️  ECS service '$ECS_SERVICE_BACKEND' not found — images pushed to ECR and task definition registered."
+            echo "Create the service at: https://console.aws.amazon.com/ecs/v2/clusters/$ECS_CLUSTER/create-service"
+          fi
 
       - name: Deploy frontend to ECS staging
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def-frontend.outputs.task-definition }}
-          service: finshield-frontend-service-staging
-          cluster: finshield-cluster-staging
-          wait-for-service-stability: true
+        run: |
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE_FRONTEND \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")
 
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            echo "Updating ECS service with new task definition"
+            aws ecs update-service \
+              --cluster $ECS_CLUSTER \
+              --service $ECS_SERVICE_FRONTEND \
+              --task-definition ${{ steps.task-def-frontend.outputs.arn }} \
+              --region ${{ env.AWS_REGION }} \
+              --force-new-deployment
+            aws ecs wait services-stable \
+              --cluster $ECS_CLUSTER \
+              --services $ECS_SERVICE_FRONTEND \
+              --region ${{ env.AWS_REGION }}
+            echo "Frontend service updated and stable"
+          else
+            echo "⚠️  ECS service '$ECS_SERVICE_FRONTEND' not found — images pushed to ECR and task definition registered."
+            echo "Create the service at: https://console.aws.amazon.com/ecs/v2/clusters/$ECS_CLUSTER/create-service"
+          fi
+
+      # ── Step 5: Health check (only if backend URL secret is set) ───────────
       - name: Verify staging health
+        if: ${{ secrets.STAGING_BACKEND_URL != '' }}
         run: |
           echo "Verifying staging deployment..."
           max_attempts=20
@@ -184,10 +313,12 @@ jobs:
           exit 1
 
       - name: Post deployment summary
-        if: success()
+        if: always()
         run: |
-          echo "### ✅ Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "### Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** \`${{ steps.git-sha.outputs.short-sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Backend image:** \`${{ steps.build-backend.outputs.image }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Frontend image:** \`${{ steps.build-frontend.outputs.image }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cluster:** finshield-cluster-staging" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backend task def:** \`${{ steps.task-def-backend.outputs.arn }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Frontend task def:** \`${{ steps.task-def-frontend.outputs.arn }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster:** \`$ECS_CLUSTER\`" >> $GITHUB_STEP_SUMMARY
