@@ -367,6 +367,7 @@ export const apiClient = {
       data_window_days: number;
       auto_optimize: boolean;
       use_custom_columns: boolean;
+      test_size: number;
     },
     token: string
   ) =>

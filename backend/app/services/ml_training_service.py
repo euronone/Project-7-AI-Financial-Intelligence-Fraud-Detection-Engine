@@ -35,7 +35,7 @@ import pandas as pd
 
 from sklearn.ensemble import IsolationForest, RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score
+from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, roc_curve
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
@@ -306,21 +306,37 @@ def _score_unsupervised(algo_id: str, params: dict, X_all: np.ndarray) -> np.nda
     return (raw - raw.min()) / (rng + 1e-9) if rng > 1e-9 else raw
 
 
-def _compute_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float = 0.5) -> dict:
-    """Return precision/recall/F1/AUC-ROC for a score array."""
+def _compute_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float | None = None) -> dict:
+    """Return precision/recall/F1/AUC-ROC for a score array.
+
+    When threshold is None (default), the optimal cut-off is found by
+    maximising Youden's J statistic (sensitivity + specificity - 1) on the
+    ROC curve.  This is far more reliable than a fixed 0.5 when fraud is rare.
+    """
     if len(y_true) == 0 or y_true.sum() == 0:
         return {}
-    y_pred = (scores >= threshold).astype(int)
     try:
         auc = float(roc_auc_score(y_true, scores))
     except Exception:
         auc = 0.0
+
+    # Find optimal threshold if not supplied
+    if threshold is None:
+        try:
+            fpr, tpr, thresholds = roc_curve(y_true, scores)
+            j_scores = tpr - fpr          # Youden's J = sensitivity + specificity - 1
+            best_idx = int(np.argmax(j_scores))
+            threshold = float(thresholds[best_idx])
+        except Exception:
+            threshold = 0.5
+
+    y_pred = (scores >= threshold).astype(int)
     return {
         "precision": round(float(precision_score(y_true, y_pred, zero_division=0)), 4),
         "recall":    round(float(recall_score(y_true, y_pred, zero_division=0)), 4),
         "f1_score":  round(float(f1_score(y_true, y_pred, zero_division=0)), 4),
         "auc_roc":   round(auc, 4),
-        "threshold": threshold,
+        "threshold": round(float(threshold), 4),
         "test_samples": int(len(y_true)),
         "fraud_samples": int(y_true.sum()),
     }
@@ -415,6 +431,7 @@ def _sync_training_pipeline(
     cust_records: list[dict],
     auto_optimize: bool,
     schema_mapping: dict | None = None,
+    test_size: float = 0.20,
 ) -> dict:
     """
     CPU-bound training pipeline. Runs in a ThreadPoolExecutor thread.
@@ -460,26 +477,43 @@ def _sync_training_pipeline(
 
     # ── Stage 3: Feature engineering ─────────────────────────────────────────
     log(f"Engineering features for {len(txn_df):,} transactions…", pct=22)
+
+    # Extract raw labels BEFORE feature engineering (using original DataFrame order)
+    has_labels_raw = "fraud_category" in txn_df.columns
+    if has_labels_raw:
+        y_raw = (txn_df["fraud_category"] == "fraudulent").astype(int).values
+    else:
+        y_raw = None
+
+    orig_pos: np.ndarray | None = None
     try:
-        # batch_features returns (ndarray, feat_cols, orig_pos) — unpack accordingly
+        # batch_features returns (ndarray, feat_cols, orig_pos) where orig_pos
+        # holds the original row indices BEFORE the internal sort by
+        # [customer_id, timestamp].  We MUST use it to re-align labels.
         result_fe = batch_features(txn_df, cust_df)
         if isinstance(result_fe, tuple):
-            X_all = result_fe[0]          # ndarray is always the first element
+            X_all    = result_fe[0]   # feature matrix (sorted order)
+            orig_pos = result_fe[2] if len(result_fe) > 2 else None
         else:
-            X_all = result_fe             # future-proof: plain ndarray is also fine
+            X_all = result_fe
         X_all = np.array(X_all, dtype=np.float32)
     except Exception as exc:
         log(f"Feature engineering warning: {exc} — using basic numeric features")
         numeric_cols = txn_df.select_dtypes(include=[np.number]).columns.tolist()
         X_all = txn_df[numeric_cols].fillna(0).values.astype(np.float32)
+        orig_pos = None
 
     n_samples, n_features = X_all.shape
     log(f"Feature matrix: {n_samples:,} rows × {n_features} features", pct=30)
 
-    # Labels (may not exist for unsupervised-only run)
-    has_labels = "fraud_category" in txn_df.columns
+    # Re-align labels to match the sorted feature matrix row order
+    has_labels = has_labels_raw and y_raw is not None
     if has_labels:
-        y_all = (txn_df["fraud_category"] == "fraudulent").astype(int).values
+        if orig_pos is not None and len(orig_pos) == n_samples:
+            y_all = y_raw[orig_pos]
+            log(f"Labels re-aligned via orig_pos ({n_samples:,} rows).")
+        else:
+            y_all = y_raw
         fraud_count = int(y_all.sum())
         log(f"Labels: {fraud_count} fraud / {n_samples - fraud_count} legitimate")
     else:
@@ -497,7 +531,7 @@ def _sync_training_pipeline(
         spw = float(max(1, (n_samples - fraud_count))) / float(max(1, fraud_count))
         try:
             X_train, X_test, y_train, y_test = train_test_split(
-                X_scaled, y_all, test_size=0.20, stratify=y_all, random_state=42
+                X_scaled, y_all, test_size=test_size, stratify=y_all, random_state=42
             )
         except ValueError:
             X_train, X_test, y_train, y_test = (
@@ -505,7 +539,8 @@ def _sync_training_pipeline(
             )
         log(
             f"Train/test split: {len(X_train):,}/{len(X_test):,}  "
-            f"(scale_pos_weight={spw:.1f})"
+            f"({int((1-test_size)*100)}/{int(test_size*100)} split, "
+            f"scale_pos_weight={spw:.1f})"
         )
     else:
         spw = 10.0
@@ -527,9 +562,14 @@ def _sync_training_pipeline(
                 # Determine contamination from label ratio
                 contamination = max(0.01, min(0.4, float(y_all.mean()) or 0.05))
                 default_params: dict = {"contamination": contamination, "n_estimators": 150}
-                scores = _score_unsupervised(algo_id, default_params, X_scaled)
-                algo_scores[algo_id] = scores
-                m = _compute_metrics(y_all, scores) if has_labels and fraud_count >= 5 else {}
+                scores_all = _score_unsupervised(algo_id, default_params, X_scaled)
+                m = _compute_metrics(y_all, scores_all) if has_labels and fraud_count >= 5 else {}
+                # Unsupervised models score on the full dataset (X_scaled), while
+                # supervised models score only on X_test. When both are selected,
+                # keep unsupervised out of algo_scores to prevent shape mismatch
+                # in the ensemble (they still appear in algo_metrics for display).
+                if not do_supervised:
+                    algo_scores[algo_id] = scores_all
                 algo_metrics[algo_id] = m
                 algo_models[algo_id] = {"type": "unsupervised", "params": default_params}
                 log(
@@ -670,6 +710,7 @@ class MLTrainingService:
         auto_optimize: bool,
         use_custom_columns: bool,
         parent_job_id: str | None = None,
+        test_size: float = 0.20,
     ) -> TrainingJob:
         """
         Create a TrainingJob record, seed the in-memory cache, and
@@ -710,6 +751,7 @@ class MLTrainingService:
                 data_window_days=data_window_days,
                 auto_optimize=auto_optimize,
                 use_custom_columns=use_custom_columns,
+                test_size=test_size,
             )
         )
 
@@ -950,6 +992,7 @@ class MLTrainingService:
         data_window_days: int,
         auto_optimize: bool,
         use_custom_columns: bool,
+        test_size: float = 0.20,
     ) -> None:
         """
         Runs as an asyncio task.
@@ -1101,6 +1144,7 @@ class MLTrainingService:
                     cust_records=cust_records,
                     auto_optimize=auto_optimize,
                     schema_mapping=effective_schema,
+                    test_size=test_size,
                 ),
             )
 

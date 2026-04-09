@@ -53,6 +53,12 @@ class StartTrainingRequest(BaseModel):
         default=True,
         description="Apply enabled/disabled column flags from the Schema Mapping page.",
     )
+    test_size: float = Field(
+        default=0.20,
+        ge=0.05,
+        le=0.40,
+        description="Fraction of data held out for evaluation (0.20 = 80/20 split, 0.10 = 90/10).",
+    )
 
 
 class ReoptimizeRequest(BaseModel):
@@ -133,6 +139,7 @@ async def start_training(
             data_window_days=body.data_window_days,
             auto_optimize=body.auto_optimize,
             use_custom_columns=body.use_custom_columns,
+            test_size=body.test_size,
         )
     except Exception as exc:
         logger.exception("Failed to start training job")

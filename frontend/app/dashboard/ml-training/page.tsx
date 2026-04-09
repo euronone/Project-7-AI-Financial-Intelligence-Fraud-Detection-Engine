@@ -50,6 +50,12 @@ const WINDOW_OPTIONS = [
   { label: "All time", value: 0 },
 ];
 
+const SPLIT_OPTIONS = [
+  { label: "80 / 20", value: 0.20, hint: "Train 80% · Test 20% (default)" },
+  { label: "90 / 10", value: 0.10, hint: "Train 90% · Test 10% (more data)" },
+  { label: "70 / 30", value: 0.30, hint: "Train 70% · Test 30% (safer estimate)" },
+];
+
 const RE_WINDOW_OPTIONS = [
   { label: "90 days",  value: 90 },
   { label: "180 days", value: 180 },
@@ -183,6 +189,7 @@ export default function MLTrainingPage() {
     new Set(["xgboost", "random_forest", "isolation_forest"])
   );
   const [windowDays, setWindowDays] = useState(90);
+  const [testSize, setTestSize] = useState(0.20);
   const [autoOptimize, setAutoOptimize] = useState(true);
   const [useCustomCols, setUseCustomCols] = useState(true);
 
@@ -278,6 +285,7 @@ export default function MLTrainingPage() {
           data_window_days: windowDays,
           auto_optimize: autoOptimize,
           use_custom_columns: useCustomCols,
+          test_size: testSize,
         },
         token
       );
@@ -467,7 +475,7 @@ export default function MLTrainingPage() {
               </div>
 
               {/* ── Training options row ── */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
 
                 {/* Data window */}
                 <div className="bg-[#0D0D15] border border-[#1E1E2E] rounded-2xl p-5">
@@ -494,6 +502,37 @@ export default function MLTrainingPage() {
                     {windowDays === 0
                       ? "Training on all available transaction history."
                       : `Training on the last ${windowDays} days of transactions.`}
+                  </p>
+                </div>
+
+                {/* Train / Test split */}
+                <div className="bg-[#0D0D15] border border-[#1E1E2E] rounded-2xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart2 size={14} className="text-[#00FF87]" />
+                    <span className="text-sm font-bold text-[#00FF87]">Train / Test Split</span>
+                  </div>
+                  <div className="space-y-2">
+                    {SPLIT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setTestSize(opt.value)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${
+                          testSize === opt.value
+                            ? "border-[#00FF87]/50 bg-[#00FF87]/10 text-[#00FF87]"
+                            : "border-[#2E2E3E] text-gray-500 hover:border-[#00FF87]/20 hover:text-gray-300"
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {testSize === opt.value && (
+                          <span className="text-[9px] font-bold bg-[#00FF87]/20 px-1.5 py-0.5 rounded">
+                            SELECTED
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-600 mt-2">
+                    {SPLIT_OPTIONS.find((o) => o.value === testSize)?.hint ?? ""}
                   </p>
                 </div>
 
@@ -594,7 +633,7 @@ export default function MLTrainingPage() {
                 <div className="text-sm text-gray-500">
                   {selectedAlgos.size === 0
                     ? "Select at least one algorithm"
-                    : `${selectedAlgos.size} algorithm(s) selected · ${windowDays === 0 ? "all-time" : windowDays + "d"} window`}
+                    : `${selectedAlgos.size} algorithm(s) · ${windowDays === 0 ? "all-time" : windowDays + "d"} window · ${Math.round((1 - testSize) * 100)}/${Math.round(testSize * 100)} split`}
                 </div>
                 {startError && (
                   <div className="text-sm text-red-400 flex gap-1">
