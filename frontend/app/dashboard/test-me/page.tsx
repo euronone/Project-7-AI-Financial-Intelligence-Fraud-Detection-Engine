@@ -1250,9 +1250,11 @@ export default function TestMePage() {
                         return (
                           <div key={key} className="flex items-start gap-3">
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
-                              !isOk
-                                ? "bg-[#6B7280]/20 text-gray-500"
-                                : "bg-[#00FF87]/10 text-[#00FF87]"
+                              isOk
+                                ? "bg-[#00FF87]/10 text-[#00FF87]"
+                                : step.status?.startsWith("skipped")
+                                  ? "bg-[#6B7280]/20 text-gray-500"
+                                  : "bg-[#F59E0B]/10 text-[#F59E0B]"
                             }`}>
                               {idx + 1}
                             </div>
@@ -1263,10 +1265,12 @@ export default function TestMePage() {
                                   <span className="text-xs text-gray-600 font-mono">{step.ms}ms</span>
                                 )}
                               </div>
-                              <div className="text-xs text-gray-500 mt-0.5">
+                              <div className={`text-xs mt-0.5 ${isOk ? "text-gray-500" : "text-[#F59E0B]/80"}`}>
                                 {step.triggered != null && `${step.triggered} rule(s) triggered · `}
                                 {step.score != null && `score: ${(step.score * 100).toFixed(1)}% · `}
-                                {step.decision || (isOk ? "ok" : "skipped")}
+                                {step.decision
+                                  || step.status?.replace(/^skipped:/, "skipped — ").replace(/^sent:/, "sent to ").replace(/^error:/, "error: ").replace(/^failed:/, "failed: ")
+                                  || (isOk ? "ok" : "skipped")}
                               </div>
                             </div>
                           </div>

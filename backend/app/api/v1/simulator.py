@@ -491,8 +491,8 @@ async def predict_fraud(
             },
             "step_ensemble_score":  {"ok": True, "score": round(final_score, 4), "decision": decision, "ms": 2},
             "step_persisted":       {"ok": True, "is_test": True},
-            "step_sms":             {"ok": sms_result == "sent", "status": sms_result},
-            "step_email":           {"ok": email_result == "sent", "status": email_result},
+            "step_sms":             {"ok": sms_result.startswith("sent"), "status": sms_result},
+            "step_email":           {"ok": email_result.startswith("sent"), "status": email_result},
         },
     }
 
