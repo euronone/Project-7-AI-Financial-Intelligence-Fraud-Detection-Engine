@@ -20,7 +20,7 @@ COPY pyproject.toml poetry.lock ./
 
 # Install Python dependencies with Poetry (skip dev group)
 RUN poetry config virtualenvs.in-project true && \
-    poetry install --without dev --no-interaction --no-ansi
+    poetry install --without dev --no-interaction --no-ansi --no-root
 
 # Stage 2: Runtime
 FROM python:3.12-slim
