@@ -89,7 +89,12 @@
       "Bash(.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8003 --host 0.0.0.0)",
       "Bash(npx eslint:*)",
       "Bash(echo \"EXIT_CODE: $?\")",
-      "Bash(aws elbv2:*)"
+      "Bash(aws elbv2:*)",
+      "Bash(PYTHONPATH=. poetry run python -c \"from app.api.v1.simulator import router; from app.api.v1.settings import router as sr; print\\('OK'\\)\")",
+      "Bash(PYTHONPATH=. poetry run python -c \"from imblearn.over_sampling import SMOTE; print\\('SMOTE OK'\\)\")",
+      "Bash(PYTHONPATH=. poetry run python -c \"from app.services.ml_training_service import _SMOTE_AVAILABLE; print\\('SMOTE:', _SMOTE_AVAILABLE\\)\")",
+      "Bash(grep -l \"fixed left-0 top-0\" c:/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/frontend/app/dashboard/**/*.tsx)",
+      "Bash(grep -A 3 \"icon: Activity\\\\|Activity,\\\\|{ icon:\" c:/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/frontend/app/dashboard/alerts/page.tsx)"
     ],
     "additionalDirectories": [
       "\\tmp",

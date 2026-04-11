@@ -1,0 +1,16 @@
+Requirement already satisfied: imbalanced-learn in .\.venv\Lib\site-packages (0.12.4)
+Collecting imbalanced-learn
+  Using cached imbalanced_learn-0.14.1-py3-none-any.whl.metadata (8.9 kB)
+Requirement already satisfied: numpy<3,>=1.25.2 in .\.venv\Lib\site-packages (from imbalanced-learn) (2.4.4)
+Requirement already satisfied: scipy<2,>=1.11.4 in .\.venv\Lib\site-packages (from imbalanced-learn) (1.17.1)
+Requirement already satisfied: scikit-learn<2,>=1.4.2 in .\.venv\Lib\site-packages (from imbalanced-learn) (1.8.0)
+Requirement already satisfied: sklearn-compat<0.2,>=0.1.5 in .\.venv\Lib\site-packages (from imbalanced-learn) (0.1.5)
+Requirement already satisfied: joblib<2,>=1.2.0 in .\.venv\Lib\site-packages (from imbalanced-learn) (1.5.3)
+Requirement already satisfied: threadpoolctl<4,>=2.0.0 in .\.venv\Lib\site-packages (from imbalanced-learn) (3.6.0)
+Using cached imbalanced_learn-0.14.1-py3-none-any.whl (235 kB)
+Installing collected packages: imbalanced-learn
+  Attempting uninstall: imbalanced-learn
+    Found existing installation: imbalanced-learn 0.12.4
+    Uninstalling imbalanced-learn-0.12.4:
+      Successfully uninstalled imbalanced-learn-0.12.4
+Successfully installed imbalanced-learn-0.14.1

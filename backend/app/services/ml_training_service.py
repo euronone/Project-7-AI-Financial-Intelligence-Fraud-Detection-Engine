@@ -38,9 +38,15 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score, roc_curve
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 from sklearn.cluster import DBSCAN
 from sklearn.model_selection import cross_val_score, train_test_split
+
+try:
+    from imblearn.over_sampling import SMOTE
+    _SMOTE_AVAILABLE = True
+except ImportError:
+    _SMOTE_AVAILABLE = False
 from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
@@ -188,26 +194,36 @@ ALGORITHM_CATALOGUE = {
 }
 
 # Hyperparameter grids for auto-optimization (supervised models only)
+# Grids are tuned for fraud detection: imbalanced classes, tabular data, high AUC priority
 _PARAM_GRIDS: dict[str, list[dict]] = {
     "xgboost": [
-        {"max_depth": 4, "learning_rate": 0.1,  "n_estimators": 200, "subsample": 0.9},
-        {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 300, "subsample": 0.8},
-        {"max_depth": 8, "learning_rate": 0.03, "n_estimators": 400, "subsample": 0.7},
+        # Grid 1 — fast, good baseline
+        {"max_depth": 4, "learning_rate": 0.1,  "n_estimators": 200,
+         "subsample": 0.8, "colsample_bytree": 0.8, "min_child_weight": 5,
+         "reg_alpha": 0.1, "reg_lambda": 1.0},
+        # Grid 2 — deeper, slower learning rate (better for imbalanced)
+        {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 400,
+         "subsample": 0.8, "colsample_bytree": 0.7, "min_child_weight": 3,
+         "reg_alpha": 0.01, "reg_lambda": 2.0},
+        # Grid 3 — aggressive regularization to prevent overfitting on small fraud sets
+        {"max_depth": 3, "learning_rate": 0.03, "n_estimators": 600,
+         "subsample": 0.7, "colsample_bytree": 0.6, "min_child_weight": 10,
+         "reg_alpha": 1.0, "reg_lambda": 5.0},
     ],
     "random_forest": [
-        {"n_estimators": 100, "max_depth": 8,    "min_samples_leaf": 2},
-        {"n_estimators": 200, "max_depth": 12,   "min_samples_leaf": 1},
-        {"n_estimators": 300, "max_depth": None, "min_samples_leaf": 1},
+        {"n_estimators": 200, "max_depth": 8,    "min_samples_leaf": 4, "max_features": "sqrt"},
+        {"n_estimators": 300, "max_depth": 12,   "min_samples_leaf": 2, "max_features": "sqrt"},
+        {"n_estimators": 400, "max_depth": None, "min_samples_leaf": 1, "max_features": 0.5},
     ],
     "gradient_boosting": [
-        {"n_estimators": 100, "max_depth": 3, "learning_rate": 0.1},
-        {"n_estimators": 200, "max_depth": 4, "learning_rate": 0.05},
-        {"n_estimators": 300, "max_depth": 5, "learning_rate": 0.03},
+        {"n_estimators": 150, "max_depth": 3, "learning_rate": 0.08, "subsample": 0.8},
+        {"n_estimators": 250, "max_depth": 4, "learning_rate": 0.05, "subsample": 0.7},
+        {"n_estimators": 400, "max_depth": 3, "learning_rate": 0.03, "subsample": 0.6},
     ],
     "neural_network": [
-        {"hidden_layer_sizes": (128, 64),       "alpha": 0.001, "max_iter": 200},
-        {"hidden_layer_sizes": (256, 128, 64),  "alpha": 0.0001, "max_iter": 300},
-        {"hidden_layer_sizes": (256, 128, 64, 32), "alpha": 0.0001, "max_iter": 400},
+        {"hidden_layer_sizes": (128, 64),        "alpha": 0.01,   "max_iter": 300, "batch_size": 64},
+        {"hidden_layer_sizes": (256, 128, 64),   "alpha": 0.001,  "max_iter": 400, "batch_size": 128},
+        {"hidden_layer_sizes": (512, 256, 128),  "alpha": 0.0001, "max_iter": 500, "batch_size": 256},
     ],
     "lightgbm": [
         {"num_leaves": 31,  "learning_rate": 0.1,  "n_estimators": 200},
@@ -519,14 +535,32 @@ def _sync_training_pipeline(
     else:
         y_all = np.zeros(n_samples, dtype=int)
         has_labels = False
-        log("No fraud labels found — unsupervised algorithms only")
+        log("No fraud labels found — generating synthetic labels via Isolation Forest")
 
-    # Scale features
-    scaler = StandardScaler()
+        # ── Synthetic label generation ────────────────────────────────────────
+        # When no fraud_category column exists, use Isolation Forest anomaly
+        # scores to create pseudo-labels so supervised models can still train.
+        # The top ~5% most anomalous transactions become pseudo-frauds.
+        try:
+            _if = IsolationForest(n_estimators=200, contamination=0.05, random_state=42, n_jobs=-1)
+            _if.fit(X_all)
+            _raw = -_if.score_samples(X_all)
+            _threshold = np.percentile(_raw, 95)
+            y_all = (_raw >= _threshold).astype(int)
+            fraud_count = int(y_all.sum())
+            has_labels = fraud_count >= 5
+            log(f"Synthetic labels: {fraud_count} pseudo-fraud / {n_samples - fraud_count} legitimate (top-5% anomalies)")
+        except Exception as exc:
+            log(f"Synthetic label generation failed: {exc} — unsupervised only")
+
+    # Scale features — RobustScaler is better for fraud data with outliers
+    scaler = RobustScaler()
     X_scaled = scaler.fit_transform(X_all)
+    # Clip extreme values after scaling to prevent XGBoost/RF instability
+    X_scaled = np.clip(X_scaled, -10, 10)
 
     # Train/test split (only if we have labels and enough fraud samples)
-    do_supervised = any(a in _SUPERVISED for a in algo_ids) and has_labels and fraud_count >= 10
+    do_supervised = any(a in _SUPERVISED for a in algo_ids) and has_labels and fraud_count >= 5
     if do_supervised:
         spw = float(max(1, (n_samples - fraud_count))) / float(max(1, fraud_count))
         try:
@@ -537,6 +571,22 @@ def _sync_training_pipeline(
             X_train, X_test, y_train, y_test = (
                 X_scaled, X_scaled, y_all, y_all
             )
+
+        # ── SMOTE oversampling ────────────────────────────────────────────────
+        # When fraud samples are rare (< 100 in training), oversample minority
+        # class so supervised models see enough fraud examples.
+        train_fraud = int(y_train.sum())
+        if _SMOTE_AVAILABLE and train_fraud >= 5 and train_fraud < 100:
+            try:
+                k = min(5, train_fraud - 1)
+                smote = SMOTE(random_state=42, k_neighbors=k)
+                X_train, y_train = smote.fit_resample(X_train, y_train)
+                log(f"SMOTE: oversampled training set to {len(X_train):,} rows ({int(y_train.sum())} fraud)")
+            except Exception as exc:
+                log(f"SMOTE skipped: {exc}")
+        elif not _SMOTE_AVAILABLE and train_fraud < 100:
+            log("Tip: install imbalanced-learn (pip install imbalanced-learn) for SMOTE oversampling")
+
         log(
             f"Train/test split: {len(X_train):,}/{len(X_test):,}  "
             f"({int((1-test_size)*100)}/{int(test_size*100)} split, "

@@ -6,9 +6,11 @@ import {
   Shield, Database, Save, Zap, Loader2, CheckCircle2,
   AlertCircle, Eye, EyeOff, ExternalLink, Settings, Bell,
   Key, User, CreditCard, ChevronDown, ChevronUp,
-  Mail, MessageSquare,
+  Mail, MessageSquare, Activity, TrendingUp, AlertTriangle,
+  FlaskConical, Users, Table, Brain, X, Plus, LogOut,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuthStore, DbConfig, DbType } from "@/store/auth-store";
 import { apiClient } from "@/lib/api-client";
 
@@ -314,7 +316,8 @@ const SECTIONS = [
 
 // ── Component ────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
-  const { user, dbConfig, updateDbConfig, token } = useAuthStore();
+  const { user, dbConfig, updateDbConfig, token, clearAuth } = useAuthStore();
+  const router = useRouter();
 
   const [activeSection, setActiveSection] = useState("database");
   const [selectedType, setSelectedType] = useState<DbType>(dbConfig?.db_type || "supabase");
@@ -373,7 +376,9 @@ export default function SettingsPage() {
   }, [token]);
 
   // ── Notification settings state ──────────────────────────────────────────
-  const [notifCompanyEmail, setNotifCompanyEmail] = useState("");
+  // Multiple company alert emails stored as an array; saved as comma-separated string
+  const [alertEmails, setAlertEmails] = useState<string[]>([]);
+  const [emailDraft, setEmailDraft] = useState(""); // current input before adding
   const [notifSmsEnabled, setNotifSmsEnabled] = useState(true);
   const [notifResendKey, setNotifResendKey] = useState("");
   const [notifTwilioSid, setNotifTwilioSid] = useState("");
@@ -383,13 +388,20 @@ export default function SettingsPage() {
   const [notifSaved, setNotifSaved] = useState(false);
   const [notifError, setNotifError] = useState("");
   const [showNotifSecrets, setShowNotifSecrets] = useState<Record<string, boolean>>({});
+  // Tracks whether a key is already saved in DB (so we can show "Saved ✓" badge)
+  const [hasResend, setHasResend] = useState(false);
+  const [hasTwilio, setHasTwilio] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     apiClient.getNotificationSettings(token)
       .then((data) => {
-        setNotifCompanyEmail(data.company_alert_email || "");
+        // Parse comma-separated company alert emails into array
+        const raw: string = data.company_alert_email || "";
+        setAlertEmails(raw ? raw.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
         setNotifSmsEnabled(data.sms_enabled ?? true);
+        setHasResend(data.has_resend ?? false);
+        setHasTwilio(data.has_twilio ?? false);
       })
       .catch(() => {});
   }, [token]);
@@ -400,7 +412,7 @@ export default function SettingsPage() {
     setNotifError("");
     try {
       const body: Record<string, string | boolean> = {
-        company_alert_email: notifCompanyEmail,
+        company_alert_email: alertEmails.join(","),
         sms_enabled: notifSmsEnabled,
       };
       if (notifResendKey.trim())   body.resend_api_key     = notifResendKey.trim();
@@ -408,8 +420,16 @@ export default function SettingsPage() {
       if (notifTwilioToken.trim()) body.twilio_auth_token  = notifTwilioToken.trim();
       if (notifTwilioFrom.trim())  body.twilio_from_number = notifTwilioFrom.trim();
       await apiClient.saveNotificationSettings(body, token);
+      // Update saved-key indicators based on what was just submitted
+      if (notifResendKey.trim()) setHasResend(true);
+      if (notifTwilioSid.trim() && notifTwilioToken.trim() && notifTwilioFrom.trim()) setHasTwilio(true);
+      // Clear input fields after save (key is now in DB — show badge instead)
+      setNotifResendKey("");
+      setNotifTwilioSid("");
+      setNotifTwilioToken("");
+      setNotifTwilioFrom("");
       setNotifSaved(true);
-      setTimeout(() => setNotifSaved(false), 3000);
+      setTimeout(() => setNotifSaved(false), 4000);
     } catch (e: unknown) {
       setNotifError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -501,7 +521,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white flex">
       {/* App Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-60 bg-[#0D0D15] border-r border-[#1E1E2E] flex flex-col">
+      <aside className="fixed left-0 top-0 h-full w-60 bg-[#0D0D15] border-r border-[#1E1E2E] flex flex-col z-10">
         <div className="p-5 border-b border-[#1E1E2E]">
           <div className="flex items-center gap-2.5">
             <Shield size={22} className="text-[#00FF87]" />
@@ -512,16 +532,16 @@ export default function SettingsPage() {
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {[
-            { label: "Dashboard",    href: "/dashboard" },
-            { label: "Transactions", href: "/dashboard/transactions" },
-            { label: "Fraud Alerts", href: "/dashboard/alerts" },
-            { label: "Test Me",      href: "/dashboard/test-me" },
-            { label: "Customers",    href: "/dashboard/customers" },
-            { label: "Data Sources", href: "/dashboard/data-sources" },
-            { label: "Data Schema",  href: "/dashboard/data-schema" },
-            { label: "ML Training",  href: "/dashboard/ml-training" },
-            { label: "Settings",     href: "/dashboard/settings", active: true },
-          ].map(({ label: l, href, active }) => (
+            { icon: Activity,       label: "Dashboard",    href: "/dashboard" },
+            { icon: TrendingUp,     label: "Transactions", href: "/dashboard/transactions" },
+            { icon: AlertTriangle,  label: "Fraud Alerts", href: "/dashboard/alerts" },
+            { icon: FlaskConical,   label: "Test Me",      href: "/dashboard/test-me" },
+            { icon: Users,          label: "Customers",    href: "/dashboard/customers" },
+            { icon: Database,       label: "Data Sources", href: "/dashboard/data-sources" },
+            { icon: Table,          label: "Data Schema",  href: "/dashboard/data-schema" },
+            { icon: Brain,          label: "ML Training",  href: "/dashboard/ml-training" },
+            { icon: Settings,       label: "Settings",     href: "/dashboard/settings", active: true },
+          ].map(({ icon: Icon, label: l, href, active }) => (
             <Link
               key={l}
               href={href}
@@ -531,11 +551,50 @@ export default function SettingsPage() {
                   : "text-gray-500 hover:text-gray-300 hover:bg-[#111118]"
               }`}
             >
-              {active ? <Settings size={16} /> : null}
+              <Icon size={16} />
               {l}
             </Link>
           ))}
         </nav>
+
+        {/* User profile + sign-out (matches dashboard sidebar) */}
+        {user && (
+          <div className="p-4 border-t border-[#1E1E2E]">
+            <div className="flex items-center gap-3 mb-3">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0"
+                style={{
+                  backgroundColor: `${planColor}20`,
+                  color: planColor,
+                }}
+              >
+                {user.avatar_initials}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold truncate flex items-center gap-1.5">
+                  {user.full_name}
+                  <span
+                    className="text-[9px] font-mono px-1.5 py-0.5 rounded-full capitalize shrink-0"
+                    style={{
+                      color: user.role === "admin" ? "#00FF87" : "#3B82F6",
+                      backgroundColor: user.role === "admin" ? "#00FF8715" : "#3B82F615",
+                      border: `1px solid ${user.role === "admin" ? "#00FF8740" : "#3B82F640"}`,
+                    }}
+                  >
+                    {user.role}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500 truncate">{user.email}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => { clearAuth(); router.push("/login"); }}
+              className="w-full flex items-center justify-center gap-2 text-xs text-gray-500 hover:text-white border border-[#1E1E2E] px-3 py-2 rounded-lg hover:border-gray-600 transition-all"
+            >
+              <LogOut size={13} /> Sign Out
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Settings layout */}
@@ -734,24 +793,76 @@ export default function SettingsPage() {
                 Configure where fraud alerts are sent. The company alert email is required for your team to receive notifications. All API keys are optional — the platform falls back gracefully to in-app alerts.
               </p>
 
-              {/* Company Alert Email */}
+              {/* Company Alert Emails — multi-email tag input */}
               <div className="bg-[#00FF87]/05 border border-[#00FF87]/20 rounded-2xl p-5 mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Mail size={16} className="text-[#00FF87]" />
-                  <span className="text-sm font-bold text-[#00FF87]">Company Alert Email</span>
+                  <span className="text-sm font-bold text-[#00FF87]">Company Alert Emails</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/20 font-mono ml-1">Required for email alerts</span>
                 </div>
                 <p className="text-xs text-gray-500 mb-3">
-                  All fraud alerts (FLAG, ALERT, BLOCK) will be emailed to this address. This is your fraud team inbox — e.g.{" "}
-                  <span className="font-mono text-gray-400">fraud@yourbank.com</span>
+                  All fraud alerts will be sent to <strong className="text-gray-400">every email below</strong>. Add your entire fraud team — type an email and press <kbd className="font-mono bg-[#1E1E2E] px-1 rounded text-gray-400">Enter</kbd> or <kbd className="font-mono bg-[#1E1E2E] px-1 rounded text-gray-400">,</kbd> to add.
                 </p>
-                <input
-                  type="email"
-                  value={notifCompanyEmail}
-                  onChange={(e) => setNotifCompanyEmail(e.target.value)}
-                  placeholder="fraud@yourcompany.com"
-                  className="w-full bg-[#0A0A0F] border border-[#00FF87]/30 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/70 transition-colors"
-                />
+
+                {/* Tag chips for existing emails */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {alertEmails.map((email) => (
+                    <span
+                      key={email}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/30 font-mono"
+                    >
+                      {email}
+                      <button
+                        type="button"
+                        onClick={() => setAlertEmails((prev) => prev.filter((e) => e !== email))}
+                        className="text-[#00FF87]/60 hover:text-[#EF4444] transition-colors ml-0.5"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Input to add a new email */}
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={emailDraft}
+                    onChange={(e) => setEmailDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === ",") {
+                        e.preventDefault();
+                        const val = emailDraft.trim().replace(/,$/, "");
+                        if (val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) && !alertEmails.includes(val)) {
+                          setAlertEmails((prev) => [...prev, val]);
+                        }
+                        setEmailDraft("");
+                      } else if (e.key === "Backspace" && !emailDraft && alertEmails.length > 0) {
+                        setAlertEmails((prev) => prev.slice(0, -1));
+                      }
+                    }}
+                    placeholder={alertEmails.length === 0 ? "fraud@yourcompany.com" : "Add another email…"}
+                    className="flex-1 bg-[#0A0A0F] border border-[#00FF87]/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/70 transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = emailDraft.trim().replace(/,$/, "");
+                      if (val && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val) && !alertEmails.includes(val)) {
+                        setAlertEmails((prev) => [...prev, val]);
+                      }
+                      setEmailDraft("");
+                    }}
+                    className="flex items-center gap-1.5 text-xs px-4 py-2.5 rounded-xl bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/30 hover:bg-[#00FF87]/20 transition-all font-semibold"
+                  >
+                    <Plus size={13} /> Add
+                  </button>
+                </div>
+                {alertEmails.length > 0 && (
+                  <p className="text-[11px] text-gray-600 mt-2">
+                    {alertEmails.length} recipient{alertEmails.length > 1 ? "s" : ""} — all will receive fraud alert emails.
+                  </p>
+                )}
               </div>
 
               {/* SMS toggle */}
@@ -795,6 +906,11 @@ export default function SettingsPage() {
                     <label className="text-sm text-gray-400 font-medium">Resend.com API Key — Email</label>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/20 font-mono">3,000/mo free</span>
                     <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400"><ExternalLink size={11} /></a>
+                    {hasResend && !notifResendKey && (
+                      <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/30 font-semibold">
+                        <CheckCircle2 size={9} /> Key saved
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-600 mb-1.5">Preferred email provider. Sign up at resend.com — API key starts with <span className="font-mono">re_</span></div>
                   <div className="relative">
@@ -802,8 +918,8 @@ export default function SettingsPage() {
                       type={showNotifSecrets["resend"] ? "text" : "password"}
                       value={notifResendKey}
                       onChange={(e) => setNotifResendKey(e.target.value)}
-                      placeholder="re_xxxxxxxxxxxxxxxxxx"
-                      className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors pr-10"
+                      placeholder={hasResend ? "re_•••••••••••• (saved — enter new key to replace)" : "re_xxxxxxxxxxxxxxxxxx"}
+                      className={`w-full bg-[#111118] border rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none transition-colors pr-10 ${hasResend && !notifResendKey ? "border-[#00FF87]/30 focus:border-[#00FF87]/60" : "border-[#1E1E2E] focus:border-[#00FF87]/60"}`}
                     />
                     <button type="button" onClick={() => setShowNotifSecrets(p => ({...p, resend: !p.resend}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                       {showNotifSecrets["resend"] ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -812,18 +928,23 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Twilio */}
-                <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4 space-y-4">
+                <div className={`bg-[#111118] rounded-2xl p-4 space-y-4 ${hasTwilio ? "border border-[#3B82F6]/30" : "border border-[#1E1E2E]"}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <MessageSquare size={13} className="text-[#3B82F6]" />
                     <span className="text-sm font-semibold text-gray-300">Twilio SMS Credentials</span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 font-mono">Paid ~₹0.10/SMS</span>
                     <a href="https://console.twilio.com/" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400"><ExternalLink size={11} /></a>
+                    {hasTwilio && !notifTwilioSid && (
+                      <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/30 font-semibold">
+                        <CheckCircle2 size={9} /> Credentials saved
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-600">Required for SMS alerts to customers. All three fields must be filled to enable SMS.</div>
                   {[
-                    { key: "sid",   label: "Account SID",  val: notifTwilioSid,   set: setNotifTwilioSid,   ph: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
-                    { key: "token", label: "Auth Token",   val: notifTwilioToken, set: setNotifTwilioToken, ph: "your_32_char_auth_token" },
-                    { key: "from",  label: "From Number",  val: notifTwilioFrom,  set: setNotifTwilioFrom,  ph: "+12025551234" },
+                    { key: "sid",   label: "Account SID",  val: notifTwilioSid,   set: setNotifTwilioSid,   ph: hasTwilio ? "AC•••••••••••••••• (saved)" : "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+                    { key: "token", label: "Auth Token",   val: notifTwilioToken, set: setNotifTwilioToken, ph: hasTwilio ? "•••••••••••••••••• (saved)" : "your_32_char_auth_token" },
+                    { key: "from",  label: "From Number",  val: notifTwilioFrom,  set: setNotifTwilioFrom,  ph: hasTwilio ? "+1••••••••• (saved)" : "+12025551234" },
                   ].map(({ key, label: lbl, val, set, ph }) => (
                     <div key={key}>
                       <label className="block text-xs text-gray-500 mb-1">{lbl}</label>
@@ -833,7 +954,7 @@ export default function SettingsPage() {
                           value={val}
                           onChange={(e) => set(e.target.value)}
                           placeholder={ph}
-                          className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#3B82F6]/60 transition-colors pr-10"
+                          className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#3B82F6]/60 transition-colors pr-10"
                         />
                         <button type="button" onClick={() => setShowNotifSecrets(p => ({...p, [key]: !p[key]}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
                           {showNotifSecrets[key] ? <EyeOff size={14} /> : <Eye size={14} />}

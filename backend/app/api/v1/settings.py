@@ -353,10 +353,25 @@ async def get_notification_settings(
     result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
     tenant = result.scalar_one_or_none()
     notif_config = (tenant.db_config_json or {}).get("notifications", {}) if tenant else {}
+
+    # Decrypt stored keys to check presence
+    stored_resend = ""
+    stored_twilio_sid = ""
+    if notif_config.get("resend_api_key"):
+        try:
+            stored_resend = encryptor.decrypt(notif_config["resend_api_key"])
+        except Exception:
+            stored_resend = notif_config["resend_api_key"]  # plaintext fallback
+    if notif_config.get("twilio_account_sid"):
+        try:
+            stored_twilio_sid = encryptor.decrypt(notif_config["twilio_account_sid"])
+        except Exception:
+            stored_twilio_sid = notif_config["twilio_account_sid"]
+
     return {
         "company_alert_email": notif_config.get("company_alert_email", getattr(settings, "ALERT_COMPANY_EMAIL", "")),
-        "has_twilio":         bool(getattr(settings, "TWILIO_ACCOUNT_SID", "")),
-        "has_resend":         bool(getattr(settings, "RESEND_API_KEY", "")),
+        "has_twilio":         bool(stored_twilio_sid or getattr(settings, "TWILIO_ACCOUNT_SID", "")),
+        "has_resend":         bool(stored_resend or getattr(settings, "RESEND_API_KEY", "")),
         "sms_enabled":        notif_config.get("sms_enabled", True),
         "email_customer":     notif_config.get("email_customer", True),
         "email_company":      notif_config.get("email_company", True),
@@ -377,12 +392,21 @@ async def update_notification_settings(
         raise NotFoundException("Tenant")
 
     config = tenant.db_config_json or {}
-    config["notifications"] = {
+    notif: dict = {
         "company_alert_email": body.get("company_alert_email", ""),
         "sms_enabled":         body.get("sms_enabled", True),
         "email_customer":      body.get("email_customer", True),
         "email_company":       body.get("email_company", True),
     }
+    # Encrypt and persist API keys if provided
+    for key_field in ("resend_api_key", "twilio_account_sid", "twilio_auth_token", "twilio_from_number"):
+        val = (body.get(key_field) or "").strip()
+        if val:
+            notif[key_field] = encryptor.encrypt(val)
+        elif key_field in (config.get("notifications") or {}):
+            # Preserve existing key if not being updated
+            notif[key_field] = config["notifications"][key_field]
+    config["notifications"] = notif
     tenant.db_config_json = config
     await db.commit()
     return {"success": True, "message": "Notification settings saved"}

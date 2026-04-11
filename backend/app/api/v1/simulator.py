@@ -393,6 +393,49 @@ async def predict_fraud(
             alert_id=score_result.get("alert_id", "SIM"),
         )
 
+    # ── 7. Resend email (if configured and email provided) ───────────────
+    email_result = "skipped"
+    if decision in ("BLOCK", "ALERT", "FLAG"):
+        # Resolve Resend key: tenant DB config → env fallback
+        resend_key = await _resolve_resend_key(
+            db=db, tenant_id=current_user.tenant_id
+        )
+
+        if resend_key:
+            # Collect all recipient emails: test-form email + company alert emails
+            recipients: list[str] = []
+            if body.email:
+                recipients.append(body.email)
+
+            # Also send to all company alert emails configured in Settings
+            company_emails = await _resolve_company_alert_emails(
+                db=db, tenant_id=current_user.tenant_id
+            )
+            for ce in company_emails:
+                if ce not in recipients:
+                    recipients.append(ce)
+
+            if recipients:
+                statuses = []
+                for recipient in recipients:
+                    s = await _send_resend_email(
+                        api_key=resend_key,
+                        to=recipient,
+                        cardholder_name=body.cardholder_name,
+                        amount=body.amount,
+                        merchant=body.merchant_name or _infer_merchant(body.purchase_type),
+                        decision=decision,
+                        score=final_score,
+                        alert_id=score_result.get("alert_id", "SIM"),
+                        triggered_rules=triggered_rules,
+                    )
+                    statuses.append(s)
+                email_result = f"sent:{len(recipients)}" if all(s == "sent" for s in statuses) else f"partial:{','.join(statuses)}"
+            else:
+                email_result = "skipped:no_recipients"
+        else:
+            email_result = "skipped:no_resend_key"
+
     risk_color = _score_color(final_score)
 
     return {
@@ -430,7 +473,8 @@ async def predict_fraud(
         "shap_explanation": shap,
 
         # Notification
-        "sms_status": sms_result,
+        "sms_status":   sms_result,
+        "email_status": email_result,
 
         # Step-by-step journey data (for the Test Me UI panel)
         "journey": {
@@ -448,6 +492,7 @@ async def predict_fraud(
             "step_ensemble_score":  {"ok": True, "score": round(final_score, 4), "decision": decision, "ms": 2},
             "step_persisted":       {"ok": True, "is_test": True},
             "step_sms":             {"ok": sms_result == "sent", "status": sms_result},
+            "step_email":           {"ok": email_result == "sent", "status": email_result},
         },
     }
 
@@ -963,6 +1008,135 @@ def _build_conclusion(
         "final_score":        round(final_score, 4),
         "ml_available":       ml_available,
     }
+
+
+async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
+    """
+    Returns the Resend API key for a tenant.
+    Checks tenant DB config first, falls back to RESEND_API_KEY env var.
+    """
+    from app.core.encryption import encryptor
+    from app.config import get_settings
+    from app.models.user import Tenant as TenantModel
+
+    try:
+        result = await db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
+        tenant_row = result.scalar_one_or_none()
+        notif = (tenant_row.db_config_json or {}).get("notifications", {}) if tenant_row else {}
+        enc_key = notif.get("resend_api_key", "")
+        if enc_key:
+            try:
+                return encryptor.decrypt(enc_key)
+            except Exception:
+                return enc_key  # plaintext fallback
+    except Exception as exc:
+        logger.warning("Could not load tenant Resend key: %s", exc)
+
+    # Fall back to env var
+    s = get_settings()
+    return getattr(s, "RESEND_API_KEY", "") or ""
+
+
+async def _resolve_company_alert_emails(*, db: AsyncSession, tenant_id: str) -> list[str]:
+    """
+    Returns the list of company alert email recipients for a tenant.
+    Reads the comma-separated company_alert_email from tenant notifications config.
+    """
+    from app.models.user import Tenant as TenantModel
+    from app.config import get_settings
+
+    try:
+        result = await db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
+        tenant_row = result.scalar_one_or_none()
+        notif = (tenant_row.db_config_json or {}).get("notifications", {}) if tenant_row else {}
+        raw = notif.get("company_alert_email", "") or ""
+        if raw:
+            return [e.strip() for e in raw.split(",") if e.strip()]
+    except Exception as exc:
+        logger.warning("Could not load company alert emails: %s", exc)
+
+    # Fall back to env var
+    s = get_settings()
+    env_email = getattr(s, "ALERT_COMPANY_EMAIL", "") or ""
+    return [e.strip() for e in env_email.split(",") if e.strip()] if env_email else []
+
+
+async def _send_resend_email(
+    *,
+    api_key: str,
+    to: str,
+    cardholder_name: str,
+    amount: float,
+    merchant: str,
+    decision: str,
+    score: float,
+    alert_id: str,
+    triggered_rules: list[str],
+) -> str:
+    """
+    Sends a fraud alert email via Resend.com for simulator/Test Me transactions.
+    Returns 'sent', 'skipped:no_key', or 'error:<msg>'.
+    """
+    if not api_key:
+        return "skipped:no_key"
+    try:
+        import httpx
+        amount_str = f"₹{amount:,.0f}"
+        ref = str(alert_id)[:8].upper()
+        rules_str = ", ".join(triggered_rules[:5]) if triggered_rules else "ML model"
+        color = {"BLOCK": "#EF4444", "ALERT": "#F97316", "FLAG": "#F59E0B"}.get(decision, "#6B7280")
+        action = "BLOCKED" if decision == "BLOCK" else "FLAGGED as suspicious" if decision in ("ALERT", "FLAG") else "reviewed"
+        html = f"""
+        <html><body style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E5E7EB;padding:24px;">
+        <div style="max-width:560px;margin:0 auto;background:#111118;border:1px solid #1E1E2E;border-radius:12px;overflow:hidden;">
+          <div style="background:{color};padding:20px;text-align:center;">
+            <h1 style="margin:0;font-size:18px;color:#fff;">🧪 [TEST] FinShield — Transaction {action}</h1>
+          </div>
+          <div style="padding:24px;">
+            <p style="color:#9CA3AF;font-size:12px;margin-top:0;">
+              This is a <strong>test notification</strong> triggered from the FinShield Test Me simulator.
+              No real transaction was blocked.
+            </p>
+            <p>Dear <strong>{cardholder_name}</strong>,</p>
+            <p>FinShield AI detected the following in your test transaction:</p>
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Decision</td>
+                  <td style="padding:8px 0;font-weight:bold;color:{color};border-bottom:1px solid #1E1E2E;">{decision}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Amount</td>
+                  <td style="padding:8px 0;font-weight:bold;border-bottom:1px solid #1E1E2E;">{amount_str}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Merchant</td>
+                  <td style="padding:8px 0;border-bottom:1px solid #1E1E2E;">{merchant}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Fraud Score</td>
+                  <td style="padding:8px 0;color:{color};font-weight:bold;border-bottom:1px solid #1E1E2E;">{score:.0%}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Triggered Signals</td>
+                  <td style="padding:8px 0;border-bottom:1px solid #1E1E2E;">{rules_str}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;">Reference</td>
+                  <td style="padding:8px 0;font-family:monospace;">{ref}</td></tr>
+            </table>
+            <p style="color:#4B5563;font-size:11px;margin-top:24px;">
+              Sent by FinShield AI Test Simulator · This email confirms your email integration is working correctly.
+            </p>
+          </div>
+        </div>
+        </body></html>"""
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "from": "FinShield AI <onboarding@resend.dev>",
+                    "to": [to],
+                    "subject": f"[TEST] FinShield Alert: {decision} — {amount_str} at {merchant} | Ref {ref}",
+                    "html": html,
+                },
+            )
+        if resp.status_code in (200, 201):
+            return "sent"
+        return f"failed:{resp.status_code} — {resp.text[:120]}"
+    except Exception as exc:
+        logger.warning("Simulator Resend email error: %s", exc)
+        return f"error:{str(exc)[:80]}"
 
 
 async def _send_twilio_sms(

@@ -75,31 +75,39 @@ async def send_fraud_alert_notifications(
     email_from = getattr(settings, "EMAIL_FROM", "alerts@finshield.ai")
     email_from_name = getattr(settings, "EMAIL_FROM_NAME", "FinShield AI")
 
-    # ── Email → Company (ALERT_COMPANY_EMAIL) ────────────────────────────────
+    # ── Email → Company (one email per configured recipient) ─────────────────
     if "email" in channels:
-        company_email = analyst_email or getattr(settings, "ALERT_COMPANY_EMAIL", "") or ""
-        if resend_key and company_email:
-            results["email_company"] = await _send_resend(
-                api_key=resend_key,
-                from_addr=f"{email_from_name} <{email_from}>",
-                to=company_email,
-                subject=f"[FinShield] {severity.upper()} — {decision} | {amount_str} · {cust_name} · Ref {ref}",
-                html=_company_email_html(
-                    alert_id=alert_id,
-                    fraud_score=fraud_score,
-                    severity=severity,
-                    decision=decision,
-                    amount_str=amount_str,
-                    merchant_str=merchant_str,
-                    rules_str=rules_str,
-                    customer_name=cust_name,
-                    customer_email=customer_email or "—",
-                    customer_phone=customer_phone or "—",
-                    transaction_id=transaction_id,
-                    ref=ref,
-                ),
+        raw_company_email = analyst_email or getattr(settings, "ALERT_COMPANY_EMAIL", "") or ""
+        # Support comma-separated list of alert recipients
+        company_emails = [e.strip() for e in raw_company_email.split(",") if e.strip()]
+        if resend_key and company_emails:
+            html_body = _company_email_html(
+                alert_id=alert_id,
+                fraud_score=fraud_score,
+                severity=severity,
+                decision=decision,
+                amount_str=amount_str,
+                merchant_str=merchant_str,
+                rules_str=rules_str,
+                customer_name=cust_name,
+                customer_email=customer_email or "—",
+                customer_phone=customer_phone or "—",
+                transaction_id=transaction_id,
+                ref=ref,
             )
-            logger.info("Company alert email sent | alert=%s to=%s", alert_id, company_email)
+            subject = f"[FinShield] {severity.upper()} — {decision} | {amount_str} · {cust_name} · Ref {ref}"
+            sent_statuses = []
+            for recipient in company_emails:
+                status = await _send_resend(
+                    api_key=resend_key,
+                    from_addr=f"{email_from_name} <{email_from}>",
+                    to=recipient,
+                    subject=subject,
+                    html=html_body,
+                )
+                sent_statuses.append(status)
+                logger.info("Company alert email sent | alert=%s to=%s status=%s", alert_id, recipient, status)
+            results["email_company"] = f"sent:{len(company_emails)}"
         else:
             results["email_company"] = "skipped:no_key_or_email"
 
