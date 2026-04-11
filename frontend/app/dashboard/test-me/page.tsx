@@ -638,9 +638,9 @@ export default function TestMePage() {
                       {lookupStatus === "not_found" ? "Try a sample customer:" : "Sample customers in DB:"}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {sampleCustomers.map((c) => (
+                      {sampleCustomers.map((c, idx) => (
                         <button
-                          key={c.phone_number}
+                          key={c.id ?? c.phone_number ?? idx}
                           type="button"
                           onClick={() => pickSampleCustomer(c.phone_number)}
                           className="flex items-center gap-1.5 text-[10px] bg-[#1E1E2E] border border-[#2E2E3E] hover:border-[#3B82F6]/50 hover:bg-[#3B82F6]/10 text-gray-300 hover:text-white px-2 py-1.5 rounded-lg transition-all"
