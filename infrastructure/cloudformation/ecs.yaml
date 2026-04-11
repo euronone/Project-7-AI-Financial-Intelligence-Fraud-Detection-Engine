@@ -251,7 +251,7 @@ Resources:
                   - logs:PutLogEvents
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/ecs/*'
 
-  # Backend Task Definition
+  #### Backend Task Definition
   BackendTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
