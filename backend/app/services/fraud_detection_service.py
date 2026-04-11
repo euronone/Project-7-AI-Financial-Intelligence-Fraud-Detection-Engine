@@ -542,6 +542,13 @@ async def score_transaction(
                     .get("notifications", {})
                     .get("company_alert_email", "") or None
                 )
+            # Pre-fetch BYOK credentials while db session is still open
+            from app.services.credential_service import get_decrypted as _get_cred
+            byok_resend   = await _get_cred(db, txn.tenant_id, "resend",  "resend_api_key")
+            byok_twilio_sid   = await _get_cred(db, txn.tenant_id, "twilio", "twilio_account_sid")
+            byok_twilio_token = await _get_cred(db, txn.tenant_id, "twilio", "twilio_auth_token")
+            byok_twilio_from  = await _get_cred(db, txn.tenant_id, "twilio", "twilio_from_number")
+
             asyncio.create_task(
                 send_fraud_alert_notifications(
                     alert_id=alert.id,
@@ -558,6 +565,10 @@ async def score_transaction(
                     customer_phone=cust.phone_number if cust else None,
                     analyst_email=tenant_alert_email,
                     is_test=txn.is_test,
+                    override_resend_key=byok_resend,
+                    override_twilio_sid=byok_twilio_sid,
+                    override_twilio_token=byok_twilio_token,
+                    override_twilio_from=byok_twilio_from,
                 )
             )
         except Exception as _notif_exc:

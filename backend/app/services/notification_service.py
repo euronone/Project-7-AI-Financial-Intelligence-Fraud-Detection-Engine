@@ -36,6 +36,11 @@ async def send_fraud_alert_notifications(
     customer_phone: Optional[str] = None,
     analyst_email: Optional[str] = None,
     is_test: bool = False,
+    # BYOK overrides — pre-fetched from tenant_credentials before the task fires
+    override_resend_key: Optional[str] = None,
+    override_twilio_sid: Optional[str] = None,
+    override_twilio_token: Optional[str] = None,
+    override_twilio_from: Optional[str] = None,
 ) -> dict:
     """
     Fire all applicable notification channels.
@@ -71,7 +76,8 @@ async def send_fraud_alert_notifications(
     cust_name = customer_name or "Customer"
     ref = alert_id[:8].upper()
 
-    resend_key = getattr(settings, "RESEND_API_KEY", "") or ""
+    # Tenant BYOK key takes priority; fall back to platform-level env var
+    resend_key = override_resend_key or getattr(settings, "RESEND_API_KEY", "") or ""
     email_from = getattr(settings, "EMAIL_FROM", "alerts@finshield.ai")
     email_from_name = getattr(settings, "EMAIL_FROM_NAME", "FinShield AI")
 
@@ -133,9 +139,9 @@ async def send_fraud_alert_notifications(
 
     # ── SMS → Customer (Twilio) ──────────────────────────────────────────────
     if "sms" in channels and customer_phone:
-        twilio_sid   = getattr(settings, "TWILIO_ACCOUNT_SID", "") or ""
-        twilio_token = getattr(settings, "TWILIO_AUTH_TOKEN", "") or ""
-        twilio_from  = getattr(settings, "TWILIO_FROM_NUMBER", "") or ""
+        twilio_sid   = override_twilio_sid   or getattr(settings, "TWILIO_ACCOUNT_SID", "") or ""
+        twilio_token = override_twilio_token or getattr(settings, "TWILIO_AUTH_TOKEN", "") or ""
+        twilio_from  = override_twilio_from  or getattr(settings, "TWILIO_FROM_NUMBER", "") or ""
 
         if twilio_sid and twilio_token and twilio_from:
             if decision == "BLOCK":

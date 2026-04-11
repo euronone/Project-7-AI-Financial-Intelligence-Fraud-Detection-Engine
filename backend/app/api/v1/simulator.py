@@ -1013,12 +1013,22 @@ def _build_conclusion(
 async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     """
     Returns the Resend API key for a tenant.
-    Checks tenant DB config first, falls back to RESEND_API_KEY env var.
+    Priority: BYOK tenant_credentials table → db_config_json → RESEND_API_KEY env var.
     """
     from app.core.encryption import encryptor
     from app.config import get_settings
     from app.models.user import Tenant as TenantModel
 
+    # 1. Check BYOK tenant_credentials table first
+    try:
+        from app.services.credential_service import get_decrypted as _get_cred
+        byok_key = await _get_cred(db, tenant_id, "resend", "resend_api_key")
+        if byok_key:
+            return byok_key
+    except Exception as exc:
+        logger.warning("BYOK credential lookup failed: %s", exc)
+
+    # 2. Fall back to legacy db_config_json
     try:
         result = await db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
         tenant_row = result.scalar_one_or_none()
@@ -1032,7 +1042,7 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     except Exception as exc:
         logger.warning("Could not load tenant Resend key: %s", exc)
 
-    # Fall back to env var
+    # 3. Fall back to platform env var
     s = get_settings()
     return getattr(s, "RESEND_API_KEY", "") or ""
 
