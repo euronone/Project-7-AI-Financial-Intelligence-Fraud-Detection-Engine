@@ -8,6 +8,16 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8003/api/v1";
 
 // ── Shared types ─────────────────────────────────────────────────────────────
+export interface CredentialOut {
+  id: string;
+  service: string;
+  key_name: string;
+  label: string | null;
+  masked_value: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PaymentMethod {
   id: string;
   payment_type: "upi" | "credit_card" | "debit_card";
@@ -202,6 +212,32 @@ export const apiClient = {
       body: JSON.stringify(body),
       token,
     }),
+
+  // ── BYOK Credentials Manager ────────────────────────────────────────────
+  listCredentials: (token: string) =>
+    request<CredentialOut[]>("/credentials", { token }),
+
+  upsertCredential: (
+    body: { service: string; key_name: string; value: string; label?: string },
+    token: string
+  ) =>
+    request<CredentialOut>("/credentials", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      token,
+    }),
+
+  deleteCredential: (id: string, token: string) =>
+    request<{ deleted: boolean; id: string }>(`/credentials/${id}`, {
+      method: "DELETE",
+      token,
+    }),
+
+  testCredential: (id: string, token: string) =>
+    request<{ service: string; key_name: string; success: boolean; message: string; latency_ms?: number }>(
+      `/credentials/${id}/test`,
+      { method: "POST", token }
+    ),
 
   // ── Analytics ───────────────────────────────────────────────────────────
   getOverview: (token: string) =>

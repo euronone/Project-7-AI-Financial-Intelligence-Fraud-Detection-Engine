@@ -12,7 +12,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore, DbConfig, DbType } from "@/store/auth-store";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, CredentialOut } from "@/lib/api-client";
 
 // ── DB type definitions ───────────────────────────────────────────────────────
 
@@ -309,7 +309,8 @@ const DB_TYPES: DbTypeDef[] = [
 const SECTIONS = [
   { id: "database",      label: "Database",      icon: Database },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "api-keys",      label: "API Keys",      icon: Key },
+  { id: "integrations",  label: "Integrations",  icon: Key },
+  { id: "api-keys",      label: "API Keys",      icon: Zap },
   { id: "account",       label: "Account",       icon: User },
   { id: "billing",       label: "Billing",       icon: CreditCard },
 ];
@@ -436,6 +437,89 @@ export default function SettingsPage() {
       setNotifSaving(false);
     }
   };
+
+  // ── BYOK Integrations state ───────────────────────────────────────────────
+  const [credentials, setCredentials] = useState<CredentialOut[]>([]);
+  const [credLoading, setCredLoading] = useState(false);
+  const [credForm, setCredForm] = useState<{ service: string; key_name: string; value: string; label: string }>({ service: "", key_name: "", value: "", label: "" });
+  const [credSaving, setCredSaving] = useState(false);
+  const [credSaved, setCredSaved] = useState(false);
+  const [credError, setCredError] = useState("");
+  const [credShowValue, setCredShowValue] = useState(false);
+  const [credTestResults, setCredTestResults] = useState<Record<string, { success: boolean; message: string; latency_ms?: number }>>({});
+  const [credTesting, setCredTesting] = useState<string | null>(null);
+  const [credDeleting, setCredDeleting] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token || activeSection !== "integrations") return;
+    setCredLoading(true);
+    apiClient.listCredentials(token)
+      .then(setCredentials)
+      .catch(() => {})
+      .finally(() => setCredLoading(false));
+  }, [token, activeSection]);
+
+  const handleSaveCredential = async () => {
+    if (!token) return;
+    const { service, key_name, value } = credForm;
+    if (!service.trim() || !key_name.trim() || !value.trim()) {
+      setCredError("Service, key name, and value are required.");
+      return;
+    }
+    setCredSaving(true);
+    setCredError("");
+    try {
+      const saved = await apiClient.upsertCredential(
+        { service: service.trim(), key_name: key_name.trim(), value: value.trim(), label: credForm.label.trim() || undefined },
+        token
+      );
+      setCredentials((prev) => {
+        const idx = prev.findIndex((c) => c.service === saved.service && c.key_name === saved.key_name);
+        if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next; }
+        return [...prev, saved];
+      });
+      setCredForm({ service: "", key_name: "", value: "", label: "" });
+      setCredSaved(true);
+      setTimeout(() => setCredSaved(false), 4000);
+    } catch (e: unknown) {
+      setCredError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setCredSaving(false);
+    }
+  };
+
+  const handleTestCredential = async (id: string) => {
+    if (!token) return;
+    setCredTesting(id);
+    try {
+      const res = await apiClient.testCredential(id, token);
+      setCredTestResults((prev) => ({ ...prev, [id]: res }));
+    } catch (e: unknown) {
+      setCredTestResults((prev) => ({ ...prev, [id]: { success: false, message: e instanceof Error ? e.message : "Test failed" } }));
+    } finally {
+      setCredTesting(null);
+    }
+  };
+
+  const handleDeleteCredential = async (id: string) => {
+    if (!token) return;
+    setCredDeleting(id);
+    try {
+      await apiClient.deleteCredential(id, token);
+      setCredentials((prev) => prev.filter((c) => c.id !== id));
+    } catch {} finally {
+      setCredDeleting(null);
+    }
+  };
+
+  const SERVICE_PRESETS = [
+    { service: "resend",   keys: ["resend_api_key"],                         label: "Resend.com (Email)" },
+    { service: "twilio",   keys: ["twilio_account_sid", "twilio_auth_token", "twilio_from_number"], label: "Twilio (SMS)" },
+    { service: "stripe",   keys: ["stripe_secret_key"],                      label: "Stripe (Payments)" },
+    { service: "openai",   keys: ["openai_api_key"],                         label: "OpenAI" },
+    { service: "firebase", keys: ["firebase_service_account_json"],          label: "Firebase (Push)" },
+    { service: "razorpay", keys: ["razorpay_key_id", "razorpay_secret"],     label: "Razorpay" },
+  ];
 
   const dbDef = DB_TYPES.find((d) => d.id === selectedType)!;
 
@@ -989,6 +1073,188 @@ export default function SettingsPage() {
                   <CheckCircle2 size={13} /> Notification settings saved successfully.
                 </motion.div>
               )}
+            </div>
+          )}
+
+          {/* ── Integrations (BYOK) Section ── */}
+          {activeSection === "integrations" && (
+            <div>
+              <h2 className="text-xl font-black mb-1">Integrations — Bring Your Own Keys</h2>
+              <p className="text-gray-500 text-sm mb-6">
+                Store third-party API credentials securely. All values are encrypted with AES-256 before being written to the database — raw keys are never exposed to the frontend.
+              </p>
+
+              {/* Saved credentials list */}
+              {credLoading ? (
+                <div className="flex items-center gap-2 text-gray-500 text-sm mb-6">
+                  <Loader2 size={14} className="animate-spin" /> Loading saved credentials…
+                </div>
+              ) : credentials.length > 0 ? (
+                <div className="mb-8 space-y-3">
+                  <div className="text-xs text-gray-600 font-mono uppercase tracking-wider mb-2">Saved Credentials</div>
+                  {credentials.map((cred) => {
+                    const testRes = credTestResults[cred.id];
+                    return (
+                      <div key={cred.id} className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-semibold text-white capitalize">{cred.service}</span>
+                              <span className="text-[10px] font-mono text-gray-500 bg-[#1E1E2E] px-2 py-0.5 rounded-full">{cred.key_name}</span>
+                              {cred.label && <span className="text-[10px] text-gray-500">{cred.label}</span>}
+                            </div>
+                            <div className="font-mono text-sm text-gray-400 tracking-wider">{cred.masked_value}</div>
+                            {testRes && (
+                              <div className={`mt-2 flex items-center gap-1.5 text-xs ${testRes.success ? "text-[#00FF87]" : "text-[#EF4444]"}`}>
+                                {testRes.success ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}
+                                {testRes.message}
+                                {testRes.latency_ms != null && <span className="text-gray-600">({testRes.latency_ms}ms)</span>}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => handleTestCredential(cred.id)}
+                              disabled={credTesting === cred.id}
+                              className="flex items-center gap-1.5 text-xs border border-[#1E1E2E] px-3 py-1.5 rounded-xl hover:border-[#00FF87]/40 text-gray-400 hover:text-white transition-all disabled:opacity-50"
+                            >
+                              {credTesting === cred.id ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+                              Test
+                            </button>
+                            <button
+                              onClick={() => setCredForm({ service: cred.service, key_name: cred.key_name, value: "", label: cred.label || "" })}
+                              className="text-xs border border-[#1E1E2E] px-3 py-1.5 rounded-xl text-gray-400 hover:text-white hover:border-[#3B82F6]/40 transition-all"
+                            >
+                              Replace
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCredential(cred.id)}
+                              disabled={credDeleting === cred.id}
+                              className="text-xs border border-[#1E1E2E] px-3 py-1.5 rounded-xl text-gray-400 hover:text-[#EF4444] hover:border-[#EF4444]/40 transition-all disabled:opacity-50"
+                            >
+                              {credDeleting === cred.id ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="bg-[#111118] border border-dashed border-[#2E2E3E] rounded-2xl p-6 mb-8 text-center text-sm text-gray-600">
+                  No credentials saved yet. Add your first key below.
+                </div>
+              )}
+
+              {/* Quick presets */}
+              <div className="mb-5">
+                <div className="text-xs text-gray-600 font-mono uppercase tracking-wider mb-2">Quick Preset</div>
+                <div className="flex flex-wrap gap-2">
+                  {SERVICE_PRESETS.map((p) => (
+                    <button
+                      key={p.service}
+                      onClick={() => setCredForm((prev) => ({ ...prev, service: p.service, key_name: p.keys[0] }))}
+                      className={`text-xs px-3 py-1.5 rounded-xl border transition-all ${
+                        credForm.service === p.service
+                          ? "bg-[#3B82F6]/10 border-[#3B82F6]/40 text-[#3B82F6]"
+                          : "border-[#1E1E2E] text-gray-500 hover:text-gray-300 hover:border-[#2E2E3E]"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add / Replace form */}
+              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 space-y-4">
+                <div className="text-xs text-gray-600 font-mono uppercase tracking-wider">
+                  {credForm.service && credentials.some(c => c.service === credForm.service && c.key_name === credForm.key_name) ? "Replace Credential" : "Add Credential"}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1.5">Service</label>
+                    <input
+                      type="text"
+                      value={credForm.service}
+                      onChange={(e) => setCredForm((p) => ({ ...p, service: e.target.value.toLowerCase().replace(/\s/g, "_") }))}
+                      placeholder="resend"
+                      className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1.5">Key Name</label>
+                    <input
+                      type="text"
+                      value={credForm.key_name}
+                      onChange={(e) => setCredForm((p) => ({ ...p, key_name: e.target.value.toLowerCase().replace(/\s/g, "_") }))}
+                      placeholder="resend_api_key"
+                      className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1.5">Label (optional)</label>
+                  <input
+                    type="text"
+                    value={credForm.label}
+                    onChange={(e) => setCredForm((p) => ({ ...p, label: e.target.value }))}
+                    placeholder="Production API Key"
+                    className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1.5">Secret Value</label>
+                  <div className="relative">
+                    <input
+                      type={credShowValue ? "text" : "password"}
+                      value={credForm.value}
+                      onChange={(e) => setCredForm((p) => ({ ...p, value: e.target.value }))}
+                      placeholder="Paste your API key here — encrypted before storage"
+                      className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCredShowValue((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
+                    >
+                      {credShowValue ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-600 mt-1.5 flex items-center gap-1">
+                    <Shield size={10} className="text-[#00FF87]" />
+                    Encrypted with AES-256 (Fernet) before writing to the database. Raw value is never stored.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    onClick={handleSaveCredential}
+                    disabled={credSaving}
+                    className="flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all disabled:opacity-60"
+                  >
+                    {credSaving ? <Loader2 size={14} className="animate-spin" />
+                      : credSaved ? <CheckCircle2 size={14} />
+                      : <Save size={14} />}
+                    {credSaving ? "Saving…" : credSaved ? "Saved!" : "Save Credential"}
+                  </button>
+                  {(credForm.service || credForm.value) && (
+                    <button
+                      type="button"
+                      onClick={() => { setCredForm({ service: "", key_name: "", value: "", label: "" }); setCredError(""); }}
+                      className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {credError && (
+                  <div className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444]">
+                    <AlertCircle size={13} /> {credError}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

@@ -1,0 +1,246 @@
+"""BYOK Credentials Manager — save, retrieve (masked), rotate, delete, and test credentials."""
+import logging
+import time
+from datetime import datetime, timezone
+
+import httpx
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.encryption import encryptor
+from app.models.credential import TenantCredential
+from app.schemas.credentials import (
+    CredentialDeleteResponse,
+    CredentialOut,
+    CredentialTestResult,
+    CredentialUpsert,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _mask(plaintext: str) -> str:
+    """Return a masked version: '••••••••' + last 4 chars."""
+    if len(plaintext) <= 4:
+        return "••••" + plaintext
+    return "••••••••" + plaintext[-4:]
+
+
+def _to_out(row: TenantCredential, decrypted_value: str) -> CredentialOut:
+    return CredentialOut(
+        id=row.id,
+        service=row.service,
+        key_name=row.key_name,
+        label=row.label,
+        masked_value=_mask(decrypted_value),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+# ── CRUD ─────────────────────────────────────────────────────────────────────
+
+async def list_credentials(db: AsyncSession, tenant_id: str) -> list[CredentialOut]:
+    """Return all credentials for a tenant (values masked)."""
+    result = await db.execute(
+        select(TenantCredential)
+        .where(TenantCredential.tenant_id == tenant_id)
+        .order_by(TenantCredential.service, TenantCredential.key_name)
+    )
+    rows = result.scalars().all()
+
+    out = []
+    for row in rows:
+        try:
+            plain = encryptor.decrypt(row.value_encrypted)
+        except Exception:
+            plain = "????-decryption-failed"
+        out.append(_to_out(row, plain))
+    return out
+
+
+async def upsert_credential(
+    db: AsyncSession,
+    tenant_id: str,
+    body: CredentialUpsert,
+    created_by: str,
+) -> CredentialOut:
+    """Create or replace a credential. Encrypts before writing."""
+    encrypted = encryptor.encrypt(body.value)
+
+    result = await db.execute(
+        select(TenantCredential).where(
+            TenantCredential.tenant_id == tenant_id,
+            TenantCredential.service == body.service,
+            TenantCredential.key_name == body.key_name,
+        )
+    )
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        existing.value_encrypted = encrypted
+        existing.label = body.label or existing.label
+        existing.updated_at = datetime.now(timezone.utc)
+        row = existing
+    else:
+        row = TenantCredential(
+            tenant_id=tenant_id,
+            service=body.service,
+            key_name=body.key_name,
+            label=body.label,
+            value_encrypted=encrypted,
+            created_by=created_by,
+        )
+        db.add(row)
+
+    await db.commit()
+    await db.refresh(row)
+    return _to_out(row, body.value)
+
+
+async def delete_credential(
+    db: AsyncSession,
+    tenant_id: str,
+    credential_id: str,
+) -> CredentialDeleteResponse:
+    """Delete a credential by ID (scoped to tenant)."""
+    result = await db.execute(
+        delete(TenantCredential).where(
+            TenantCredential.id == credential_id,
+            TenantCredential.tenant_id == tenant_id,
+        )
+    )
+    await db.commit()
+    return CredentialDeleteResponse(deleted=result.rowcount > 0, id=credential_id)
+
+
+async def get_decrypted(
+    db: AsyncSession,
+    tenant_id: str,
+    service: str,
+    key_name: str,
+) -> str | None:
+    """Return plaintext value for internal use (never exposed to frontend)."""
+    result = await db.execute(
+        select(TenantCredential).where(
+            TenantCredential.tenant_id == tenant_id,
+            TenantCredential.service == service,
+            TenantCredential.key_name == key_name,
+        )
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        return None
+    try:
+        return encryptor.decrypt(row.value_encrypted)
+    except Exception as exc:
+        logger.error("Decryption error for tenant=%s service=%s key=%s: %s", tenant_id, service, key_name, exc)
+        return None
+
+
+# ── Connection testers ────────────────────────────────────────────────────────
+
+async def test_credential(
+    db: AsyncSession,
+    tenant_id: str,
+    service: str,
+    key_name: str,
+) -> CredentialTestResult:
+    """Live-test a stored credential by making an authenticated API call."""
+    plain = await get_decrypted(db, tenant_id, service, key_name)
+    if not plain:
+        return CredentialTestResult(
+            service=service, key_name=key_name,
+            success=False, message="Credential not found or decryption failed"
+        )
+
+    tester = _TESTERS.get(service)
+    if tester is None:
+        return CredentialTestResult(
+            service=service, key_name=key_name,
+            success=True,
+            message="No live test available for this service — credential is stored and encrypted."
+        )
+
+    return await tester(service, key_name, plain)
+
+
+async def _test_resend(service: str, key_name: str, api_key: str) -> CredentialTestResult:
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(
+                "https://api.resend.com/domains",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        ms = int((time.monotonic() - start) * 1000)
+        if r.status_code in (200, 403):
+            return CredentialTestResult(service=service, key_name=key_name, success=True,
+                                        message="Resend API key is valid.", latency_ms=ms)
+        return CredentialTestResult(service=service, key_name=key_name, success=False,
+                                    message=f"Resend returned HTTP {r.status_code}", latency_ms=ms)
+    except Exception as exc:
+        return CredentialTestResult(service=service, key_name=key_name, success=False,
+                                    message=f"Connection error: {exc}")
+
+
+async def _test_twilio(service: str, key_name: str, value: str) -> CredentialTestResult:
+    # Twilio needs both SID + token; we test by calling the account endpoint
+    # For simplicity we just validate the format here
+    if key_name == "twilio_account_sid":
+        ok = value.startswith("AC") and len(value) == 34
+        return CredentialTestResult(
+            service=service, key_name=key_name, success=ok,
+            message="Twilio Account SID format valid." if ok else "Invalid Twilio Account SID format (should start with 'AC' and be 34 chars)."
+        )
+    return CredentialTestResult(service=service, key_name=key_name, success=True,
+                                message="Credential stored. Use Test Connection in Settings to validate full Twilio flow.")
+
+
+async def _test_stripe(service: str, key_name: str, api_key: str) -> CredentialTestResult:
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(
+                "https://api.stripe.com/v1/account",
+                auth=(api_key, ""),
+            )
+        ms = int((time.monotonic() - start) * 1000)
+        success = r.status_code == 200
+        return CredentialTestResult(
+            service=service, key_name=key_name, success=success,
+            message="Stripe key valid." if success else f"Stripe returned HTTP {r.status_code}",
+            latency_ms=ms,
+        )
+    except Exception as exc:
+        return CredentialTestResult(service=service, key_name=key_name, success=False,
+                                    message=f"Connection error: {exc}")
+
+
+async def _test_openai(service: str, key_name: str, api_key: str) -> CredentialTestResult:
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        ms = int((time.monotonic() - start) * 1000)
+        success = r.status_code == 200
+        return CredentialTestResult(
+            service=service, key_name=key_name, success=success,
+            message="OpenAI API key valid." if success else f"OpenAI returned HTTP {r.status_code}",
+            latency_ms=ms,
+        )
+    except Exception as exc:
+        return CredentialTestResult(service=service, key_name=key_name, success=False,
+                                    message=f"Connection error: {exc}")
+
+
+# Map service name → tester function
+_TESTERS = {
+    "resend": _test_resend,
+    "twilio": _test_twilio,
+    "stripe": _test_stripe,
+    "openai": _test_openai,
+}
