@@ -1003,6 +1003,7 @@ export default function SettingsPage() {
                       value={notifResendKey}
                       onChange={(e) => setNotifResendKey(e.target.value)}
                       placeholder={hasResend ? "re_•••••••••••• (saved — enter new key to replace)" : "re_xxxxxxxxxxxxxxxxxx"}
+                      autoComplete="new-password"
                       className={`w-full bg-[#111118] border rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none transition-colors pr-10 ${hasResend && !notifResendKey ? "border-[#00FF87]/30 focus:border-[#00FF87]/60" : "border-[#1E1E2E] focus:border-[#00FF87]/60"}`}
                     />
                     <button type="button" onClick={() => setShowNotifSecrets(p => ({...p, resend: !p.resend}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
@@ -1038,6 +1039,7 @@ export default function SettingsPage() {
                           value={val}
                           onChange={(e) => set(e.target.value)}
                           placeholder={ph}
+                          autoComplete="new-password"
                           className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#3B82F6]/60 transition-colors pr-10"
                         />
                         <button type="button" onClick={() => setShowNotifSecrets(p => ({...p, [key]: !p[key]}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
@@ -1211,6 +1213,7 @@ export default function SettingsPage() {
                       value={credForm.value}
                       onChange={(e) => setCredForm((p) => ({ ...p, value: e.target.value }))}
                       placeholder="Paste your API key here — encrypted before storage"
+                      autoComplete="new-password"
                       className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors pr-10"
                     />
                     <button
@@ -1334,6 +1337,7 @@ export default function SettingsPage() {
                     <input
                       type={secret ? "password" : "text"}
                       placeholder={placeholder}
+                      autoComplete={secret ? "new-password" : "off"}
                       className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
                     />
                   </div>
@@ -1450,6 +1454,7 @@ function FieldInput({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={isSaved ? "Enter new value to update…" : field.placeholder}
+            autoComplete={isSecret ? "new-password" : "off"}
             className={`w-full bg-[#111118] border rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none transition-colors pr-10 ${
               isSaved ? "border-[#00FF87]/25 focus:border-[#00FF87]/60" : "border-[#1E1E2E] focus:border-[#00FF87]/60"
             }`}
