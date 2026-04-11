@@ -309,7 +309,7 @@ def _score_unsupervised(algo_id: str, params: dict, X_all: np.ndarray) -> np.nda
     elif algo_id == "dbscan":
         eps = params.get("eps", 1.0)
         min_samples = params.get("min_samples", 5)
-        scaler = StandardScaler()
+        scaler = RobustScaler()
         X_scaled = scaler.fit_transform(X_all)
         labels = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit_predict(X_scaled)
         raw = (labels == -1).astype(float)            # noise points = anomalous
