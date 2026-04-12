@@ -4,7 +4,7 @@ import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context
 
 # Load all models so Alembic can auto-detect schema
