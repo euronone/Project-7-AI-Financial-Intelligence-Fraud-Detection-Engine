@@ -7,7 +7,7 @@ import {
   Shield, LogOut, Settings, AlertTriangle, TrendingUp, Activity,
   Users, Database, FlaskConical, Loader2, Play, RefreshCw,
   CheckCircle2, XCircle, Info, Brain, CreditCard, User,
-  MessageSquare, Search, MapPin, Table,
+  MessageSquare, Search, MapPin, Table, Mail,
 } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
@@ -341,6 +341,20 @@ export default function TestMePage() {
   const [result, setResult] = useState<SimResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Notification shadow — fetch configured company alert emails to show in the banner
+  const [alertEmails, setAlertEmails] = useState<string[]>([]);
+  const [hasResend, setHasResend] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    apiClient.getNotificationSettings(token)
+      .then((data) => {
+        const raw: string = data.company_alert_email || "";
+        setAlertEmails(raw ? raw.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
+        setHasResend(data.has_resend ?? false);
+      })
+      .catch(() => {});
+  }, [token]);
+
   // Phone lookup state
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupStatus, setLookupStatus] = useState<"idle" | "found" | "not_found">("idle");
@@ -559,7 +573,7 @@ export default function TestMePage() {
         </div>
 
         {/* Testing purpose note */}
-        <div className="flex items-start gap-3 bg-[#F59E0B]/8 border border-[#F59E0B]/30 rounded-xl px-4 py-3 mb-6">
+        <div className="flex items-start gap-3 bg-[#F59E0B]/8 border border-[#F59E0B]/30 rounded-xl px-4 py-3 mb-3">
           <Info size={15} className="text-[#F59E0B] shrink-0 mt-0.5" />
           <div className="text-xs text-[#F59E0B]/90 leading-relaxed">
             <span className="font-bold">Testing Environment Only —</span> All transactions submitted here are tagged{" "}
@@ -567,6 +581,37 @@ export default function TestMePage() {
             They are visible in the Transactions tab with a TEST badge but excluded from fraud rate calculations and live alerts.
             Real customer notifications (SMS/email) will <span className="font-semibold">not</span> fire unless explicitly configured in Settings.
           </div>
+        </div>
+
+        {/* Notification shadow — show which email(s) are configured to receive fraud alerts */}
+        <div className="flex items-center gap-3 bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-2.5 mb-6">
+          <Mail size={13} className={hasResend && alertEmails.length > 0 ? "text-[#00FF87] shrink-0" : "text-gray-600 shrink-0"} />
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="text-xs text-gray-500 shrink-0">Company alert email:</span>
+            {alertEmails.length > 0 ? (
+              alertEmails.map((email) => (
+                <span
+                  key={email}
+                  className="text-xs font-mono bg-[#00FF87]/8 border border-[#00FF87]/20 text-[#00FF87] px-2 py-0.5 rounded-lg"
+                >
+                  {email}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-gray-600 italic">not configured</span>
+            )}
+            {!hasResend && alertEmails.length > 0 && (
+              <span className="text-[10px] text-[#F59E0B]/70 bg-[#F59E0B]/8 border border-[#F59E0B]/20 px-2 py-0.5 rounded-lg">
+                no Resend key — emails won&apos;t fire
+              </span>
+            )}
+          </div>
+          <Link
+            href="/dashboard/settings?section=notifications"
+            className="ml-auto text-[10px] text-gray-500 hover:text-white shrink-0 transition-colors"
+          >
+            Configure →
+          </Link>
         </div>
 
         <div className={`grid ${result ? "grid-cols-3" : "grid-cols-2"} gap-6`}>
@@ -640,7 +685,7 @@ export default function TestMePage() {
                     <div className="flex flex-wrap gap-1.5">
                       {sampleCustomers.map((c, idx) => (
                         <button
-                          key={c.id ?? c.phone_number ?? idx}
+                          key={c.phone_number ?? idx}
                           type="button"
                           onClick={() => pickSampleCustomer(c.phone_number)}
                           className="flex items-center gap-1.5 text-[10px] bg-[#1E1E2E] border border-[#2E2E3E] hover:border-[#3B82F6]/50 hover:bg-[#3B82F6]/10 text-gray-300 hover:text-white px-2 py-1.5 rounded-lg transition-all"

@@ -213,6 +213,13 @@ export const apiClient = {
       token,
     }),
 
+  /** Returns which services are configured (metadata only — no keys). */
+  getKeysSummary: (token: string) =>
+    request<Record<string, { configured: boolean; keys: string[] }>>(
+      "/settings/keys-summary",
+      { token }
+    ),
+
   // ── BYOK Credentials Manager ────────────────────────────────────────────
   listCredentials: (token: string) =>
     request<CredentialOut[]>("/credentials", { token }),

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Shield, Database, Save, Zap, Loader2, CheckCircle2,
-  AlertCircle, Eye, EyeOff, ExternalLink, Settings, Bell,
+  AlertCircle, Eye, EyeOff, ExternalLink, Settings,
   Key, User, CreditCard, ChevronDown, ChevronUp,
   Mail, MessageSquare, Activity, TrendingUp, AlertTriangle,
   FlaskConical, Users, Table, Brain, X, Plus, LogOut,
@@ -308,7 +308,6 @@ const DB_TYPES: DbTypeDef[] = [
 
 const SECTIONS = [
   { id: "database",      label: "Database",      icon: Database },
-  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "integrations",  label: "Integrations",  icon: Key },
   { id: "api-keys",      label: "API Keys",      icon: Zap },
   { id: "account",       label: "Account",       icon: User },
@@ -377,32 +376,19 @@ export default function SettingsPage() {
   }, [token]);
 
   // ── Notification settings state ──────────────────────────────────────────
-  // Multiple company alert emails stored as an array; saved as comma-separated string
+  // Company alert emails — stored as comma-separated in DB, shown as chips in Integrations tab
   const [alertEmails, setAlertEmails] = useState<string[]>([]);
-  const [emailDraft, setEmailDraft] = useState(""); // current input before adding
-  const [notifSmsEnabled, setNotifSmsEnabled] = useState(true);
-  const [notifResendKey, setNotifResendKey] = useState("");
-  const [notifTwilioSid, setNotifTwilioSid] = useState("");
-  const [notifTwilioToken, setNotifTwilioToken] = useState("");
-  const [notifTwilioFrom, setNotifTwilioFrom] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
   const [notifSaving, setNotifSaving] = useState(false);
   const [notifSaved, setNotifSaved] = useState(false);
   const [notifError, setNotifError] = useState("");
-  const [showNotifSecrets, setShowNotifSecrets] = useState<Record<string, boolean>>({});
-  // Tracks whether a key is already saved in DB (so we can show "Saved ✓" badge)
-  const [hasResend, setHasResend] = useState(false);
-  const [hasTwilio, setHasTwilio] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     apiClient.getNotificationSettings(token)
       .then((data) => {
-        // Parse comma-separated company alert emails into array
         const raw: string = data.company_alert_email || "";
         setAlertEmails(raw ? raw.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
-        setNotifSmsEnabled(data.sms_enabled ?? true);
-        setHasResend(data.has_resend ?? false);
-        setHasTwilio(data.has_twilio ?? false);
       })
       .catch(() => {});
   }, [token]);
@@ -412,23 +398,10 @@ export default function SettingsPage() {
     setNotifSaving(true);
     setNotifError("");
     try {
-      const body: Record<string, string | boolean> = {
-        company_alert_email: alertEmails.join(","),
-        sms_enabled: notifSmsEnabled,
-      };
-      if (notifResendKey.trim())   body.resend_api_key     = notifResendKey.trim();
-      if (notifTwilioSid.trim())   body.twilio_account_sid = notifTwilioSid.trim();
-      if (notifTwilioToken.trim()) body.twilio_auth_token  = notifTwilioToken.trim();
-      if (notifTwilioFrom.trim())  body.twilio_from_number = notifTwilioFrom.trim();
-      await apiClient.saveNotificationSettings(body, token);
-      // Update saved-key indicators based on what was just submitted
-      if (notifResendKey.trim()) setHasResend(true);
-      if (notifTwilioSid.trim() && notifTwilioToken.trim() && notifTwilioFrom.trim()) setHasTwilio(true);
-      // Clear input fields after save (key is now in DB — show badge instead)
-      setNotifResendKey("");
-      setNotifTwilioSid("");
-      setNotifTwilioToken("");
-      setNotifTwilioFrom("");
+      await apiClient.saveNotificationSettings(
+        { company_alert_email: alertEmails.join(",") },
+        token
+      );
       setNotifSaved(true);
       setTimeout(() => setNotifSaved(false), 4000);
     } catch (e: unknown) {
@@ -520,6 +493,105 @@ export default function SettingsPage() {
     { service: "firebase", keys: ["firebase_service_account_json"],          label: "Firebase (Push)" },
     { service: "razorpay", keys: ["razorpay_key_id", "razorpay_secret"],     label: "Razorpay" },
   ];
+
+  // ── Fraud Intelligence API Keys state (api-keys tab) ────────────────────
+  // Each field maps to a TenantCredential row (service + key_name).
+  // On tab open: load existing credentials → show masked values.
+  // On save: upsert via credentials API → re-show masked value.
+  const FRAUD_API_KEYS = [
+    { service: "ipqs",        key_name: "ipqs_api_key",         label: "IPQualityScore — IP Reputation & Proxy Detection", placeholder: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", badge: "5,000/mo free", link: "https://www.ipqualityscore.com/documentation/overview", hint: "Detects VPN, Tor, proxy, and malicious IP addresses in real time" },
+    { service: "maxmind",     key_name: "maxmind_license_key",  label: "MaxMind GeoIP2 — License Key",                     placeholder: "XXXXXXXXXX",                      badge: "GeoLite2 free", link: "https://dev.maxmind.com/geoip/geolite2-free-geolocation-data/", hint: "Country, city, and fraud risk score per IP. GeoLite2 is free with registration." },
+    { service: "fingerprint", key_name: "fingerprint_api_key",  label: "Fingerprint.js — Device Intelligence",             placeholder: "fp_xxxxxxxxxxxxxxxxxxxxxxxxxx",    badge: "Free tier",     link: "https://dev.fingerprint.com/", hint: "Browser/device fingerprinting to detect device spoofing and account takeover" },
+    { service: "ofac",        key_name: "ofac_api_key",         label: "OFAC / Sanctions Screening API",                   placeholder: "your_ofac_api_key",               badge: "Free (direct)", link: "https://ofac.treasury.gov/", hint: "Screens customers against US OFAC Specially Designated Nationals list" },
+    { service: "threatmetrix",key_name: "threatmetrix_api_key", label: "ThreatMetrix / LexisNexis — Identity Risk",        placeholder: "tmx_xxxxxxxxxxxxxxxx",            badge: null,            link: "https://risk.lexisnexis.com/products/threatmetrix", hint: "Enterprise identity intelligence and device reputation scoring" },
+    { service: "razorpay",    key_name: "razorpay_key_id",      label: "Razorpay API Key — Payment Gateway",               placeholder: "rzp_live_xxxxxxxxxxxxxxxx",       badge: null,            link: "https://razorpay.com/docs/api/", hint: "For Razorpay webhook integration and transaction verification" },
+  ] as const;
+
+  // value shown in each input (masked string from API, or plaintext while typing)
+  const [apiKeyValues, setApiKeyValues] = useState<Record<string, string>>({});
+  // true when the displayed value is the masked string returned by the backend
+  const [apiKeyMasked, setApiKeyMasked] = useState<Record<string, boolean>>({});
+  // show/hide toggle per field
+  const [apiKeyShow, setApiKeyShow] = useState<Record<string, boolean>>({});
+  // credential IDs needed for the Test button
+  const [apiKeyCredIds, setApiKeyCredIds] = useState<Record<string, string | null>>({});
+  // per-field saving/testing
+  const [apiKeySaving, setApiKeySaving] = useState<Record<string, boolean>>({});
+  const [apiKeyTesting, setApiKeyTesting] = useState<Record<string, boolean>>({});
+  const [apiKeyTestResults, setApiKeyTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
+  const [apiKeysBulkSaving, setApiKeysBulkSaving] = useState(false);
+  const [apiKeysBulkSaved, setApiKeysBulkSaved] = useState(false);
+
+  // Load fraud API key credentials when the tab is opened
+  useEffect(() => {
+    if (!token || activeSection !== "api-keys") return;
+    apiClient.listCredentials(token).then((creds) => {
+      const values: Record<string, string> = {};
+      const masked: Record<string, boolean> = {};
+      const ids: Record<string, string | null> = {};
+      for (const fk of FRAUD_API_KEYS) {
+        const match = creds.find((c) => c.service === fk.service && c.key_name === fk.key_name);
+        const fieldKey = `${fk.service}__${fk.key_name}`;
+        values[fieldKey] = match ? match.masked_value : "";
+        masked[fieldKey] = !!match;
+        ids[fieldKey] = match ? match.id : null;
+      }
+      setApiKeyValues(values);
+      setApiKeyMasked(masked);
+      setApiKeyCredIds(ids);
+    }).catch(() => {});
+  }, [token, activeSection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Save a single fraud API key and refresh its masked value. */
+  const handleSaveFraudApiKey = async (service: string, key_name: string, label: string) => {
+    if (!token) return;
+    const fieldKey = `${service}__${key_name}`;
+    const val = apiKeyValues[fieldKey];
+    if (!val || apiKeyMasked[fieldKey]) return; // nothing new to save
+    setApiKeySaving((p) => ({ ...p, [fieldKey]: true }));
+    try {
+      const result = await apiClient.upsertCredential({ service, key_name, value: val, label }, token);
+      setApiKeyValues((p) => ({ ...p, [fieldKey]: result.masked_value }));
+      setApiKeyMasked((p) => ({ ...p, [fieldKey]: true }));
+      setApiKeyCredIds((p) => ({ ...p, [fieldKey]: result.id }));
+    } finally {
+      setApiKeySaving((p) => ({ ...p, [fieldKey]: false }));
+    }
+  };
+
+  /** Bulk-save all fraud API keys that have unsaved values. */
+  const handleSaveAllFraudApiKeys = async () => {
+    if (!token) return;
+    setApiKeysBulkSaving(true);
+    for (const fk of FRAUD_API_KEYS) {
+      const fieldKey = `${fk.service}__${fk.key_name}`;
+      const val = apiKeyValues[fieldKey];
+      if (val && !apiKeyMasked[fieldKey]) {
+        await handleSaveFraudApiKey(fk.service, fk.key_name, fk.label);
+      }
+    }
+    setApiKeysBulkSaving(false);
+    setApiKeysBulkSaved(true);
+    setTimeout(() => setApiKeysBulkSaved(false), 3000);
+  };
+
+  /** Live-test a saved fraud API key. */
+  const handleTestFraudApiKey = async (service: string, key_name: string) => {
+    if (!token) return;
+    const fieldKey = `${service}__${key_name}`;
+    const credId = apiKeyCredIds[fieldKey];
+    if (!credId) return;
+    setApiKeyTesting((p) => ({ ...p, [fieldKey]: true }));
+    setApiKeyTestResults((p) => ({ ...p, [fieldKey]: { success: false, message: "" } }));
+    try {
+      const res = await apiClient.testCredential(credId, token);
+      setApiKeyTestResults((p) => ({ ...p, [fieldKey]: { success: res.success, message: res.message } }));
+    } catch (e: unknown) {
+      setApiKeyTestResults((p) => ({ ...p, [fieldKey]: { success: false, message: e instanceof Error ? e.message : "Test failed" } }));
+    } finally {
+      setApiKeyTesting((p) => ({ ...p, [fieldKey]: false }));
+    }
+  };
 
   const dbDef = DB_TYPES.find((d) => d.id === selectedType)!;
 
@@ -869,15 +941,15 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ── Notifications Section ── */}
-          {activeSection === "notifications" && (
+          {/* ── Integrations (BYOK) Section ── */}
+          {activeSection === "integrations" && (
             <div>
-              <h2 className="text-xl font-black mb-1">Notification Services</h2>
+              <h2 className="text-xl font-black mb-1">Integrations — Bring Your Own Keys</h2>
               <p className="text-gray-500 text-sm mb-6">
-                Configure where fraud alerts are sent. The company alert email is required for your team to receive notifications. All API keys are optional — the platform falls back gracefully to in-app alerts.
+                Store third-party API credentials securely. All values are encrypted with AES-256 before being written to the database — raw keys are never exposed to the frontend.
               </p>
 
-              {/* Company Alert Emails — multi-email tag input */}
+              {/* ── Company Alert Emails ── */}
               <div className="bg-[#00FF87]/05 border border-[#00FF87]/20 rounded-2xl p-5 mb-6">
                 <div className="flex items-center gap-2 mb-3">
                   <Mail size={16} className="text-[#00FF87]" />
@@ -947,144 +1019,31 @@ export default function SettingsPage() {
                     {alertEmails.length} recipient{alertEmails.length > 1 ? "s" : ""} — all will receive fraud alert emails.
                   </p>
                 )}
-              </div>
 
-              {/* SMS toggle */}
-              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare size={15} className="text-[#3B82F6]" />
-                    <div>
-                      <div className="text-sm font-semibold">SMS Alerts via Twilio</div>
-                      <div className="text-xs text-gray-500 mt-0.5">Send SMS to customer phone for CRITICAL and HIGH severity fraud events</div>
-                    </div>
-                  </div>
+                {/* Save email list */}
+                <div className="flex items-center gap-3 mt-4">
                   <button
-                    onClick={() => setNotifSmsEnabled((v) => !v)}
-                    className="flex items-center gap-1.5 transition-all"
+                    onClick={handleSaveNotifications}
+                    disabled={notifSaving}
+                    className="flex items-center gap-2 text-xs bg-[#00FF87] text-black font-bold px-4 py-2 rounded-xl hover:bg-[#00e87a] transition-all disabled:opacity-60"
                   >
-                    {notifSmsEnabled ? (
-                      <span className="flex items-center gap-1.5 text-xs font-semibold text-[#00FF87]">
-                        <span className="w-10 h-5 bg-[#00FF87]/30 border border-[#00FF87]/50 rounded-full flex items-center px-0.5">
-                          <span className="w-4 h-4 bg-[#00FF87] rounded-full ml-auto shadow-sm" />
-                        </span>
-                        ON
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-500">
-                        <span className="w-10 h-5 bg-[#1E1E2E] border border-[#2E2E3E] rounded-full flex items-center px-0.5">
-                          <span className="w-4 h-4 bg-gray-600 rounded-full shadow-sm" />
-                        </span>
-                        OFF
-                      </span>
-                    )}
+                    {notifSaving ? <Loader2 size={13} className="animate-spin" />
+                      : notifSaved ? <CheckCircle2 size={13} />
+                      : <Save size={13} />}
+                    {notifSaving ? "Saving…" : notifSaved ? "Saved!" : "Save Alert Emails"}
                   </button>
+                  {notifError && (
+                    <span className="flex items-center gap-1.5 text-xs text-[#EF4444]">
+                      <AlertCircle size={12} /> {notifError}
+                    </span>
+                  )}
+                  {notifSaved && (
+                    <span className="flex items-center gap-1.5 text-xs text-[#00FF87]">
+                      <CheckCircle2 size={12} /> Saved successfully.
+                    </span>
+                  )}
                 </div>
               </div>
-
-              {/* API Key fields */}
-              <div className="space-y-5">
-                {/* Resend */}
-                <div>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <label className="text-sm text-gray-400 font-medium">Resend.com API Key — Email</label>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/20 font-mono">3,000/mo free</span>
-                    <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400"><ExternalLink size={11} /></a>
-                    {hasResend && !notifResendKey && (
-                      <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/30 font-semibold">
-                        <CheckCircle2 size={9} /> Key saved
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-600 mb-1.5">Preferred email provider. Sign up at resend.com — API key starts with <span className="font-mono">re_</span></div>
-                  <div className="relative">
-                    <input
-                      type={showNotifSecrets["resend"] ? "text" : "password"}
-                      value={notifResendKey}
-                      onChange={(e) => setNotifResendKey(e.target.value)}
-                      placeholder={hasResend ? "re_•••••••••••• (saved — enter new key to replace)" : "re_xxxxxxxxxxxxxxxxxx"}
-                      autoComplete="new-password"
-                      className={`w-full bg-[#111118] border rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none transition-colors pr-10 ${hasResend && !notifResendKey ? "border-[#00FF87]/30 focus:border-[#00FF87]/60" : "border-[#1E1E2E] focus:border-[#00FF87]/60"}`}
-                    />
-                    <button type="button" onClick={() => setShowNotifSecrets(p => ({...p, resend: !p.resend}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
-                      {showNotifSecrets["resend"] ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Twilio */}
-                <div className={`bg-[#111118] rounded-2xl p-4 space-y-4 ${hasTwilio ? "border border-[#3B82F6]/30" : "border border-[#1E1E2E]"}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <MessageSquare size={13} className="text-[#3B82F6]" />
-                    <span className="text-sm font-semibold text-gray-300">Twilio SMS Credentials</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 font-mono">Paid ~₹0.10/SMS</span>
-                    <a href="https://console.twilio.com/" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400"><ExternalLink size={11} /></a>
-                    {hasTwilio && !notifTwilioSid && (
-                      <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/30 font-semibold">
-                        <CheckCircle2 size={9} /> Credentials saved
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-600">Required for SMS alerts to customers. All three fields must be filled to enable SMS.</div>
-                  {[
-                    { key: "sid",   label: "Account SID",  val: notifTwilioSid,   set: setNotifTwilioSid,   ph: hasTwilio ? "AC•••••••••••••••• (saved)" : "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
-                    { key: "token", label: "Auth Token",   val: notifTwilioToken, set: setNotifTwilioToken, ph: hasTwilio ? "•••••••••••••••••• (saved)" : "your_32_char_auth_token" },
-                    { key: "from",  label: "From Number",  val: notifTwilioFrom,  set: setNotifTwilioFrom,  ph: hasTwilio ? "+1••••••••• (saved)" : "+12025551234" },
-                  ].map(({ key, label: lbl, val, set, ph }) => (
-                    <div key={key}>
-                      <label className="block text-xs text-gray-500 mb-1">{lbl}</label>
-                      <div className="relative">
-                        <input
-                          type={showNotifSecrets[key] ? "text" : "password"}
-                          value={val}
-                          onChange={(e) => set(e.target.value)}
-                          placeholder={ph}
-                          autoComplete="new-password"
-                          className="w-full bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#3B82F6]/60 transition-colors pr-10"
-                        />
-                        <button type="button" onClick={() => setShowNotifSecrets(p => ({...p, [key]: !p[key]}))} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400">
-                          {showNotifSecrets[key] ? <EyeOff size={14} /> : <Eye size={14} />}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Save */}
-              <div className="flex items-center gap-3 mt-6">
-                <button
-                  onClick={handleSaveNotifications}
-                  disabled={notifSaving}
-                  className="flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all disabled:opacity-60"
-                >
-                  {notifSaving ? <Loader2 size={14} className="animate-spin" />
-                    : notifSaved ? <CheckCircle2 size={14} />
-                    : <Save size={14} />}
-                  {notifSaving ? "Saving…" : notifSaved ? "Saved!" : "Save Notification Settings"}
-                </button>
-              </div>
-              {notifError && (
-                <div className="mt-3 flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#EF4444]">
-                  <AlertCircle size={13} /> {notifError}
-                </div>
-              )}
-              {notifSaved && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                  className="mt-3 flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl bg-[#00FF87]/10 border border-[#00FF87]/30 text-[#00FF87]">
-                  <CheckCircle2 size={13} /> Notification settings saved successfully.
-                </motion.div>
-              )}
-            </div>
-          )}
-
-          {/* ── Integrations (BYOK) Section ── */}
-          {activeSection === "integrations" && (
-            <div>
-              <h2 className="text-xl font-black mb-1">Integrations — Bring Your Own Keys</h2>
-              <p className="text-gray-500 text-sm mb-6">
-                Store third-party API credentials securely. All values are encrypted with AES-256 before being written to the database — raw keys are never exposed to the frontend.
-              </p>
 
               {/* Saved credentials list */}
               {credLoading ? (
@@ -1261,91 +1220,144 @@ export default function SettingsPage() {
             </div>
           )}
 
-                    {/* ── API Keys Section ── */}
+          {/* ── API Keys Section — live save/load via TenantCredential ── */}
           {activeSection === "api-keys" && (
             <div>
               <h2 className="text-xl font-black mb-1">Fraud Intelligence API Keys</h2>
-              <p className="text-gray-500 text-sm mb-7">
+              <p className="text-gray-500 text-sm mb-2">
                 Optional third-party enrichment services. FinShield uses built-in fallbacks when not configured.
               </p>
-              <div className="space-y-6">
-                {[
-                  {
-                    label: "IPQualityScore — IP Reputation & Proxy Detection",
-                    placeholder: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
-                    badge: "5,000/mo free",
-                    link: "https://www.ipqualityscore.com/documentation/overview",
-                    hint: "Detects VPN, Tor, proxy, and malicious IP addresses in real time",
-                    secret: true,
-                  },
-                  {
-                    label: "MaxMind GeoIP2 — Geolocation & Fraud Score",
-                    placeholder: "xxxxxxxxxx",
-                    badge: null,
-                    link: "https://dev.maxmind.com/geoip/geolite2-free-geolocation-data/",
-                    hint: "Provides country, city, and fraud risk score per IP. GeoLite2 is free.",
-                    secret: true,
-                  },
-                  {
-                    label: "Fingerprint.js — Device Intelligence",
-                    placeholder: "fp_xxxxxxxxxxxxxxxxxxxxxxxxxx",
-                    badge: "Free tier",
-                    link: "https://dev.fingerprint.com/",
-                    hint: "Browser/device fingerprinting to detect device spoofing and account takeover",
-                    secret: true,
-                  },
-                  {
-                    label: "OFAC / Sanctions Screening API",
-                    placeholder: "your_ofac_api_key",
-                    badge: "Free (OFAC direct)",
-                    link: "https://ofac.treasury.gov/",
-                    hint: "Screens customers against US OFAC Specially Designated Nationals list",
-                    secret: true,
-                  },
-                  {
-                    label: "ThreatMetrix / LexisNexis — Identity Risk",
-                    placeholder: "tmx_xxxxxxxxxxxxxxxx",
-                    badge: null,
-                    link: "https://risk.lexisnexis.com/products/threatmetrix",
-                    hint: "Enterprise identity intelligence and device reputation scoring",
-                    secret: true,
-                  },
-                  {
-                    label: "Razorpay API Key — Payment Gateway",
-                    placeholder: "rzp_live_xxxxxxxxxxxxxxxx",
-                    badge: null,
-                    link: "https://razorpay.com/docs/api/",
-                    hint: "For Razorpay webhook integration and transaction verification",
-                    secret: true,
-                  },
-                ].map(({ label: l, placeholder, badge, link, hint, secret }) => (
-                  <div key={l}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <label className="text-sm text-gray-400 font-medium">{l}</label>
-                      {badge && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 font-mono">
-                          {badge}
-                        </span>
-                      )}
-                      {link && (
-                        <a href={link} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400">
+              {/* Security note */}
+              <div className="flex items-start gap-2 p-3 bg-[#00FF87]/05 border border-[#00FF87]/20 rounded-xl mb-6">
+                <Shield size={13} className="text-[#00FF87] mt-0.5 shrink-0" />
+                <p className="text-[11px] text-gray-400">
+                  All keys are encrypted with <strong className="text-white">AES-256 (Fernet)</strong> before being stored in your Supabase database.
+                  On every login they auto-populate as <span className="font-mono text-[#00FF87]">••••••••xxxx</span> — plaintext is never sent to the browser.
+                  Each institution's keys are fully isolated by <code className="text-gray-400">tenant_id</code>.
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                {FRAUD_API_KEYS.map((fk) => {
+                  const fieldKey = `${fk.service}__${fk.key_name}`;
+                  const val       = apiKeyValues[fieldKey] ?? "";
+                  const isMasked  = apiKeyMasked[fieldKey] ?? false;
+                  const isShown   = apiKeyShow[fieldKey]   ?? false;
+                  const isSaving  = apiKeySaving[fieldKey] ?? false;
+                  const isTesting = apiKeyTesting[fieldKey] ?? false;
+                  const testRes   = apiKeyTestResults[fieldKey];
+                  const credId    = apiKeyCredIds[fieldKey];
+                  const hasUnsaved = val && !isMasked;
+
+                  return (
+                    <div key={fieldKey} className={`bg-[#111118] border rounded-2xl p-4 transition-colors ${isMasked ? "border-[#00FF87]/25" : "border-[#1E1E2E]"}`}>
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <label className="text-sm text-gray-300 font-medium">{fk.label}</label>
+                        {fk.badge && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20 font-mono">
+                            {fk.badge}
+                          </span>
+                        )}
+                        {isMasked && (
+                          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#00FF87]/10 text-[#00FF87] border border-[#00FF87]/25 font-semibold">
+                            <CheckCircle2 size={9} /> Encrypted &amp; saved
+                          </span>
+                        )}
+                        <a href={fk.link} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-400 ml-auto">
                           <ExternalLink size={11} />
                         </a>
+                      </div>
+                      <div className="text-xs text-gray-600 mb-3">{fk.hint}</div>
+
+                      {/* Input + actions row */}
+                      <div className="flex gap-2 items-center">
+                        <div className="relative flex-1">
+                          <input
+                            type={isShown ? "text" : "password"}
+                            value={val}
+                            onFocus={() => {
+                              // Clicking a masked field clears it so user can type a fresh value
+                              if (isMasked) {
+                                setApiKeyValues((p) => ({ ...p, [fieldKey]: "" }));
+                                setApiKeyMasked((p) => ({ ...p, [fieldKey]: false }));
+                              }
+                            }}
+                            onChange={(e) => {
+                              setApiKeyValues((p) => ({ ...p, [fieldKey]: e.target.value }));
+                              setApiKeyMasked((p) => ({ ...p, [fieldKey]: false }));
+                            }}
+                            placeholder={isMasked ? val : fk.placeholder}
+                            autoComplete="new-password"
+                            className={`w-full bg-[#0A0A0F] border rounded-xl px-4 py-2.5 text-sm font-mono pr-10 focus:outline-none transition-colors placeholder-gray-600 ${
+                              isMasked
+                                ? "border-[#00FF87]/25 text-[#00FF87] focus:border-[#00FF87]/60"
+                                : "border-[#1E1E2E] text-white focus:border-[#00FF87]/60"
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setApiKeyShow((p) => ({ ...p, [fieldKey]: !p[fieldKey] }))}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400"
+                          >
+                            {isShown ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </div>
+
+                        {/* Save this key */}
+                        {hasUnsaved && (
+                          <button
+                            onClick={() => handleSaveFraudApiKey(fk.service, fk.key_name, fk.label)}
+                            disabled={isSaving}
+                            className="shrink-0 flex items-center gap-1.5 text-xs bg-[#00FF87] text-black font-bold px-3 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all disabled:opacity-60"
+                          >
+                            {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                            Save
+                          </button>
+                        )}
+
+                        {/* Live-test (only when a credential is saved) */}
+                        {credId && (
+                          <button
+                            onClick={() => handleTestFraudApiKey(fk.service, fk.key_name)}
+                            disabled={isTesting}
+                            title="Live-test this key"
+                            className="shrink-0 flex items-center gap-1.5 text-xs border border-[#1E1E2E] text-gray-400 px-3 py-2.5 rounded-xl hover:border-[#00FF87]/40 hover:text-white transition-all disabled:opacity-50"
+                          >
+                            {isTesting ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                            Test
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Test result */}
+                      {testRes?.message && (
+                        <div className={`mt-2 flex items-center gap-1.5 text-xs ${testRes.success ? "text-[#00FF87]" : "text-[#EF4444]"}`}>
+                          {testRes.success ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}
+                          {testRes.message}
+                        </div>
                       )}
                     </div>
-                    {hint && <div className="text-xs text-gray-600 mb-1.5">{hint}</div>}
-                    <input
-                      type={secret ? "password" : "text"}
-                      placeholder={placeholder}
-                      autoComplete={secret ? "new-password" : "off"}
-                      className="w-full bg-[#111118] border border-[#1E1E2E] rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#00FF87]/60 transition-colors"
-                    />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              <button className="mt-6 flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all">
-                <Save size={14} /> Save API Keys
-              </button>
+
+              {/* Bulk save all unsaved keys */}
+              <div className="flex items-center gap-3 mt-6">
+                <button
+                  onClick={handleSaveAllFraudApiKeys}
+                  disabled={apiKeysBulkSaving || FRAUD_API_KEYS.every((fk) => apiKeyMasked[`${fk.service}__${fk.key_name}`] || !apiKeyValues[`${fk.service}__${fk.key_name}`])}
+                  className="flex items-center gap-2 text-sm bg-[#00FF87] text-black font-bold px-5 py-2.5 rounded-xl hover:bg-[#00e87a] transition-all disabled:opacity-50"
+                >
+                  {apiKeysBulkSaving ? <Loader2 size={14} className="animate-spin" />
+                    : apiKeysBulkSaved ? <CheckCircle2 size={14} />
+                    : <Save size={14} />}
+                  {apiKeysBulkSaving ? "Saving…" : apiKeysBulkSaved ? "All Keys Saved!" : "Save All Keys"}
+                </button>
+                <p className="text-xs text-gray-600">
+                  Keys are encrypted &amp; stored per-tenant in Supabase. They auto-populate on next login.
+                </p>
+              </div>
             </div>
           )}
 

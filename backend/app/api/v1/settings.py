@@ -339,6 +339,55 @@ async def test_connection(
 
 
 # ---------------------------------------------------------------------------
+# Keys-summary endpoint — fast per-service "is configured?" check
+# ---------------------------------------------------------------------------
+
+@router.get("/keys-summary")
+async def get_keys_summary(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return which services have at least one saved credential for this tenant.
+
+    Response shape (example):
+        {
+          "resend":   {"configured": true,  "keys": ["resend_api_key"]},
+          "twilio":   {"configured": false, "keys": []},
+          "openai":   {"configured": true,  "keys": ["openai_api_key"]},
+          "stripe":   {"configured": false, "keys": []},
+          "firebase": {"configured": false, "keys": []},
+        }
+
+    Only metadata is returned — no encrypted values, no masked values.
+    """
+    from app.models.credential import TenantCredential
+
+    result = await db.execute(
+        select(TenantCredential.service, TenantCredential.key_name).where(
+            TenantCredential.tenant_id == current_user.tenant_id
+        )
+    )
+    rows = result.all()
+
+    # Group by service
+    service_keys: dict[str, list[str]] = {}
+    for service, key_name in rows:
+        service_keys.setdefault(service, []).append(key_name)
+
+    # Build summary for all known services + any extra ones stored
+    known_services = ["resend", "twilio", "openai", "stripe", "firebase"]
+    all_services = sorted(set(known_services) | set(service_keys.keys()))
+
+    return {
+        svc: {
+            "configured": bool(service_keys.get(svc)),
+            "keys": service_keys.get(svc, []),
+        }
+        for svc in all_services
+    }
+
+
+# ---------------------------------------------------------------------------
 # Notification settings endpoints
 # ---------------------------------------------------------------------------
 
@@ -347,34 +396,47 @@ async def get_notification_settings(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Return notification configuration (secrets masked)."""
+    """Return notification configuration (secrets masked).
+
+    has_resend / has_twilio are resolved from the tenant_credentials table
+    (the single source of truth for API keys) with a fallback to platform
+    environment variables.  The legacy db_config_json.notifications keys
+    are intentionally ignored — users manage all API keys via Integrations.
+    """
     from app.config import get_settings
+    from app.models.credential import TenantCredential
+
     settings = get_settings()
     result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
     tenant = result.scalar_one_or_none()
     notif_config = (tenant.db_config_json or {}).get("notifications", {}) if tenant else {}
 
-    # Decrypt stored keys to check presence
-    stored_resend = ""
-    stored_twilio_sid = ""
-    if notif_config.get("resend_api_key"):
-        try:
-            stored_resend = encryptor.decrypt(notif_config["resend_api_key"])
-        except Exception:
-            stored_resend = notif_config["resend_api_key"]  # plaintext fallback
-    if notif_config.get("twilio_account_sid"):
-        try:
-            stored_twilio_sid = encryptor.decrypt(notif_config["twilio_account_sid"])
-        except Exception:
-            stored_twilio_sid = notif_config["twilio_account_sid"]
+    # Check tenant_credentials table for Resend and Twilio keys
+    cred_result = await db.execute(
+        select(TenantCredential.service, TenantCredential.key_name).where(
+            TenantCredential.tenant_id == current_user.tenant_id,
+            TenantCredential.service.in_(["resend", "twilio"]),
+        )
+    )
+    cred_rows = cred_result.all()
+    cred_services = {(r.service, r.key_name) for r in cred_rows}
+
+    has_resend = (
+        ("resend", "resend_api_key") in cred_services
+        or bool(getattr(settings, "RESEND_API_KEY", ""))
+    )
+    has_twilio = (
+        ("twilio", "twilio_account_sid") in cred_services
+        or bool(getattr(settings, "TWILIO_ACCOUNT_SID", ""))
+    )
 
     return {
         "company_alert_email": notif_config.get("company_alert_email", getattr(settings, "ALERT_COMPANY_EMAIL", "")),
-        "has_twilio":         bool(stored_twilio_sid or getattr(settings, "TWILIO_ACCOUNT_SID", "")),
-        "has_resend":         bool(stored_resend or getattr(settings, "RESEND_API_KEY", "")),
-        "sms_enabled":        notif_config.get("sms_enabled", True),
-        "email_customer":     notif_config.get("email_customer", True),
-        "email_company":      notif_config.get("email_company", True),
+        "has_resend":          has_resend,
+        "has_twilio":          has_twilio,
+        "sms_enabled":         notif_config.get("sms_enabled", True),
+        "email_customer":      notif_config.get("email_customer", True),
+        "email_company":       notif_config.get("email_company", True),
     }
 
 
@@ -391,23 +453,29 @@ async def update_notification_settings(
         from app.core.exceptions import NotFoundException
         raise NotFoundException("Tenant")
 
-    config = tenant.db_config_json or {}
+    from sqlalchemy.orm.attributes import flag_modified
+
+    # Work on a fresh copy so SQLAlchemy sees a distinct object reference
+    config = dict(tenant.db_config_json or {})
+    existing_notif = dict(config.get("notifications") or {})
+
     notif: dict = {
         "company_alert_email": body.get("company_alert_email", ""),
         "sms_enabled":         body.get("sms_enabled", True),
         "email_customer":      body.get("email_customer", True),
         "email_company":       body.get("email_company", True),
     }
-    # Encrypt and persist API keys if provided
+    # Encrypt and persist API keys if provided; preserve existing if not being updated
     for key_field in ("resend_api_key", "twilio_account_sid", "twilio_auth_token", "twilio_from_number"):
         val = (body.get(key_field) or "").strip()
         if val:
             notif[key_field] = encryptor.encrypt(val)
-        elif key_field in (config.get("notifications") or {}):
-            # Preserve existing key if not being updated
-            notif[key_field] = config["notifications"][key_field]
+        elif key_field in existing_notif:
+            notif[key_field] = existing_notif[key_field]
+
     config["notifications"] = notif
     tenant.db_config_json = config
+    flag_modified(tenant, "db_config_json")   # ← force SQLAlchemy to detect mutation
     await db.commit()
     return {"success": True, "message": "Notification settings saved"}
 
