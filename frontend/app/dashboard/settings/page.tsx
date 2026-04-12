@@ -6,7 +6,7 @@ import {
   Shield, Database, Save, Zap, Loader2, CheckCircle2,
   AlertCircle, Eye, EyeOff, ExternalLink, Settings,
   Key, User, CreditCard, ChevronDown, ChevronUp,
-  Mail, MessageSquare, Activity, TrendingUp, AlertTriangle,
+  Mail, Activity, TrendingUp, AlertTriangle,
   FlaskConical, Users, Table, Brain, X, Plus, LogOut,
 } from "lucide-react";
 import Link from "next/link";
@@ -1233,7 +1233,7 @@ export default function SettingsPage() {
                 <p className="text-[11px] text-gray-400">
                   All keys are encrypted with <strong className="text-white">AES-256 (Fernet)</strong> before being stored in your Supabase database.
                   On every login they auto-populate as <span className="font-mono text-[#00FF87]">••••••••xxxx</span> — plaintext is never sent to the browser.
-                  Each institution's keys are fully isolated by <code className="text-gray-400">tenant_id</code>.
+                  Each institution&apos;s keys are fully isolated by <code className="text-gray-400">tenant_id</code>.
                 </p>
               </div>
 
