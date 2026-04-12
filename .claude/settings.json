@@ -94,7 +94,12 @@
       "Bash(PYTHONPATH=. poetry run python -c \"from imblearn.over_sampling import SMOTE; print\\('SMOTE OK'\\)\")",
       "Bash(PYTHONPATH=. poetry run python -c \"from app.services.ml_training_service import _SMOTE_AVAILABLE; print\\('SMOTE:', _SMOTE_AVAILABLE\\)\")",
       "Bash(grep -l \"fixed left-0 top-0\" c:/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/frontend/app/dashboard/**/*.tsx)",
-      "Bash(grep -A 3 \"icon: Activity\\\\|Activity,\\\\|{ icon:\" c:/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/frontend/app/dashboard/alerts/page.tsx)"
+      "Bash(grep -A 3 \"icon: Activity\\\\|Activity,\\\\|{ icon:\" c:/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/frontend/app/dashboard/alerts/page.tsx)",
+      "Bash(findstr \":8003 \\\\|:3000 \")",
+      "Bash(powershell -Command \"Stop-Process -Id 14956 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 22444 -Force -ErrorAction SilentlyContinue; Write-Host 'Stopped'\")",
+      "Bash(powershell -Command \"wmic process where ProcessId=14956 get ProcessId,Name,CommandLine 2>&1 | head -5\")",
+      "Bash(powershell -Command \"Invoke-RestMethod 'http://localhost:8000/api/v1/health' -TimeoutSec 5\")",
+      "Bash(powershell -Command \"Invoke-RestMethod 'http://localhost:3000' -TimeoutSec 5 -Method Head\")"
     ],
     "additionalDirectories": [
       "\\tmp",
