@@ -156,6 +156,13 @@ export default function DataSchemaPage() {
       .finally(() => setLoading(false));
   }, [token, buildCanonicalRows]);
 
+  // ── Auto-fill: set every clientColumn = FinShield field name ─────────────
+  function handleAutoFill() {
+    const setter = tab === "customers" ? setCustRows : setTxnRows;
+    setter((rows) => rows.map((r) => ({ ...r, clientColumn: r.field.field })));
+    setSaved(false);
+  }
+
   // ── Canonical row updaters ─────────────────────────────────────────────────
   function updateCanonical(
     which: SchemaTab,
@@ -377,19 +384,29 @@ export default function DataSchemaPage() {
             </div>
           ) : (
             <>
-              {/* Stats */}
-              <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
-                <span>{canonRows.length + customCols.length} columns total</span>
-                <span>·</span>
-                <span className="text-[#00FF87]">{enabledCount} accessible to FinShield</span>
-                <span>·</span>
-                <span className="text-[#3B82F6]">{mappedCount} renamed</span>
-                {customCols.length > 0 && (
-                  <>
-                    <span>·</span>
-                    <span className="text-[#F59E0B]">{customCols.length} custom</span>
-                  </>
-                )}
+              {/* Stats + Auto-fill */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4 text-sm text-gray-500">
+                  <span>{canonRows.length + customCols.length} columns total</span>
+                  <span>·</span>
+                  <span className="text-[#00FF87]">{enabledCount} accessible to FinShield</span>
+                  <span>·</span>
+                  <span className="text-[#3B82F6]">{mappedCount} renamed</span>
+                  {customCols.length > 0 && (
+                    <>
+                      <span>·</span>
+                      <span className="text-[#F59E0B]">{customCols.length} custom</span>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={handleAutoFill}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-[#F59E0B] border border-[#F59E0B]/30 bg-[#F59E0B]/5 hover:bg-[#F59E0B]/10 px-3 py-1.5 rounded-lg transition-all"
+                  title="Auto-fill all &quot;Your Column Name&quot; fields with the FinShield column name"
+                >
+                  <RefreshCw size={12} />
+                  Auto-fill column names
+                </button>
               </div>
 
               <div className="bg-[#0D0D15] border border-[#1E1E2E] rounded-2xl overflow-hidden">

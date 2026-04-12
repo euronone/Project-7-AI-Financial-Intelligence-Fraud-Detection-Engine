@@ -607,7 +607,7 @@ export default function TestMePage() {
             )}
           </div>
           <Link
-            href="/dashboard/settings?section=notifications"
+            href="/dashboard/settings?section=integrations"
             className="ml-auto text-[10px] text-gray-500 hover:text-white shrink-0 transition-colors"
           >
             Configure →

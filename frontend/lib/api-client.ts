@@ -466,6 +466,41 @@ export const apiClient = {
   getMlRegistry: (token: string) =>
     request<object>("/ml/registry", { token }),
 
+  // ── Plan / Billing ──────────────────────────────────────────────────────
+  getPlan: (token: string) =>
+    request<{
+      plan: string;
+      plan_label: string;
+      usage: {
+        transactions_this_month: number;
+        monthly_limit: number | null;
+        usage_pct: number | null;
+      };
+      plans: {
+        id: string;
+        price_inr: number;
+        price_display: string;
+        color: string;
+        features: string[];
+      }[];
+    }>("/settings/plan", { token }),
+
+  upgradePlan: (plan: string, token: string) =>
+    request<{ success: boolean; plan: string; message: string }>("/settings/plan", {
+      method: "PUT",
+      body: JSON.stringify({ plan }),
+      token,
+    }),
+
+  // ── Tenant initialization (seed sample data) ────────────────────────────
+  initializeTenant: (token: string) =>
+    request<{
+      seeded: boolean;
+      customers_created: number;
+      transactions_created: number;
+      message: string;
+    }>("/settings/initialize", { method: "POST", token }),
+
   // ── Health ──────────────────────────────────────────────────────────────
   health: () => request<{ status: string }>("/health"),
 };

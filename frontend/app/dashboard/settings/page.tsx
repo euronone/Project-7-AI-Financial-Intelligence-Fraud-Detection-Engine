@@ -319,7 +319,19 @@ export default function SettingsPage() {
   const { user, dbConfig, updateDbConfig, token, clearAuth } = useAuthStore();
   const router = useRouter();
 
-  const [activeSection, setActiveSection] = useState("database");
+  // Read ?section= URL param to deep-link into a specific settings section
+  const validSectionIds = new Set(SECTIONS.map(s => s.id));
+  const getInitialSection = () => {
+    if (typeof window !== "undefined") {
+      const param = new URLSearchParams(window.location.search).get("section");
+      // Accept "notifications" as an alias for "integrations" (legacy link compat)
+      if (param === "notifications") return "integrations";
+      if (param && validSectionIds.has(param)) return param;
+    }
+    return "database";
+  };
+
+  const [activeSection, setActiveSection] = useState(getInitialSection);
   const [selectedType, setSelectedType] = useState<DbType>(dbConfig?.db_type || "supabase");
   const [label, setLabel] = useState(dbConfig?.label || "");
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -383,6 +395,17 @@ export default function SettingsPage() {
   const [notifSaved, setNotifSaved] = useState(false);
   const [notifError, setNotifError] = useState("");
 
+  // ── Billing / plan state ───────────────────────────────────────────────
+  const [planData, setPlanData] = useState<{
+    plan: string;
+    plan_label: string;
+    usage: { transactions_this_month: number; monthly_limit: number | null; usage_pct: number | null };
+    plans: { id: string; price_inr: number; price_display: string; color: string; features: string[] }[];
+  } | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planUpgrading, setPlanUpgrading] = useState<string | null>(null);
+  const [planError, setPlanError] = useState("");
+
   useEffect(() => {
     if (!token) return;
     apiClient.getNotificationSettings(token)
@@ -423,6 +446,17 @@ export default function SettingsPage() {
   const [credTesting, setCredTesting] = useState<string | null>(null);
   const [credDeleting, setCredDeleting] = useState<string | null>(null);
 
+  // ── Quick-save state for dedicated email / SMS provider blocks ────────────
+  const [resendInput, setResendInput] = useState("");
+  const [resendSaving, setResendSaving] = useState(false);
+  const [resendSaved, setResendSaved] = useState(false);
+  const [twilioSidInput, setTwilioSidInput] = useState("");
+  const [twilioTokenInput, setTwilioTokenInput] = useState("");
+  const [twilioFromInput, setTwilioFromInput] = useState("");
+  const [twilioSaving, setTwilioSaving] = useState(false);
+  const [twilioSaved, setTwilioSaved] = useState(false);
+  const [providerError, setProviderError] = useState("");
+
   useEffect(() => {
     if (!token || activeSection !== "integrations") return;
     setCredLoading(true);
@@ -431,6 +465,33 @@ export default function SettingsPage() {
       .catch(() => {})
       .finally(() => setCredLoading(false));
   }, [token, activeSection]);
+
+  // ── Billing: fetch plan info when billing tab is opened ──────────────────
+  useEffect(() => {
+    if (!token || activeSection !== "billing") return;
+    setPlanLoading(true);
+    setPlanError("");
+    apiClient.getPlan(token)
+      .then(setPlanData)
+      .catch((e: unknown) => setPlanError(e instanceof Error ? e.message : "Failed to load plan info"))
+      .finally(() => setPlanLoading(false));
+  }, [token, activeSection]);
+
+  const handleUpgradePlan = async (targetPlan: string) => {
+    if (!token) return;
+    setPlanUpgrading(targetPlan);
+    setPlanError("");
+    try {
+      await apiClient.upgradePlan(targetPlan, token);
+      // Reload plan data
+      const fresh = await apiClient.getPlan(token);
+      setPlanData(fresh);
+    } catch (e: unknown) {
+      setPlanError(e instanceof Error ? e.message : "Upgrade failed");
+    } finally {
+      setPlanUpgrading(null);
+    }
+  };
 
   const handleSaveCredential = async () => {
     if (!token) return;
@@ -458,6 +519,56 @@ export default function SettingsPage() {
       setCredError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setCredSaving(false);
+    }
+  };
+
+  // ── Quick-save helpers for email / SMS provider blocks ───────────────────
+  const _upsertCred = async (service: string, key_name: string, value: string) => {
+    if (!token) throw new Error("Not authenticated");
+    const saved = await apiClient.upsertCredential({ service, key_name, value }, token);
+    setCredentials((prev) => {
+      const idx = prev.findIndex((c) => c.service === service && c.key_name === key_name);
+      if (idx >= 0) { const next = [...prev]; next[idx] = saved; return next; }
+      return [...prev, saved];
+    });
+    return saved;
+  };
+
+  const handleSaveResendKey = async () => {
+    if (!token || !resendInput.trim()) return;
+    setResendSaving(true);
+    setProviderError("");
+    try {
+      await _upsertCred("resend", "resend_api_key", resendInput.trim());
+      setResendInput("");
+      setResendSaved(true);
+      setTimeout(() => setResendSaved(false), 4000);
+    } catch (e: unknown) {
+      setProviderError(e instanceof Error ? e.message : "Failed to save Resend key");
+    } finally {
+      setResendSaving(false);
+    }
+  };
+
+  const handleSaveTwilioCreds = async () => {
+    if (!token || !twilioSidInput.trim() || !twilioTokenInput.trim()) return;
+    setTwilioSaving(true);
+    setProviderError("");
+    try {
+      await _upsertCred("twilio", "twilio_account_sid", twilioSidInput.trim());
+      await _upsertCred("twilio", "twilio_auth_token", twilioTokenInput.trim());
+      if (twilioFromInput.trim()) {
+        await _upsertCred("twilio", "twilio_from_number", twilioFromInput.trim());
+      }
+      setTwilioSidInput("");
+      setTwilioTokenInput("");
+      setTwilioFromInput("");
+      setTwilioSaved(true);
+      setTimeout(() => setTwilioSaved(false), 4000);
+    } catch (e: unknown) {
+      setProviderError(e instanceof Error ? e.message : "Failed to save Twilio credentials");
+    } finally {
+      setTwilioSaving(false);
     }
   };
 
@@ -664,6 +775,10 @@ export default function SettingsPage() {
       updateDbConfig(config);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      // Silently seed sample data for tenants with zero records (idempotent)
+      if (token) {
+        apiClient.initializeTenant(token).catch(() => {/* silent — already seeded or DB not ready */});
+      }
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : "Save failed — check your connection.");
     } finally {
@@ -714,8 +829,8 @@ export default function SettingsPage() {
         </nav>
 
         {/* User profile + sign-out (matches dashboard sidebar) */}
-        {user && (
-          <div className="p-4 border-t border-[#1E1E2E]">
+        <div className="p-4 border-t border-[#1E1E2E]">
+          {user && (
             <div className="flex items-center gap-3 mb-3">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0"
@@ -743,14 +858,14 @@ export default function SettingsPage() {
                 <div className="text-xs text-gray-500 truncate">{user.email}</div>
               </div>
             </div>
-            <button
-              onClick={() => { clearAuth(); router.push("/login"); }}
-              className="w-full flex items-center justify-center gap-2 text-xs text-gray-500 hover:text-white border border-[#1E1E2E] px-3 py-2 rounded-lg hover:border-gray-600 transition-all"
-            >
-              <LogOut size={13} /> Sign Out
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={() => { clearAuth(); router.push("/login"); }}
+            className="w-full flex items-center justify-center gap-2 text-xs text-gray-500 hover:text-white border border-[#1E1E2E] px-3 py-2 rounded-lg hover:border-gray-600 transition-all"
+          >
+            <LogOut size={13} /> Sign Out
+          </button>
+        </div>
       </aside>
 
       {/* Settings layout */}
@@ -1040,6 +1155,108 @@ export default function SettingsPage() {
                   {notifSaved && (
                     <span className="flex items-center gap-1.5 text-xs text-[#00FF87]">
                       <CheckCircle2 size={12} /> Saved successfully.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Email Provider (Resend) quick-save block ── */}
+              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Mail size={15} className="text-[#3B82F6]" />
+                    <span className="text-sm font-bold text-white">Email Provider — Resend API Key</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20">Required for email alerts</span>
+                  </div>
+                  {credentials.some(c => c.service === "resend") ? (
+                    <span className="flex items-center gap-1 text-xs font-semibold text-[#00FF87]">
+                      <CheckCircle2 size={12} /> Configured
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-[#EF4444]">
+                      <AlertCircle size={12} /> Not configured — emails won&apos;t fire
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                  Paste your <strong className="text-gray-300">Resend API key</strong> (starts with <span className="font-mono text-gray-400">re_</span>) below. Get a free key at <span className="text-[#3B82F6]">resend.com</span> — 3,000 emails/month on the free plan.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={resendInput}
+                    onChange={(e) => setResendInput(e.target.value)}
+                    placeholder="re_••••••••••••••••••••••••"
+                    autoComplete="new-password"
+                    className="flex-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#3B82F6]/60 transition-colors"
+                  />
+                  <button
+                    onClick={handleSaveResendKey}
+                    disabled={resendSaving || !resendInput.trim()}
+                    className="flex items-center gap-2 text-sm bg-[#3B82F6] text-white font-bold px-5 py-2.5 rounded-xl hover:bg-[#2563EB] transition-all disabled:opacity-50"
+                  >
+                    {resendSaving ? <Loader2 size={13} className="animate-spin" /> : resendSaved ? <CheckCircle2 size={13} /> : <Save size={13} />}
+                    {resendSaving ? "Saving…" : resendSaved ? "Saved!" : "Save"}
+                  </button>
+                </div>
+              </div>
+
+              {/* ── SMS Provider (Twilio) quick-save block ── */}
+              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px]">📱</span>
+                    <span className="text-sm font-bold text-white">SMS Provider — Twilio Credentials</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#8B5CF6]/10 text-[#8B5CF6] border border-[#8B5CF6]/20">Optional — High/Critical alerts</span>
+                  </div>
+                  {credentials.some(c => c.service === "twilio") ? (
+                    <span className="flex items-center gap-1 text-xs font-semibold text-[#00FF87]">
+                      <CheckCircle2 size={12} /> Configured
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-gray-500">
+                      <AlertCircle size={12} /> Not configured — SMS disabled
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <input
+                    type="password"
+                    value={twilioSidInput}
+                    onChange={(e) => setTwilioSidInput(e.target.value)}
+                    placeholder="Account SID (ACxx…)"
+                    autoComplete="new-password"
+                    className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#8B5CF6]/60 transition-colors"
+                  />
+                  <input
+                    type="password"
+                    value={twilioTokenInput}
+                    onChange={(e) => setTwilioTokenInput(e.target.value)}
+                    placeholder="Auth Token"
+                    autoComplete="new-password"
+                    className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#8B5CF6]/60 transition-colors"
+                  />
+                  <input
+                    type="text"
+                    value={twilioFromInput}
+                    onChange={(e) => setTwilioFromInput(e.target.value)}
+                    placeholder="From number (+1…)"
+                    autoComplete="new-password"
+                    className="bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#8B5CF6]/60 transition-colors"
+                  />
+                </div>
+                <div className="flex items-center gap-3 mt-2">
+                  <button
+                    onClick={handleSaveTwilioCreds}
+                    disabled={twilioSaving || !twilioSidInput.trim() || !twilioTokenInput.trim()}
+                    className="flex items-center gap-2 text-sm bg-[#8B5CF6] text-white font-bold px-5 py-2.5 rounded-xl hover:bg-[#7C3AED] transition-all disabled:opacity-50"
+                  >
+                    {twilioSaving ? <Loader2 size={13} className="animate-spin" /> : twilioSaved ? <CheckCircle2 size={13} /> : <Save size={13} />}
+                    {twilioSaving ? "Saving…" : twilioSaved ? "Saved!" : "Save Twilio Credentials"}
+                  </button>
+                  {providerError && (
+                    <span className="flex items-center gap-1.5 text-xs text-[#EF4444]">
+                      <AlertCircle size={12} /> {providerError}
                     </span>
                   )}
                 </div>
@@ -1389,29 +1606,137 @@ export default function SettingsPage() {
             <div>
               <h2 className="text-xl font-black mb-1">Billing &amp; Plan</h2>
               <p className="text-gray-500 text-sm mb-7">Manage your subscription and usage.</p>
-              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-6 mb-4">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm text-gray-400">Current Plan</span>
-                  <span
-                    className="text-sm font-bold px-3 py-1 rounded-full capitalize"
-                    style={{
-                      color: planColor,
-                      backgroundColor: `${planColor}15`,
-                      border: `1px solid ${planColor}40`,
-                    }}
-                  >
-                    {user?.plan}
-                  </span>
+
+              {planError && (
+                <div className="mb-4 bg-red-900/20 border border-red-500/30 rounded-xl p-3 text-sm text-red-400 flex gap-2">
+                  <AlertCircle size={14} className="mt-0.5 flex-shrink-0" /> {planError}
                 </div>
-                {user?.plan === "free" && (
-                  <Link
-                    href="/signup"
-                    className="block w-full text-center bg-[#3B82F6] text-white font-bold py-2.5 rounded-xl hover:bg-[#2563EB] transition-all text-sm"
-                  >
-                    Upgrade to Pro — ₹9,999/mo
-                  </Link>
-                )}
-              </div>
+              )}
+
+              {planLoading ? (
+                <div className="flex items-center gap-2 text-gray-500 py-8">
+                  <Loader2 size={18} className="animate-spin" /> Loading plan info…
+                </div>
+              ) : planData ? (
+                <>
+                  {/* Usage bar */}
+                  {planData.usage.monthly_limit !== null && (
+                    <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-gray-400">Monthly Transaction Usage</span>
+                        <span className="text-sm font-mono text-white">
+                          {planData.usage.transactions_this_month.toLocaleString()} / {planData.usage.monthly_limit.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="w-full bg-[#1E1E2E] rounded-full h-2">
+                        <div
+                          className="h-2 rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(100, planData.usage.usage_pct ?? 0)}%`,
+                            backgroundColor: (planData.usage.usage_pct ?? 0) > 80 ? "#EF4444" : planColor,
+                          }}
+                        />
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {planData.usage.usage_pct !== null ? `${planData.usage.usage_pct.toFixed(1)}% used this month` : ""}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3 Plan cards */}
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    {planData.plans.map((p) => {
+                      const isCurrent = p.id === planData.plan;
+                      const isDowngrade = (
+                        (planData.plan === "advanced" && (p.id === "pro" || p.id === "free")) ||
+                        (planData.plan === "pro" && p.id === "free")
+                      );
+                      return (
+                        <div
+                          key={p.id}
+                          className="relative rounded-2xl p-5 border transition-all flex flex-col"
+                          style={{
+                            borderColor: isCurrent ? p.color : "#1E1E2E",
+                            backgroundColor: isCurrent ? `${p.color}08` : "#111118",
+                            boxShadow: isCurrent ? `0 0 0 1px ${p.color}40` : undefined,
+                          }}
+                        >
+                          {isCurrent && (
+                            <div
+                              className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider"
+                              style={{ backgroundColor: p.color, color: "#0A0A0F" }}
+                            >
+                              Current Plan
+                            </div>
+                          )}
+
+                          <div className="mb-3">
+                            <div className="text-base font-black capitalize mb-0.5" style={{ color: p.color }}>
+                              {p.id === "free" ? "Free" : p.id === "pro" ? "Pro" : "Advanced"}
+                            </div>
+                            <div className="text-2xl font-black text-white">{p.price_display}</div>
+                          </div>
+
+                          <ul className="flex-1 space-y-1.5 mb-5">
+                            {p.features.map((f) => (
+                              <li key={f} className="flex items-start gap-2 text-xs text-gray-400">
+                                <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" style={{ color: p.color }} />
+                                {f}
+                              </li>
+                            ))}
+                          </ul>
+
+                          {isCurrent ? (
+                            <div
+                              className="w-full text-center text-xs font-bold py-2.5 rounded-xl opacity-60"
+                              style={{ backgroundColor: `${p.color}20`, color: p.color }}
+                            >
+                              Active
+                            </div>
+                          ) : isDowngrade ? (
+                            <button
+                              disabled
+                              className="w-full text-center text-xs font-semibold py-2.5 rounded-xl bg-[#1E1E2E] text-gray-600 cursor-not-allowed"
+                            >
+                              Downgrade not available
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleUpgradePlan(p.id)}
+                              disabled={planUpgrading !== null}
+                              className="w-full text-center text-xs font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
+                              style={{
+                                backgroundColor: p.color,
+                                color: "#0A0A0F",
+                                opacity: planUpgrading ? 0.7 : 1,
+                              }}
+                            >
+                              {planUpgrading === p.id ? (
+                                <><Loader2 size={13} className="animate-spin" /> Upgrading…</>
+                              ) : (
+                                `Upgrade to ${p.id === "pro" ? "Pro" : "Advanced"}`
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                /* Fallback: show current plan from auth store */
+                <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-6">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Current Plan</span>
+                    <span
+                      className="text-sm font-bold px-3 py-1 rounded-full capitalize"
+                      style={{ color: planColor, backgroundColor: `${planColor}15`, border: `1px solid ${planColor}40` }}
+                    >
+                      {user?.plan ?? "free"}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

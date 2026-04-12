@@ -384,6 +384,9 @@ async def predict_fraud(
     # ── 6. Twilio SMS (if configured and decision is BLOCK/ALERT) ───────
     sms_result = "skipped"
     if decision in ("BLOCK", "ALERT") and body.mobile_number:
+        twilio_creds = await _resolve_twilio_creds(
+            db=db, tenant_id=current_user.tenant_id
+        )
         sms_result = await _send_twilio_sms(
             to=body.mobile_number,
             amount=body.amount,
@@ -391,6 +394,7 @@ async def predict_fraud(
             decision=decision,
             score=final_score,
             alert_id=score_result.get("alert_id", "SIM"),
+            twilio_creds=twilio_creds,
         )
 
     # ── 7. Resend email (if configured and email provided) ───────────────
@@ -1013,13 +1017,18 @@ def _build_conclusion(
 async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     """
     Returns the Resend API key for a tenant.
-    Priority: BYOK tenant_credentials table → db_config_json → RESEND_API_KEY env var.
+    Priority:
+      1. BYOK tenant_credentials with key_name="resend_api_key"  (canonical)
+      2. BYOK tenant_credentials with ANY key_name under service="resend"  (fallback for user typos)
+      3. Legacy db_config_json.notifications.resend_api_key
+      4. RESEND_API_KEY environment variable
     """
     from app.core.encryption import encryptor
     from app.config import get_settings
     from app.models.user import Tenant as TenantModel
+    from app.models.credential import TenantCredential
 
-    # 1. Check BYOK tenant_credentials table first
+    # 1. Check BYOK with canonical key_name
     try:
         from app.services.credential_service import get_decrypted as _get_cred
         byok_key = await _get_cred(db, tenant_id, "resend", "resend_api_key")
@@ -1028,7 +1037,30 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     except Exception as exc:
         logger.warning("BYOK credential lookup failed: %s", exc)
 
-    # 2. Fall back to legacy db_config_json
+    # 2. Fallback: any key saved under service="resend" (handles non-canonical key_name)
+    try:
+        any_resend = await db.execute(
+            select(TenantCredential).where(
+                TenantCredential.tenant_id == tenant_id,
+                TenantCredential.service == "resend",
+            ).limit(1)
+        )
+        row = any_resend.scalar_one_or_none()
+        if row:
+            try:
+                val = encryptor.decrypt(row.value_encrypted)
+                if val:
+                    logger.debug(
+                        "Resend key resolved via fallback (service=resend, key_name=%s)",
+                        row.key_name,
+                    )
+                    return val
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.warning("BYOK resend-service scan failed: %s", exc)
+
+    # 3. Fall back to legacy db_config_json
     try:
         result = await db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
         tenant_row = result.scalar_one_or_none()
@@ -1042,7 +1074,7 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     except Exception as exc:
         logger.warning("Could not load tenant Resend key: %s", exc)
 
-    # 3. Fall back to platform env var
+    # 4. Fall back to platform env var
     s = get_settings()
     return getattr(s, "RESEND_API_KEY", "") or ""
 
@@ -1149,6 +1181,41 @@ async def _send_resend_email(
         return f"error:{str(exc)[:80]}"
 
 
+async def _resolve_twilio_creds(*, db: AsyncSession, tenant_id: str) -> dict:
+    """
+    Returns Twilio credentials dict for a tenant.
+    Priority: BYOK tenant_credentials table → platform env vars.
+
+    Keys returned: sid, auth_token, from_number
+    """
+    from app.config import get_settings
+
+    result: dict = {"sid": "", "auth_token": "", "from_number": ""}
+
+    # 1. Check BYOK tenant_credentials table first
+    try:
+        from app.services.credential_service import get_decrypted as _get_cred
+        for key_name, dest in [
+            ("twilio_account_sid",  "sid"),
+            ("twilio_auth_token",   "auth_token"),
+            ("twilio_from_number",  "from_number"),
+        ]:
+            val = await _get_cred(db, tenant_id, "twilio", key_name)
+            if val:
+                result[dest] = val
+        if result["sid"] and result["auth_token"] and result["from_number"]:
+            return result
+    except Exception as exc:
+        logger.warning("BYOK Twilio lookup failed: %s", exc)
+
+    # 2. Fall back to platform env vars
+    s = get_settings()
+    result["sid"]          = getattr(s, "TWILIO_ACCOUNT_SID",  "") or ""
+    result["auth_token"]   = getattr(s, "TWILIO_AUTH_TOKEN",   "") or ""
+    result["from_number"]  = getattr(s, "TWILIO_FROM_NUMBER",  "") or ""
+    return result
+
+
 async def _send_twilio_sms(
     *,
     to: str,
@@ -1157,17 +1224,26 @@ async def _send_twilio_sms(
     decision: str,
     score: float,
     alert_id: str,
+    twilio_creds: dict | None = None,
 ) -> str:
     """
     Sends a Twilio SMS alert.
+    Accepts pre-resolved creds dict (sid, auth_token, from_number) from
+    _resolve_twilio_creds() so BYOK keys are used before env-var fallback.
     Returns 'sent', 'skipped:no_key', or 'error:<msg>'.
     """
-    from app.config import get_settings
-    settings = get_settings()
+    if twilio_creds is None:
+        from app.config import get_settings
+        s = get_settings()
+        twilio_creds = {
+            "sid":         getattr(s, "TWILIO_ACCOUNT_SID",  "") or "",
+            "auth_token":  getattr(s, "TWILIO_AUTH_TOKEN",   "") or "",
+            "from_number": getattr(s, "TWILIO_FROM_NUMBER",  "") or "",
+        }
 
-    sid = getattr(settings, "TWILIO_ACCOUNT_SID", "")
-    token = getattr(settings, "TWILIO_AUTH_TOKEN", "")
-    from_num = getattr(settings, "TWILIO_FROM_NUMBER", "")
+    sid      = twilio_creds.get("sid", "")
+    token    = twilio_creds.get("auth_token", "")
+    from_num = twilio_creds.get("from_number", "")
 
     if not (sid and token and from_num):
         return "skipped:no_key"

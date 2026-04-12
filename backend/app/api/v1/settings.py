@@ -1,7 +1,7 @@
 """Settings endpoints — DB connections, API keys, connection tests."""
 import time
 import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -421,13 +421,18 @@ async def get_notification_settings(
     cred_rows = cred_result.all()
     cred_services = {(r.service, r.key_name) for r in cred_rows}
 
+    # Check if ANY credential exists for each service (not just a specific key_name).
+    # This handles cases where the user saved under a non-canonical key_name.
+    configured_services = {svc for svc, _ in cred_services}
     has_resend = (
-        ("resend", "resend_api_key") in cred_services
-        or bool(getattr(settings, "RESEND_API_KEY", ""))
+        "resend" in configured_services                         # BYOK tenant_credentials
+        or bool(notif_config.get("resend_api_key"))             # legacy db_config_json path
+        or bool(getattr(settings, "RESEND_API_KEY", ""))        # platform env var
     )
     has_twilio = (
-        ("twilio", "twilio_account_sid") in cred_services
-        or bool(getattr(settings, "TWILIO_ACCOUNT_SID", ""))
+        "twilio" in configured_services                         # BYOK tenant_credentials
+        or bool(notif_config.get("twilio_account_sid"))         # legacy db_config_json path
+        or bool(getattr(settings, "TWILIO_ACCOUNT_SID", ""))    # platform env var
     )
 
     return {
@@ -478,6 +483,240 @@ async def update_notification_settings(
     flag_modified(tenant, "db_config_json")   # ← force SQLAlchemy to detect mutation
     await db.commit()
     return {"success": True, "message": "Notification settings saved"}
+
+
+# ---------------------------------------------------------------------------
+# Tenant initialisation — seed sample data for brand-new tenants
+# ---------------------------------------------------------------------------
+
+@router.post("/initialize")
+async def initialize_tenant(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Seeds the current tenant's FinShield database with 100 sample customers and
+    10,000 synthetic transactions (3 % fraud rate, 6 fraud patterns) if the
+    tenant currently has ZERO transaction records.
+
+    Idempotent — safe to call multiple times; will only seed once.
+
+    Returns:
+      {
+        "seeded": true | false,     ← false if data already existed
+        "customers_created": N,
+        "transactions_created": N,
+        "message": "..."
+      }
+    """
+    from sqlalchemy import func
+    from app.models.customer import Customer
+    from app.models.transaction import Transaction
+
+    # Guard: only seed if tenant has no transactions yet
+    txn_count_result = await db.execute(
+        select(func.count(Transaction.id)).where(
+            Transaction.tenant_id == current_user.tenant_id,
+            Transaction.is_test.is_(False),
+        )
+    )
+    if (txn_count_result.scalar_one() or 0) > 0:
+        cust_count_result = await db.execute(
+            select(func.count(Customer.id)).where(Customer.tenant_id == current_user.tenant_id)
+        )
+        return {
+            "seeded": False,
+            "customers_created": 0,
+            "transactions_created": 0,
+            "message": (
+                f"Tenant already has {txn_count_result.scalar_one()} transactions "
+                f"and {cust_count_result.scalar_one()} customers — skipping seed."
+            ),
+        }
+
+    # Run the sample-data generator
+    try:
+        from app.services.seed_service import seed_tenant_sample_data
+        result = await seed_tenant_sample_data(
+            db=db,
+            tenant_id=current_user.tenant_id,
+            n_customers=100,
+            n_transactions=10_000,
+        )
+        return {
+            "seeded": True,
+            "customers_created": result["customers_created"],
+            "transactions_created": result["transactions_created"],
+            "message": (
+                f"Seeded {result['customers_created']} customers and "
+                f"{result['transactions_created']} transactions with "
+                f"~3% fraud rate. Your dashboard is now populated."
+            ),
+        }
+    except Exception as exc:
+        logger.exception("Seed failed for tenant %s", current_user.tenant_id)
+        raise HTTPException(status_code=500, detail=f"Seed failed: {str(exc)[:200]}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Plan management
+# ---------------------------------------------------------------------------
+
+PLAN_HIERARCHY = {"free": 0, "pro": 1, "advanced": 2}
+
+@router.put("/plan")
+async def update_plan(
+    body: dict,
+    current_user: AdminUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Change the tenant's subscription plan.
+    Only admins can call this.
+
+    Body: { "plan": "free" | "pro" | "advanced" }
+
+    In a real deployment this would integrate with Razorpay / Stripe billing.
+    For now it updates the plan record immediately (demo / dev mode).
+    """
+    from datetime import timezone, timedelta
+    new_plan = (body.get("plan") or "").strip().lower()
+    if new_plan not in PLAN_HIERARCHY:
+        raise HTTPException(status_code=422, detail="Plan must be one of: free, pro, advanced")
+
+    result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    old_plan = tenant.subscription_plan or "free"
+    tenant.subscription_plan = new_plan
+    tenant.plan_started_at = __import__("datetime").datetime.now(timezone.utc)
+    tenant.plan_expires_at = (
+        __import__("datetime").datetime.now(timezone.utc) + timedelta(days=30)
+        if new_plan != "free"
+        else None
+    )
+    await db.commit()
+
+    return {
+        "success": True,
+        "previous_plan": old_plan,
+        "new_plan": new_plan,
+        "message": f"Plan updated from {old_plan} → {new_plan}",
+    }
+
+
+@router.get("/plan")
+async def get_plan(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the current tenant plan and usage stats."""
+    from sqlalchemy import func
+    from app.models.customer import Customer
+    from app.models.transaction import Transaction
+
+    result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
+    tenant = result.scalar_one_or_none()
+
+    plan = (tenant.subscription_plan if tenant else None) or "free"
+
+    # Transaction usage this month
+    from datetime import datetime, timezone
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    txn_month = await db.execute(
+        select(func.count(Transaction.id)).where(
+            Transaction.tenant_id == current_user.tenant_id,
+            Transaction.transaction_timestamp >= month_start,
+            Transaction.is_test.is_(False),
+        )
+    )
+    txn_total = await db.execute(
+        select(func.count(Transaction.id)).where(
+            Transaction.tenant_id == current_user.tenant_id,
+            Transaction.is_test.is_(False),
+        )
+    )
+    cust_total = await db.execute(
+        select(func.count(Customer.id)).where(Customer.tenant_id == current_user.tenant_id)
+    )
+
+    limits = {
+        "free":     {"txn_month": 10_000,   "label": "Free"},
+        "pro":      {"txn_month": 500_000,  "label": "Pro"},
+        "advanced": {"txn_month": None,     "label": "Advanced"},
+    }
+
+    plan_limits = limits.get(plan, limits["free"])
+    txn_month_val = txn_month.scalar_one() or 0
+    monthly_limit = plan_limits["txn_month"]
+
+    return {
+        "plan": plan,
+        "plan_label": plan_limits["label"],
+        "plan_started_at": tenant.plan_started_at.isoformat() if tenant and tenant.plan_started_at else None,
+        "plan_expires_at": tenant.plan_expires_at.isoformat() if tenant and tenant.plan_expires_at else None,
+        "usage": {
+            "transactions_this_month": txn_month_val,
+            "transactions_total": txn_total.scalar_one() or 0,
+            "customers_total": cust_total.scalar_one() or 0,
+            "monthly_limit": monthly_limit,
+            "usage_pct": round(txn_month_val / monthly_limit * 100, 1) if monthly_limit else None,
+        },
+        "plans": [
+            {
+                "id": "free",
+                "label": "Free",
+                "price_inr": 0,
+                "price_display": "₹0 / month",
+                "txn_limit": "10,000 / month",
+                "connectors": "2 (Supabase + CSV)",
+                "models": "Shared FinShield model",
+                "support": "Community",
+                "features": ["Email alerts only", "5 fraud rules", "Basic dashboard"],
+                "color": "#00FF87",
+            },
+            {
+                "id": "pro",
+                "label": "Pro",
+                "price_inr": 9999,
+                "price_display": "₹9,999 / month",
+                "txn_limit": "500,000 / month",
+                "connectors": "10 connectors",
+                "models": "Shared model + SHAP reports",
+                "support": "Email (48h SLA)",
+                "features": [
+                    "Email + SMS alerts",
+                    "25 custom rules",
+                    "Full analytics dashboard",
+                    "Weekly model retraining",
+                    "REST API access",
+                ],
+                "color": "#3B82F6",
+            },
+            {
+                "id": "advanced",
+                "label": "Advanced",
+                "price_inr": 24999,
+                "price_display": "₹24,999 / month",
+                "txn_limit": "Unlimited",
+                "connectors": "All 20+ connectors",
+                "models": "Dedicated ML model (your data)",
+                "support": "Dedicated SLA + phone",
+                "features": [
+                    "Email + SMS + Call alerts",
+                    "Unlimited custom rules",
+                    "White-label dashboard",
+                    "On-demand retraining",
+                    "Full API + WebSocket",
+                    "Custom schema mapping",
+                    "VPC isolation",
+                ],
+                "color": "#8B5CF6",
+            },
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------

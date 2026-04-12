@@ -20,12 +20,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import select  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
-from app.core.security import hash_password
-from app.db.session import Base
-import app.models  # noqa — registers all ORM models
+from app.core.security import hash_password  # noqa: E402
+from app.db.session import Base  # noqa: E402
+import app.models  # noqa: E402,F401 — registers all ORM models
 
 load_dotenv()
 
