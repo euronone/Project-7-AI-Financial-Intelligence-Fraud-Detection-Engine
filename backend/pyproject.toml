@@ -14,7 +14,7 @@ asyncpg = "^0.30"
 alembic = "^1.14"
 pydantic = "^2.10"
 pydantic-settings = "^2.7"
-python-jose = {extras = ["cryptography"], version = "^3.3"}
+python-jose = {extras = ["cryptography"], version = "^3.5"}
 passlib = {extras = ["bcrypt"], version = "^1.7"}
 python-multipart = "^0.0.20"
 structlog = "^24.4"
