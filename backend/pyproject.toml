@@ -21,7 +21,7 @@ structlog = "^24.4"
 celery = {extras = ["redis"], version = "^5.4"}
 redis = "^5.2"
 httpx = "^0.28"
-python-socketio = "^5.12"
+python-socketio = "^5.16"
 email-validator = "^2.3.0"
 bcrypt = "^5.0.0"
 
