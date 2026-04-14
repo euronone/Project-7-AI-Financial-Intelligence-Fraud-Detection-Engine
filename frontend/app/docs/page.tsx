@@ -5,8 +5,8 @@ import Link from "next/link";
 import {
   Shield, ChevronRight, Code2, Zap, Database, Bell,
   Users, Lock, Brain, GitBranch, AlertTriangle, CheckCircle2,
-  ArrowRight, BookOpen, Layers, Globe, CreditCard, BarChart3,
-  MessageSquare, Webhook, Key, RefreshCw, Menu, X, ExternalLink,
+  BookOpen, Layers, Globe, CreditCard, BarChart3,
+  MessageSquare, Webhook, RefreshCw, Menu, X, ExternalLink,
   Activity, Server, Cpu, Mail, Phone,
 } from "lucide-react";
 
