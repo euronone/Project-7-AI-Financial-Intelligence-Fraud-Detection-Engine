@@ -4,6 +4,7 @@ API Key Encryption Module — Secures sensitive credentials at rest.
 Uses Fernet (symmetric encryption) to encrypt/decrypt API keys and secrets
 before storing/retrieving from the database.
 """
+
 import logging
 from cryptography.fernet import Fernet, InvalidToken
 from app.config import get_settings
@@ -19,37 +20,29 @@ class APIKeyEncryptor:
         # Supabase
         "supabase_anon_key",
         "supabase_service_key",
-
         # PostgreSQL / MySQL
         "db_password",
         "password",
-
         # Generic API keys
         "api_key",
         "secret_key",
         "access_token",
         "refresh_token",
-
         # AWS
         "aws_secret_access_key",
         "aws_access_key_id",
-
         # Twilio
         "twilio_auth_token",
         "twilio_account_sid",
-
         # Email services
         "resend_api_key",
         "sendgrid_api_key",
         "smtp_password",
-
         # Firebase
         "firebase_service_account_json",
-
         # Payment gateways
         "stripe_secret_key",
         "razorpay_secret",
-
         # Other
         "webhook_secret",
         "encryption_key",
@@ -64,8 +57,8 @@ class APIKeyEncryptor:
         if not settings.ENCRYPTION_KEY:
             raise ValueError(
                 "ENCRYPTION_KEY not set in environment. "
-                "Generate with: python -c \"from cryptography.fernet import Fernet; "
-                "print(Fernet.generate_key().decode())\""
+                'Generate with: python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"'
             )
 
         try:
@@ -162,7 +155,8 @@ class APIKeyEncryptor:
                 except Exception as exc:
                     logger.warning(
                         "Failed to decrypt field %s: %s (may be plaintext from old data)",
-                        field, exc
+                        field,
+                        exc,
                     )
                     # Don't fail hard — field might be plaintext from before encryption was added
                     # This allows gradual migration of existing data

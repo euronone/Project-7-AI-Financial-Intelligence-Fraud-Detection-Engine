@@ -1,4 +1,5 @@
 """BYOK Credentials Manager API — /api/v1/credentials"""
+
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
@@ -85,4 +86,6 @@ async def test_credential(
     if not row:
         raise HTTPException(status_code=404, detail="Credential not found")
 
-    return await credential_service.test_credential(db, current_user.tenant_id, row.service, row.key_name)
+    return await credential_service.test_credential(
+        db, current_user.tenant_id, row.service, row.key_name
+    )

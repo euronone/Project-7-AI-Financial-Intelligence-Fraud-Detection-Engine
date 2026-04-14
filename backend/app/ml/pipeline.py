@@ -32,10 +32,10 @@ class FraudScoringPipeline:
     _instance: Optional["FraudScoringPipeline"] = None
 
     def __init__(self):
-        self._anomaly_detector  = None
-        self._fraud_classifier  = None
-        self._ensemble_scorer   = None
-        self._shap_explainer    = None
+        self._anomaly_detector = None
+        self._fraud_classifier = None
+        self._ensemble_scorer = None
+        self._shap_explainer = None
         self._feature_names: list[str] = []
         self._loaded = False
 
@@ -61,8 +61,8 @@ class FraudScoringPipeline:
         print("  [Pipeline] Loading trained models...")
         self._anomaly_detector = _load_pkl("anomaly_detector_v1.pkl")
         self._fraud_classifier = _load_pkl("fraud_classifier_v1.pkl")
-        self._ensemble_scorer  = _load_pkl("ensemble_scorer_v1.pkl")
-        self._shap_explainer   = _load_pkl("shap_explainer_v1.pkl")
+        self._ensemble_scorer = _load_pkl("ensemble_scorer_v1.pkl")
+        self._shap_explainer = _load_pkl("shap_explainer_v1.pkl")
 
         feat_path = os.path.join(MODELS_DIR, "feature_names_v1.json")
         if os.path.exists(feat_path):
@@ -72,7 +72,7 @@ class FraudScoringPipeline:
         loaded = [
             "anomaly_detector" if self._anomaly_detector else None,
             "fraud_classifier" if self._fraud_classifier else None,
-            "ensemble_scorer"  if self._ensemble_scorer  else None,
+            "ensemble_scorer" if self._ensemble_scorer else None,
         ]
         loaded = [m for m in loaded if m]
         print(f"  [Pipeline] Loaded: {', '.join(loaded) or 'NONE — run train_models.py first'}")
@@ -114,6 +114,7 @@ class FraudScoringPipeline:
             # Fallback: ML models not loaded — ensemble scorer will
             # detect all-zero ML inputs and switch to rules-dominant mode
             from app.ml.risk_scorer import EnsembleScorer
+
             scorer = EnsembleScorer()
             decision = scorer.score(
                 rules_score=rules_score,
@@ -131,35 +132,41 @@ class FraudScoringPipeline:
             # Build a small DataFrame for feature engineering
             all_txns = recent_transactions + [transaction]
             txn_df = pd.DataFrame(all_txns)
-            cust_df = pd.DataFrame([customer]).rename(columns={
-                "customer_id": "customer_id",
-                "risk_score":  "risk_score",
-                "customer_tier": "customer_tier",
-                "balance_amount": "balance_amount",
-                "kyc_level": "kyc_level",
-                "profile_type": "profile_type",
-                "card_network": "card_network",
-                "card_status": "card_status",
-            })
+            cust_df = pd.DataFrame([customer]).rename(
+                columns={
+                    "customer_id": "customer_id",
+                    "risk_score": "risk_score",
+                    "customer_tier": "customer_tier",
+                    "balance_amount": "balance_amount",
+                    "kyc_level": "kyc_level",
+                    "profile_type": "profile_type",
+                    "card_network": "card_network",
+                    "card_status": "card_status",
+                }
+            )
 
             from app.ml.feature_engineering import batch_features
+
             X, _, _ = batch_features(txn_df, cust_df)
 
             # Use the last row (= the current transaction)
             x = X[-1:]
 
             # Layer 2: Anomaly score
-            anomaly_score = float(self._anomaly_detector.score(x)[0]) if self._anomaly_detector else 0.0
+            anomaly_score = (
+                float(self._anomaly_detector.score(x)[0]) if self._anomaly_detector else 0.0
+            )
 
             # Layer 3: Supervised classifier
             supervised_score, detail = self._fraud_classifier.predict_single(x[0])
             xgb_score = detail.get("xgboost", 0.0)
-            rf_score  = detail.get("random_forest", 0.0)
-            nn_score  = detail.get("neural_network", 0.0)
+            rf_score = detail.get("random_forest", 0.0)
+            nn_score = detail.get("neural_network", 0.0)
 
             # Layer 4: Ensemble
             from app.ml.risk_scorer import EnsembleScorer
-            scorer   = self._ensemble_scorer or EnsembleScorer()
+
+            scorer = self._ensemble_scorer or EnsembleScorer()
             decision = scorer.score(
                 rules_score=rules_score,
                 anomaly_score=anomaly_score,
@@ -192,6 +199,7 @@ class FraudScoringPipeline:
             # Graceful degradation: if feature engineering fails, use rules only
             # EnsembleScorer will detect all-zero ML inputs and use rules-dominant mode
             from app.ml.risk_scorer import EnsembleScorer
+
             scorer = EnsembleScorer()
             decision = scorer.score(
                 rules_score=rules_score,
@@ -210,18 +218,18 @@ class FraudScoringPipeline:
     def _format_result(decision, shap_explanation: list, elapsed: float) -> dict:
         """Convert FraudDecision to API-ready dict."""
         return {
-            "fraud_score":       decision.fraud_score,
-            "fraud_category":    decision.fraud_category,
-            "fraud_risk_level":  decision.fraud_risk_level,
-            "decision":          decision.decision,
-            "rules_score":       decision.rules_score,
-            "anomaly_score":     decision.anomaly_score,
-            "xgb_score":         decision.xgb_score,
-            "rf_score":          decision.rf_score,
-            "nn_score":          decision.nn_score,
-            "triggered_rules":   decision.triggered_rules,
-            "shap_explanation":  shap_explanation,
-            "confidence":        decision.confidence,
-            "processing_ms":     round(elapsed * 1000, 1),
-            "model_version":     "ensemble_v1",
+            "fraud_score": decision.fraud_score,
+            "fraud_category": decision.fraud_category,
+            "fraud_risk_level": decision.fraud_risk_level,
+            "decision": decision.decision,
+            "rules_score": decision.rules_score,
+            "anomaly_score": decision.anomaly_score,
+            "xgb_score": decision.xgb_score,
+            "rf_score": decision.rf_score,
+            "nn_score": decision.nn_score,
+            "triggered_rules": decision.triggered_rules,
+            "shap_explanation": shap_explanation,
+            "confidence": decision.confidence,
+            "processing_ms": round(elapsed * 1000, 1),
+            "model_version": "ensemble_v1",
         }

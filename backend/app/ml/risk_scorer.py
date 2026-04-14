@@ -30,20 +30,21 @@ MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 @dataclass
 class FraudDecision:
     """Full fraud scoring result for one transaction."""
-    fraud_score:       float
-    fraud_category:    str        # legitimate | suspicious | fraudulent
-    fraud_risk_level:  str        # low | medium | high | critical
-    decision:          str        # PASS | FLAG | ALERT | BLOCK
+
+    fraud_score: float
+    fraud_category: str  # legitimate | suspicious | fraudulent
+    fraud_risk_level: str  # low | medium | high | critical
+    decision: str  # PASS | FLAG | ALERT | BLOCK
     # Per-layer scores
-    rules_score:       float = 0.0
-    anomaly_score:     float = 0.0
-    xgb_score:         float = 0.0
-    rf_score:          float = 0.0
-    nn_score:          float = 0.0
+    rules_score: float = 0.0
+    anomaly_score: float = 0.0
+    xgb_score: float = 0.0
+    rf_score: float = 0.0
+    nn_score: float = 0.0
     # Triggered rules
-    triggered_rules:   list[str] = field(default_factory=list)
+    triggered_rules: list[str] = field(default_factory=list)
     # Confidence
-    confidence:        float = 0.0
+    confidence: float = 0.0
 
 
 class EnsembleScorer:
@@ -64,11 +65,11 @@ class EnsembleScorer:
 
     # Default ensemble weights (must sum to 1.0)
     WEIGHTS = {
-        "rules":   0.25,
+        "rules": 0.25,
         "anomaly": 0.20,
-        "xgb":     0.30,
-        "rf":      0.15,
-        "nn":      0.10,
+        "xgb": 0.30,
+        "rf": 0.15,
+        "nn": 0.10,
     }
 
     def __init__(self, weights: Optional[dict] = None):
@@ -77,11 +78,11 @@ class EnsembleScorer:
 
     def score(
         self,
-        rules_score:    float,
-        anomaly_score:  float,
-        xgb_score:      float,
-        rf_score:       float,
-        nn_score:       float,
+        rules_score: float,
+        anomaly_score: float,
+        xgb_score: float,
+        rf_score: float,
+        nn_score: float,
         triggered_rules: list[str] | None = None,
     ) -> FraudDecision:
         """
@@ -110,9 +111,7 @@ class EnsembleScorer:
             w = dict(self.WEIGHTS)  # copy
             ml_keys = ["anomaly", "xgb", "rf", "nn"]
             ml_vals = [anomaly_score, xgb_score, rf_score, nn_score]
-            dead_weight = sum(
-                w[k] for k, v in zip(ml_keys, ml_vals) if v <= 0.05
-            )
+            dead_weight = sum(w[k] for k, v in zip(ml_keys, ml_vals) if v <= 0.05)
             # Give half the dead weight to rules, spread rest among active
             w["rules"] += dead_weight * 0.6
             active_keys = [k for k, v in zip(ml_keys, ml_vals) if v > 0.05]
@@ -122,22 +121,22 @@ class EnsembleScorer:
                     w[k] += bonus
 
             fraud_score = (
-                w["rules"]   * rules_score   +
-                w["anomaly"] * anomaly_score +
-                w["xgb"]     * xgb_score     +
-                w["rf"]       * rf_score      +
-                w["nn"]       * nn_score
+                w["rules"] * rules_score
+                + w["anomaly"] * anomaly_score
+                + w["xgb"] * xgb_score
+                + w["rf"] * rf_score
+                + w["nn"] * nn_score
             )
             fraud_score = float(max(0.0, min(1.0, fraud_score)))
         else:
             # ── Full ensemble mode (all ML models active) ─────────────
             w = self.WEIGHTS
             fraud_score = (
-                w["rules"]   * rules_score   +
-                w["anomaly"] * anomaly_score +
-                w["xgb"]     * xgb_score     +
-                w["rf"]       * rf_score      +
-                w["nn"]       * nn_score
+                w["rules"] * rules_score
+                + w["anomaly"] * anomaly_score
+                + w["xgb"] * xgb_score
+                + w["rf"] * rf_score
+                + w["nn"] * nn_score
             )
             fraud_score = float(max(0.0, min(1.0, fraud_score)))
 
@@ -161,6 +160,7 @@ class EnsembleScorer:
 
         # Confidence: how much individual scores agree (low variance = high confidence)
         import statistics
+
         scores = [rules_score, anomaly_score, xgb_score, rf_score, nn_score]
         try:
             confidence = 1.0 - min(1.0, statistics.stdev(scores))
@@ -185,13 +185,13 @@ class EnsembleScorer:
     def _classify(score: float) -> tuple[str, str, str]:
         """Map fraud_score to (fraud_category, risk_level, decision)."""
         if score < 0.30:
-            return "legitimate",  "low",      "PASS"
+            return "legitimate", "low", "PASS"
         elif score < 0.60:
-            return "suspicious",  "medium",   "FLAG"
+            return "suspicious", "medium", "FLAG"
         elif score < 0.80:
-            return "suspicious",  "high",     "ALERT"
+            return "suspicious", "high", "ALERT"
         else:
-            return "fraudulent",  "critical", "BLOCK"
+            return "fraudulent", "critical", "BLOCK"
 
     def save(self, path: str | None = None):
         os.makedirs(MODELS_DIR, exist_ok=True)

@@ -1,4 +1,5 @@
 """Application configuration — loaded from .env via pydantic-settings."""
+
 from functools import lru_cache
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -56,7 +57,7 @@ class Settings(BaseSettings):
     TWILIO_FROM_NUMBER: str = ""
 
     # Fraud alert notification targets
-    ALERT_COMPANY_EMAIL: str = ""   # Where company fraud alerts are sent
+    ALERT_COMPANY_EMAIL: str = ""  # Where company fraud alerts are sent
     ALERT_SMS_ENABLED: bool = True  # Toggle Twilio SMS for fraud alerts
 
     # ML

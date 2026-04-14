@@ -2,6 +2,7 @@
 
 Uses bcrypt directly (passlib has Python 3.13 compatibility issues).
 """
+
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import bcrypt

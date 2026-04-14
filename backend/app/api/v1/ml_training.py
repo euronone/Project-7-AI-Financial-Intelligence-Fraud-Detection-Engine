@@ -28,10 +28,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ml/training", tags=["ML Training"])
 
-_MAX_PICKLE_MB = 200   # maximum upload size for pickle files
+_MAX_PICKLE_MB = 200  # maximum upload size for pickle files
 
 
 # ── Request / Response schemas ─────────────────────────────────────────────────
+
 
 class StartTrainingRequest(BaseModel):
     algorithms: list[str] = Field(
@@ -63,12 +64,14 @@ class StartTrainingRequest(BaseModel):
 
 class ReoptimizeRequest(BaseModel):
     new_window_days: int = Field(
-        ge=1, le=3650,
+        ge=1,
+        le=3650,
         description="New (wider) data window for the re-optimization run.",
     )
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
 
 @router.get("/algorithms")
 async def get_algorithms(_: CurrentUser):
@@ -82,12 +85,9 @@ async def get_algorithms(_: CurrentUser):
       - tunable: whether auto-optimize will search hyperparameters for this algo
     """
     return {
-        "clustering":  ALGORITHM_CATALOGUE["clustering"],
-        "supervised":  ALGORITHM_CATALOGUE["supervised"],
-        "total": (
-            len(ALGORITHM_CATALOGUE["clustering"]) +
-            len(ALGORITHM_CATALOGUE["supervised"])
-        ),
+        "clustering": ALGORITHM_CATALOGUE["clustering"],
+        "supervised": ALGORITHM_CATALOGUE["supervised"],
+        "total": (len(ALGORITHM_CATALOGUE["clustering"]) + len(ALGORITHM_CATALOGUE["supervised"])),
     }
 
 
@@ -103,11 +103,7 @@ async def start_training(
     Poll GET /jobs/{job_id} for progress.
     """
     # Validate algorithm IDs
-    valid_ids = {
-        a["id"]
-        for group in ALGORITHM_CATALOGUE.values()
-        for a in group
-    }
+    valid_ids = {a["id"] for group in ALGORITHM_CATALOGUE.values() for a in group}
     bad = [a for a in body.algorithms if a not in valid_ids]
     if bad:
         raise HTTPException(
@@ -117,10 +113,7 @@ async def start_training(
 
     # Must have at least one algorithm that is available
     available_ids = {
-        a["id"]
-        for group in ALGORITHM_CATALOGUE.values()
-        for a in group
-        if a.get("available", True)
+        a["id"] for group in ALGORITHM_CATALOGUE.values() for a in group if a.get("available", True)
     }
     usable = [a for a in body.algorithms if a in available_ids]
     if not usable:
@@ -146,12 +139,12 @@ async def start_training(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {
-        "job_id":           job.id,
-        "status":           job.status,
-        "algorithms":       usable,
+        "job_id": job.id,
+        "status": job.status,
+        "algorithms": usable,
         "data_window_days": body.data_window_days,
-        "auto_optimize":    body.auto_optimize,
-        "message":          "Training job queued. Poll /jobs/{job_id} for progress.",
+        "auto_optimize": body.auto_optimize,
+        "message": "Training job queued. Poll /jobs/{job_id} for progress.",
     }
 
 
@@ -221,10 +214,10 @@ async def reoptimize_job(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {
-        "job_id":           new_job.id,
-        "parent_job_id":    job_id,
-        "status":           new_job.status,
-        "new_window_days":  body.new_window_days,
+        "job_id": new_job.id,
+        "parent_job_id": job_id,
+        "status": new_job.status,
+        "new_window_days": body.new_window_days,
         "message": (
             f"Re-optimization job queued with {body.new_window_days}-day window. "
             "Poll /jobs/{job_id} for progress."
@@ -252,24 +245,26 @@ async def promote_job(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {
-        "model_id":       model.id,
-        "model_name":     model.model_name,
-        "version":        model.version,
-        "is_active":      model.is_active,
-        "precision":      float(model.precision or 0),
-        "recall":         float(model.recall or 0),
-        "f1_score":       float(model.f1_score or 0),
-        "auc_roc":        float(model.auc_roc or 0),
+        "model_id": model.id,
+        "model_name": model.model_name,
+        "version": model.version,
+        "is_active": model.is_active,
+        "precision": float(model.precision or 0),
+        "recall": float(model.recall or 0),
+        "f1_score": float(model.f1_score or 0),
+        "auc_roc": float(model.auc_roc or 0),
         "training_samples": model.training_samples,
-        "promoted_at":    model.promoted_at.isoformat() if model.promoted_at else None,
-        "message":        f"Model '{model.model_name}' is now active for fraud scoring.",
+        "promoted_at": model.promoted_at.isoformat() if model.promoted_at else None,
+        "message": f"Model '{model.model_name}' is now active for fraud scoring.",
     }
 
 
 @router.post("/upload-pickle")
 async def upload_pickle_model(
     current_user: AdminUser,
-    file: UploadFile = File(..., description="Pickle file (.pkl) containing sklearn-compatible model"),
+    file: UploadFile = File(
+        ..., description="Pickle file (.pkl) containing sklearn-compatible model"
+    ),
     model_name: str | None = Form(default=None, description="Optional display name for the model"),
 ):
     """

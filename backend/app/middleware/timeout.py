@@ -2,6 +2,7 @@
 Request timeout middleware — prevents hanging requests from exhausting resources.
 Different endpoints have different timeout limits.
 """
+
 import asyncio
 import logging
 from fastapi import Request
@@ -12,8 +13,8 @@ logger = logging.getLogger(__name__)
 # Timeout config by endpoint pattern
 TIMEOUT_CONFIG = {
     "/api/v1/transactions/batch": 120,  # 2 min for bulk uploads
-    "/api/v1/ml-training": 600,         # 10 min for model training
-    "/api/v1/": 30,                     # 30 sec default for most endpoints
+    "/api/v1/ml-training": 600,  # 10 min for model training
+    "/api/v1/": 30,  # 30 sec default for most endpoints
 }
 
 
@@ -38,14 +39,14 @@ async def timeout_middleware(request: Request, call_next):
                 "method": request.method,
                 "path": request.url.path,
                 "timeout_seconds": timeout,
-            }
+            },
         )
         return JSONResponse(
             status_code=504,
             content={
                 "detail": "Request timeout",
-                "message": f"Request exceeded {timeout}s timeout limit"
-            }
+                "message": f"Request exceeded {timeout}s timeout limit",
+            },
         )
     except Exception as exc:
         # Let other exceptions be handled by error handler

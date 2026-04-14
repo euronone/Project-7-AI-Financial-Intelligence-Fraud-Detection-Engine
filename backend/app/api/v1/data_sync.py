@@ -121,11 +121,11 @@ async def trigger_sync(
         raise HTTPException(status_code=500, detail=f"Sync failed: {str(exc)[:200]}") from exc
 
     return {
-        "message":  "Sync completed" if stats.get("success") else "Sync completed with errors",
-        "success":  stats.get("success", False),
-        "tables":   stats.get("tables", {}),
+        "message": "Sync completed" if stats.get("success") else "Sync completed with errors",
+        "success": stats.get("success", False),
+        "tables": stats.get("tables", {}),
         "duration_seconds": stats.get("duration_seconds"),
-        "errors":   stats.get("errors", []),
+        "errors": stats.get("errors", []),
     }
 
 
@@ -186,15 +186,15 @@ async def get_refresh_schedule(current_user: CurrentUser):
     """Return the current auto-refresh schedule configuration."""
     config = await DataSyncService.get_refresh_config(current_user.tenant_id)
     return {
-        "mode":      config.get("mode", "manual"),
-        "tables":    config.get("tables", ["transactions", "customers"]),
+        "mode": config.get("mode", "manual"),
+        "tables": config.get("tables", ["transactions", "customers"]),
         "row_limit": config.get("row_limit", 100_000),
         "description": {
-            "manual":             "Sync only runs when you call POST /data-sync/trigger",
-            "on_training_start":  "Sync runs automatically before each ML training job",
-            "every_1h":           "Sync runs every hour (requires background scheduler)",
-            "every_6h":           "Sync runs every 6 hours",
-            "every_24h":          "Sync runs every 24 hours",
+            "manual": "Sync only runs when you call POST /data-sync/trigger",
+            "on_training_start": "Sync runs automatically before each ML training job",
+            "every_1h": "Sync runs every hour (requires background scheduler)",
+            "every_6h": "Sync runs every 6 hours",
+            "every_24h": "Sync runs every 24 hours",
         }.get(config.get("mode", "manual"), ""),
     }
 
@@ -216,8 +216,8 @@ async def update_refresh_schedule(
       every_1h/6h/24h   — periodic sync (background worker must be running)
     """
     refresh_config = {
-        "mode":      body.mode,
-        "tables":    body.tables,
+        "mode": body.mode,
+        "tables": body.tables,
         "row_limit": body.row_limit,
     }
     try:
@@ -228,5 +228,5 @@ async def update_refresh_schedule(
     return {
         "success": True,
         "message": f"Auto-refresh schedule set to '{body.mode}'.",
-        "config":  refresh_config,
+        "config": refresh_config,
     }

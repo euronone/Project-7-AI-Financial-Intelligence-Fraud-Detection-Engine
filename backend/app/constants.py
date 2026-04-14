@@ -4,9 +4,9 @@ Use these instead of hardcoding values throughout the codebase.
 """
 
 # ── Fraud Scoring Thresholds ──────────────────────────────────────────────
-FRAUD_SCORE_PASS = 0.30          # Below = legitimate
-FRAUD_SCORE_FLAG = 0.60          # Between PASS and FLAG = suspicious
-FRAUD_SCORE_ALERT = 0.80         # Between FLAG and ALERT = high risk
+FRAUD_SCORE_PASS = 0.30  # Below = legitimate
+FRAUD_SCORE_FLAG = 0.60  # Between PASS and FLAG = suspicious
+FRAUD_SCORE_ALERT = 0.80  # Between FLAG and ALERT = high risk
 # Above ALERT = critical / block
 
 FRAUD_CATEGORY_LEGITIMATE = "legitimate"
@@ -26,24 +26,24 @@ FRAUD_DECISION_BLOCK = "BLOCK"
 
 # ── Transaction Limits ────────────────────────────────────────────────────
 MAX_TRANSACTION_AMOUNT = 10_000_000  # ₹10M max per transaction
-MIN_TRANSACTION_AMOUNT = 1           # ₹1 min per transaction
-STRUCTURING_THRESHOLD = 800_000      # ₹8L threshold for structuring detection
-STRUCTURING_COUNT = 5                # 5+ transactions within threshold
+MIN_TRANSACTION_AMOUNT = 1  # ₹1 min per transaction
+STRUCTURING_THRESHOLD = 800_000  # ₹8L threshold for structuring detection
+STRUCTURING_COUNT = 5  # 5+ transactions within threshold
 
 # ── Time Windows ──────────────────────────────────────────────────────────
-VELOCITY_WINDOW_MINUTES_SHORT = 10   # 10-min window for rapid velocity
-VELOCITY_WINDOW_MINUTES_LONG = 60    # 1-hour window for daily velocity
-VELOCITY_WINDOW_HOURS_DAY = 24       # 24-hour window for daily patterns
-VELOCITY_SPIKE_MULTIPLIER = 5        # 5x above baseline = spike
+VELOCITY_WINDOW_MINUTES_SHORT = 10  # 10-min window for rapid velocity
+VELOCITY_WINDOW_MINUTES_LONG = 60  # 1-hour window for daily velocity
+VELOCITY_WINDOW_HOURS_DAY = 24  # 24-hour window for daily patterns
+VELOCITY_SPIKE_MULTIPLIER = 5  # 5x above baseline = spike
 
 # ── Geographic Limits ─────────────────────────────────────────────────────
 IMPOSSIBLE_TRAVEL_KM_PER_HOUR = 900  # >900 km/h is impossible
 SUSPICIOUS_TRAVEL_KM_PER_HOUR = 500  # 500-900 km/h is suspicious
-IMPOSSIBLE_TRAVEL_MINUTES = 30       # Within 30 minutes
+IMPOSSIBLE_TRAVEL_MINUTES = 30  # Within 30 minutes
 
 # ── Device & New User ─────────────────────────────────────────────────────
-DEVICE_AGE_DAYS_NEW = 0              # First-time device
-ACCOUNT_AGE_DAYS_NEW = 30            # Account < 30 days = new
+DEVICE_AGE_DAYS_NEW = 0  # First-time device
+ACCOUNT_AGE_DAYS_NEW = 30  # Account < 30 days = new
 
 # ── Pagination & Limits ───────────────────────────────────────────────────
 DEFAULT_PAGE_SIZE = 50
@@ -85,7 +85,7 @@ DB_POOL_RECYCLE_SECONDS = 3600
 
 # ── Cache Configuration ──────────────────────────────────────────────────
 CUSTOMER_HISTORY_CACHE_TTL_SECONDS = 300  # 5 minutes
-FEATURE_CACHE_TTL_SECONDS = 600           # 10 minutes
+FEATURE_CACHE_TTL_SECONDS = 600  # 10 minutes
 
 # ── Logging ───────────────────────────────────────────────────────────────
 LOG_LEVEL_DEBUG = "DEBUG"

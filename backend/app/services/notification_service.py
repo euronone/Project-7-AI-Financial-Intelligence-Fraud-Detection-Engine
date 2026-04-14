@@ -12,6 +12,7 @@ Priority matrix:
   medium   -> email + in-app
   low      -> in-app only
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,8 +27,8 @@ async def send_fraud_alert_notifications(
     tenant_id: str,
     transaction_id: str,
     fraud_score: float,
-    severity: str,            # low|medium|high|critical
-    decision: str,            # PASS|FLAG|ALERT|BLOCK
+    severity: str,  # low|medium|high|critical
+    decision: str,  # PASS|FLAG|ALERT|BLOCK
     amount: float,
     merchant_name: Optional[str],
     triggered_rules: list[str],
@@ -62,6 +63,7 @@ async def send_fraud_alert_notifications(
     Returns a dict summarising what was sent.
     """
     from app.config import get_settings
+
     settings = get_settings()
 
     results: dict[str, str] = {}
@@ -73,9 +75,9 @@ async def send_fraud_alert_notifications(
     # Base channels from severity
     channels_by_severity = {
         "critical": ["email", "sms"],
-        "high":     ["email", "sms"],
-        "medium":   ["email"],
-        "low":      [],
+        "high": ["email", "sms"],
+        "medium": ["email"],
+        "low": [],
     }
     channels = list(channels_by_severity.get(severity, []))
 
@@ -97,7 +99,7 @@ async def send_fraud_alert_notifications(
     # Tenant BYOK key takes priority; fall back to platform-level env var.
     # If Resend isn't configured, Brevo is tried next (same fallback chain).
     resend_key = override_resend_key or getattr(settings, "RESEND_API_KEY", "") or ""
-    brevo_key  = override_brevo_key  or getattr(settings, "BREVO_API_KEY",  "") or ""
+    brevo_key = override_brevo_key or getattr(settings, "BREVO_API_KEY", "") or ""
     email_from_name = getattr(settings, "EMAIL_FROM_NAME", "FinShield AI")
 
     # ISSUE-008: use pre-resolved verified sender when provided, else fall
@@ -108,7 +110,11 @@ async def send_fraud_alert_notifications(
         _env_from = getattr(settings, "EMAIL_FROM", "") or ""
         # If the platform EMAIL_FROM is still the unowned placeholder, swap to
         # Resend's sandbox (only delivers to the Resend account owner's inbox).
-        email_from = _env_from if (_env_from and "finshield.ai" not in _env_from) else "onboarding@resend.dev"
+        email_from = (
+            _env_from
+            if (_env_from and "finshield.ai" not in _env_from)
+            else "onboarding@resend.dev"
+        )
 
     async def _send_email(*, to: str, subject: str, html: str) -> str:
         """Provider-agnostic email dispatch: Resend first, Brevo fallback."""
@@ -116,13 +122,18 @@ async def send_fraud_alert_notifications(
             return await _send_resend(
                 api_key=resend_key,
                 from_addr=f"{email_from_name} <{email_from}>",
-                to=to, subject=subject, html=html,
+                to=to,
+                subject=subject,
+                html=html,
             )
         if brevo_key:
             return await _send_brevo(
                 api_key=brevo_key,
-                from_email=email_from, from_name=email_from_name,
-                to=to, subject=subject, html=html,
+                from_email=email_from,
+                from_name=email_from_name,
+                to=to,
+                subject=subject,
+                html=html,
             )
         return "skipped:no_key"
 
@@ -151,7 +162,12 @@ async def send_fraud_alert_notifications(
             subject = f"[FinShield] {severity.upper()} — {decision} | {amount_str} · {cust_name} · Ref {ref}"
             for recipient in company_emails:
                 status = await _send_email(to=recipient, subject=subject, html=html_body)
-                logger.info("Company alert email sent | alert=%s to=%s status=%s", alert_id, recipient, status)
+                logger.info(
+                    "Company alert email sent | alert=%s to=%s status=%s",
+                    alert_id,
+                    recipient,
+                    status,
+                )
             results["email_company"] = f"sent:{len(company_emails)}"
         else:
             results["email_company"] = "skipped:no_key_or_email"
@@ -175,9 +191,9 @@ async def send_fraud_alert_notifications(
 
     # ── SMS → Customer (Twilio) ──────────────────────────────────────────────
     if "sms" in channels and customer_phone:
-        twilio_sid   = override_twilio_sid   or getattr(settings, "TWILIO_ACCOUNT_SID", "") or ""
+        twilio_sid = override_twilio_sid or getattr(settings, "TWILIO_ACCOUNT_SID", "") or ""
         twilio_token = override_twilio_token or getattr(settings, "TWILIO_AUTH_TOKEN", "") or ""
-        twilio_from  = override_twilio_from  or getattr(settings, "TWILIO_FROM_NUMBER", "") or ""
+        twilio_from = override_twilio_from or getattr(settings, "TWILIO_FROM_NUMBER", "") or ""
 
         if twilio_sid and twilio_token and twilio_from:
             if decision == "BLOCK":
@@ -191,8 +207,11 @@ async def send_fraud_alert_notifications(
                     f"Score: {fraud_score:.0%}. If not you, contact your bank. Ref: {ref}"
                 )
             results["sms_customer"] = await _send_twilio_sms(
-                sid=twilio_sid, token=twilio_token, from_num=twilio_from,
-                to=customer_phone, body=sms_body,
+                sid=twilio_sid,
+                token=twilio_token,
+                from_num=twilio_from,
+                to=customer_phone,
+                body=sms_body,
             )
             logger.info("Alert SMS sent | alert=%s to=%s", alert_id, customer_phone)
         else:
@@ -204,11 +223,11 @@ async def send_fraud_alert_notifications(
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
 
-async def _send_resend(
-    *, api_key: str, from_addr: str, to: str, subject: str, html: str
-) -> str:
+
+async def _send_resend(*, api_key: str, from_addr: str, to: str, subject: str, html: str) -> str:
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 "https://api.resend.com/emails",
@@ -227,14 +246,19 @@ async def _send_brevo(
     """Send a transactional email via Brevo (formerly Sendinblue)."""
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 "https://api.brevo.com/v3/smtp/email",
-                headers={"api-key": api_key, "accept": "application/json", "content-type": "application/json"},
+                headers={
+                    "api-key": api_key,
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                },
                 json={
-                    "sender":      {"email": from_email, "name": from_name},
-                    "to":          [{"email": to}],
-                    "subject":     subject,
+                    "sender": {"email": from_email, "name": from_name},
+                    "to": [{"email": to}],
+                    "subject": subject,
                     "htmlContent": html,
                 },
             )
@@ -244,12 +268,11 @@ async def _send_brevo(
         return f"error:{str(exc)[:60]}"
 
 
-async def _send_twilio_sms(
-    *, sid: str, token: str, from_num: str, to: str, body: str
-) -> str:
+async def _send_twilio_sms(*, sid: str, token: str, from_num: str, to: str, body: str) -> str:
     try:
         import httpx
         import base64
+
         creds = base64.b64encode(f"{sid}:{token}".encode()).decode()
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
@@ -264,12 +287,23 @@ async def _send_twilio_sms(
 
 
 def _company_email_html(
-    *, alert_id: str, fraud_score: float, severity: str, decision: str,
-    amount_str: str, merchant_str: str, rules_str: str,
-    customer_name: str, customer_email: str, customer_phone: str,
-    transaction_id: str, ref: str,
+    *,
+    alert_id: str,
+    fraud_score: float,
+    severity: str,
+    decision: str,
+    amount_str: str,
+    merchant_str: str,
+    rules_str: str,
+    customer_name: str,
+    customer_email: str,
+    customer_phone: str,
+    transaction_id: str,
+    ref: str,
 ) -> str:
-    color = {"critical": "#EF4444", "high": "#F97316", "medium": "#F59E0B", "low": "#22C55E"}.get(severity, "#6B7280")
+    color = {"critical": "#EF4444", "high": "#F97316", "medium": "#F59E0B", "low": "#22C55E"}.get(
+        severity, "#6B7280"
+    )
     return f"""
     <html><body style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E5E7EB;padding:24px;">
     <div style="max-width:600px;margin:0 auto;background:#111118;border:1px solid #1E1E2E;border-radius:12px;overflow:hidden;">
@@ -302,8 +336,13 @@ def _company_email_html(
 
 
 def _customer_email_html(
-    *, customer_name: str, amount_str: str, merchant_str: str,
-    decision: str, fraud_score: float, ref: str,
+    *,
+    customer_name: str,
+    amount_str: str,
+    merchant_str: str,
+    decision: str,
+    fraud_score: float,
+    ref: str,
 ) -> str:
     color = "#EF4444" if decision == "BLOCK" else "#F97316" if decision == "ALERT" else "#F59E0B"
     action = "BLOCKED" if decision == "BLOCK" else "FLAGGED as suspicious"
@@ -328,5 +367,3 @@ def _customer_email_html(
         <p style="color:#9CA3AF;font-size:13px;">If you authorised this transaction, no action is required. If you did <strong>not</strong> make this transaction, contact your bank immediately.</p>
         <p style="color:#4B5563;font-size:11px;margin-top:24px;">This alert was generated automatically by FinShield AI. Do not reply.</p>
       </div></div></body></html>"""
-
-

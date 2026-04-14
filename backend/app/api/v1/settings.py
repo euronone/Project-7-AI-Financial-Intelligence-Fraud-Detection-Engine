@@ -1,4 +1,5 @@
 """Settings endpoints — DB connections, API keys, connection tests."""
+
 import time
 import logging
 from fastapi import APIRouter, Depends, HTTPException
@@ -33,7 +34,9 @@ async def get_database_settings(
     try:
         config = encryptor.decrypt_config(config)
     except Exception as exc:
-        logger.warning("Failed to decrypt database config: %s (may be plaintext from before encryption)", exc)
+        logger.warning(
+            "Failed to decrypt database config: %s (may be plaintext from before encryption)", exc
+        )
         # Continue with plaintext config from old data
 
     return {
@@ -46,20 +49,20 @@ async def get_database_settings(
         "db_name": config.get("db_name"),
         "db_user": config.get("db_user"),
         # Mask all secret fields — return presence flag only
-        "has_password":              bool(config.get("db_password")),
-        "has_anon_key":              bool(config.get("supabase_anon_key")),
-        "has_service_key":           bool(config.get("supabase_service_key")),
-        "has_service_role_key":      bool(config.get("supabase_service_role_key")),
-        "has_supabase_db_password":  bool(config.get("supabase_db_password")),
-        "has_api_key":               bool(config.get("api_key")),
-        "has_aws_secret":            bool(config.get("aws_secret_access_key")),
-        "has_service_account":       bool(config.get("service_account_json")),
-        "has_snowflake_pass":        bool(config.get("db_password") and config.get("snowflake_account")),
-        "has_planetscale_pass":      bool(config.get("planetscale_password")),
-        "has_redis_password":        bool(config.get("redis_password")),
-        "ssl_mode":              config.get("ssl_mode"),
-        "schema_name":           config.get("schema_name"),
-        "pool_size":             config.get("pool_size"),
+        "has_password": bool(config.get("db_password")),
+        "has_anon_key": bool(config.get("supabase_anon_key")),
+        "has_service_key": bool(config.get("supabase_service_key")),
+        "has_service_role_key": bool(config.get("supabase_service_role_key")),
+        "has_supabase_db_password": bool(config.get("supabase_db_password")),
+        "has_api_key": bool(config.get("api_key")),
+        "has_aws_secret": bool(config.get("aws_secret_access_key")),
+        "has_service_account": bool(config.get("service_account_json")),
+        "has_snowflake_pass": bool(config.get("db_password") and config.get("snowflake_account")),
+        "has_planetscale_pass": bool(config.get("planetscale_password")),
+        "has_redis_password": bool(config.get("redis_password")),
+        "ssl_mode": config.get("ssl_mode"),
+        "schema_name": config.get("schema_name"),
+        "pool_size": config.get("pool_size"),
     }
 
 
@@ -74,6 +77,7 @@ async def update_database_settings(
     tenant = result.scalar_one_or_none()
     if not tenant:
         from app.core.exceptions import NotFoundException
+
         raise NotFoundException("Tenant")
 
     tenant.db_type = body.db_type
@@ -90,6 +94,7 @@ async def update_database_settings(
 
     # Mark onboarding complete
     from app.models.user import User
+
     user_result = await db.execute(select(User).where(User.id == current_user.id))
     user = user_result.scalar_one_or_none()
     if user:
@@ -125,6 +130,7 @@ async def test_connection(
     if body.db_type == "supabase" and body.supabase_url:
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=6.0) as client:
                 resp = await client.get(
                     f"{body.supabase_url.rstrip('/')}/rest/v1/",
@@ -146,7 +152,9 @@ async def test_connection(
                 latency_ms=latency,
             )
         except Exception as exc:
-            return ConnectionTestResponse(success=False, message=f"Connection failed: {str(exc)[:120]}")
+            return ConnectionTestResponse(
+                success=False, message=f"Connection failed: {str(exc)[:120]}"
+            )
 
     # ── PostgreSQL / CockroachDB / Neon (asyncpg ping) ──────────────────
     pg_url = (
@@ -161,8 +169,11 @@ async def test_connection(
     if body.db_type in ("postgresql", "cockroachdb", "neon") and pg_url:
         try:
             import asyncpg  # type: ignore
+
             # Normalise URL scheme for asyncpg
-            pg_url_clean = pg_url.replace("postgresql+asyncpg://", "postgresql://").replace("postgres://", "postgresql://")
+            pg_url_clean = pg_url.replace("postgresql+asyncpg://", "postgresql://").replace(
+                "postgres://", "postgresql://"
+            )
             conn = await asyncpg.connect(pg_url_clean, timeout=6.0)
             await conn.close()
             latency = round((time.time() - start) * 1000, 1)
@@ -195,20 +206,27 @@ async def test_connection(
                 message="MySQL/MariaDB credentials accepted (live ping requires aiomysql)",
                 latency_ms=latency,
             )
-        return ConnectionTestResponse(success=False, message="Fill host, username, and password before testing.")
+        return ConnectionTestResponse(
+            success=False, message="Fill host, username, and password before testing."
+        )
 
     # ── MongoDB ──────────────────────────────────────────────────────────
     if body.db_type == "mongodb":
         uri = body.mongo_connection_string or body.db_url
         if not uri:
-            return ConnectionTestResponse(success=False, message="Provide a MongoDB connection string.")
+            return ConnectionTestResponse(
+                success=False, message="Provide a MongoDB connection string."
+            )
         try:
             from motor.motor_asyncio import AsyncIOMotorClient  # type: ignore
+
             client = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=5000)
             await client.admin.command("ping")
             client.close()
             latency = round((time.time() - start) * 1000, 1)
-            return ConnectionTestResponse(success=True, message="MongoDB ping successful", latency_ms=latency)
+            return ConnectionTestResponse(
+                success=True, message="MongoDB ping successful", latency_ms=latency
+            )
         except ImportError:
             latency = round((time.time() - start) * 1000, 1)
             return ConnectionTestResponse(
@@ -225,17 +243,23 @@ async def test_connection(
         latency = round((time.time() - start) * 1000, 1)
         return ConnectionTestResponse(
             success=has_creds,
-            message="MSSQL credentials accepted" if has_creds else "Fill server host, username, and password.",
+            message="MSSQL credentials accepted"
+            if has_creds
+            else "Fill server host, username, and password.",
             latency_ms=latency,
         )
 
     # ── Oracle ───────────────────────────────────────────────────────────
     if body.db_type == "oracle":
-        has_creds = bool(body.host and body.db_user and body.db_password and body.oracle_service_name)
+        has_creds = bool(
+            body.host and body.db_user and body.db_password and body.oracle_service_name
+        )
         latency = round((time.time() - start) * 1000, 1)
         return ConnectionTestResponse(
             success=has_creds,
-            message="Oracle credentials accepted" if has_creds else "Fill host, username, password, and service name.",
+            message="Oracle credentials accepted"
+            if has_creds
+            else "Fill host, username, password, and service name.",
             latency_ms=latency,
         )
 
@@ -246,13 +270,20 @@ async def test_connection(
         try:
             import asyncio
             import socket
+
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: socket.create_connection((host, port), timeout=4))
+            await loop.run_in_executor(
+                None, lambda: socket.create_connection((host, port), timeout=4)
+            )
             latency = round((time.time() - start) * 1000, 1)
-            return ConnectionTestResponse(success=True, message=f"Redis TCP reachable at {host}:{port}", latency_ms=latency)
+            return ConnectionTestResponse(
+                success=True, message=f"Redis TCP reachable at {host}:{port}", latency_ms=latency
+            )
         except Exception as exc:
             latency = round((time.time() - start) * 1000, 1)
-            return ConnectionTestResponse(success=False, message=f"Redis unreachable: {str(exc)[:100]}", latency_ms=latency)
+            return ConnectionTestResponse(
+                success=False, message=f"Redis unreachable: {str(exc)[:100]}", latency_ms=latency
+            )
 
     # ── Amazon DynamoDB ──────────────────────────────────────────────────
     if body.db_type == "dynamodb":
@@ -260,8 +291,9 @@ async def test_connection(
         latency = round((time.time() - start) * 1000, 1)
         return ConnectionTestResponse(
             success=has_creds,
-            message=f"DynamoDB credentials accepted for region {body.aws_region}" if has_creds
-                    else "Fill AWS Access Key ID, Secret Access Key, and Region.",
+            message=f"DynamoDB credentials accepted for region {body.aws_region}"
+            if has_creds
+            else "Fill AWS Access Key ID, Secret Access Key, and Region.",
             latency_ms=latency,
         )
 
@@ -271,22 +303,27 @@ async def test_connection(
         latency = round((time.time() - start) * 1000, 1)
         return ConnectionTestResponse(
             success=has_creds,
-            message=f"Firestore project {body.gcp_project_id} credentials accepted" if has_creds
-                    else "Fill GCP Project ID and Service Account JSON.",
+            message=f"Firestore project {body.gcp_project_id} credentials accepted"
+            if has_creds
+            else "Fill GCP Project ID and Service Account JSON.",
             latency_ms=latency,
         )
 
     # ── Snowflake ────────────────────────────────────────────────────────
     if body.db_type == "snowflake":
         has_creds = bool(
-            body.snowflake_account and body.db_user and body.db_password
-            and body.snowflake_database and body.snowflake_warehouse
+            body.snowflake_account
+            and body.db_user
+            and body.db_password
+            and body.snowflake_database
+            and body.snowflake_warehouse
         )
         latency = round((time.time() - start) * 1000, 1)
         return ConnectionTestResponse(
             success=has_creds,
-            message=f"Snowflake credentials accepted for account {body.snowflake_account}" if has_creds
-                    else "Fill account identifier, username, password, warehouse, and database.",
+            message=f"Snowflake credentials accepted for account {body.snowflake_account}"
+            if has_creds
+            else "Fill account identifier, username, password, warehouse, and database.",
             latency_ms=latency,
         )
 
@@ -296,6 +333,7 @@ async def test_connection(
         port = body.clickhouse_http_port or 8123
         try:
             import httpx
+
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(
                     f"http://{host}:{port}/ping",
@@ -303,8 +341,12 @@ async def test_connection(
                 )
             latency = round((time.time() - start) * 1000, 1)
             if resp.status_code == 200:
-                return ConnectionTestResponse(success=True, message="ClickHouse ping successful", latency_ms=latency)
-            return ConnectionTestResponse(success=False, message=f"ClickHouse returned {resp.status_code}", latency_ms=latency)
+                return ConnectionTestResponse(
+                    success=True, message="ClickHouse ping successful", latency_ms=latency
+                )
+            return ConnectionTestResponse(
+                success=False, message=f"ClickHouse returned {resp.status_code}", latency_ms=latency
+            )
         except Exception as exc:
             latency = round((time.time() - start) * 1000, 1)
             return ConnectionTestResponse(success=False, message=str(exc)[:120], latency_ms=latency)
@@ -316,6 +358,7 @@ async def test_connection(
         if has_url:
             try:
                 import httpx
+
                 url = (body.api_base_url or body.db_url or "").rstrip("/") + "/"
                 headers: dict = {}
                 if body.api_key:
@@ -330,7 +373,9 @@ async def test_connection(
                 )
             except Exception as exc:
                 return ConnectionTestResponse(success=False, message=str(exc)[:120])
-        return ConnectionTestResponse(success=False, message="Provide a base URL before testing.", latency_ms=latency)
+        return ConnectionTestResponse(
+            success=False, message="Provide a base URL before testing.", latency_ms=latency
+        )
 
     # ── Fallback for any unhandled type ──────────────────────────────────
     latency = round((time.time() - start) * 1000, 1)
@@ -344,6 +389,7 @@ async def test_connection(
 # ---------------------------------------------------------------------------
 # Keys-summary endpoint — fast per-service "is configured?" check
 # ---------------------------------------------------------------------------
+
 
 @router.get("/keys-summary")
 async def get_keys_summary(
@@ -379,6 +425,7 @@ async def get_keys_summary(
 
     # ISSUE-004: derive known services from the single-source-of-truth constant
     from app.schemas.credentials import SUPPORTED_PROVIDERS
+
     all_services = sorted(set(SUPPORTED_PROVIDERS) | set(service_keys.keys()))
 
     return {
@@ -393,6 +440,7 @@ async def get_keys_summary(
 # ---------------------------------------------------------------------------
 # Notification settings endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("/notifications")
 async def get_notification_settings(
@@ -428,33 +476,35 @@ async def get_notification_settings(
     # This handles cases where the user saved under a non-canonical key_name.
     configured_services = {svc for svc, _ in cred_services}
     has_resend = (
-        "resend" in configured_services                         # BYOK tenant_credentials
-        or bool(notif_config.get("resend_api_key"))             # legacy db_config_json path
-        or bool(getattr(settings, "RESEND_API_KEY", ""))        # platform env var
+        "resend" in configured_services  # BYOK tenant_credentials
+        or bool(notif_config.get("resend_api_key"))  # legacy db_config_json path
+        or bool(getattr(settings, "RESEND_API_KEY", ""))  # platform env var
     )
     has_brevo = (
-        "brevo" in configured_services                          # BYOK tenant_credentials
-        or bool(notif_config.get("brevo_api_key"))              # legacy db_config_json path
-        or bool(getattr(settings, "BREVO_API_KEY", ""))         # platform env var
+        "brevo" in configured_services  # BYOK tenant_credentials
+        or bool(notif_config.get("brevo_api_key"))  # legacy db_config_json path
+        or bool(getattr(settings, "BREVO_API_KEY", ""))  # platform env var
     )
     has_twilio = (
-        "twilio" in configured_services                         # BYOK tenant_credentials
-        or bool(notif_config.get("twilio_account_sid"))         # legacy db_config_json path
-        or bool(getattr(settings, "TWILIO_ACCOUNT_SID", ""))    # platform env var
+        "twilio" in configured_services  # BYOK tenant_credentials
+        or bool(notif_config.get("twilio_account_sid"))  # legacy db_config_json path
+        or bool(getattr(settings, "TWILIO_ACCOUNT_SID", ""))  # platform env var
     )
 
     # Check if a custom from_email (verified sender domain) is stored
     has_from_email = ("resend", "from_email") in cred_services
 
     return {
-        "company_alert_email": notif_config.get("company_alert_email", getattr(settings, "ALERT_COMPANY_EMAIL", "")),
-        "has_resend":          has_resend,
-        "has_brevo":           has_brevo,
-        "has_twilio":          has_twilio,
-        "has_from_email":      has_from_email,
-        "sms_enabled":         notif_config.get("sms_enabled", True),
-        "email_customer":      notif_config.get("email_customer", True),
-        "email_company":       notif_config.get("email_company", True),
+        "company_alert_email": notif_config.get(
+            "company_alert_email", getattr(settings, "ALERT_COMPANY_EMAIL", "")
+        ),
+        "has_resend": has_resend,
+        "has_brevo": has_brevo,
+        "has_twilio": has_twilio,
+        "has_from_email": has_from_email,
+        "sms_enabled": notif_config.get("sms_enabled", True),
+        "email_customer": notif_config.get("email_customer", True),
+        "email_company": notif_config.get("email_company", True),
     }
 
 
@@ -469,6 +519,7 @@ async def update_notification_settings(
     tenant = result.scalar_one_or_none()
     if not tenant:
         from app.core.exceptions import NotFoundException
+
         raise NotFoundException("Tenant")
 
     from sqlalchemy.orm.attributes import flag_modified
@@ -479,12 +530,17 @@ async def update_notification_settings(
 
     notif: dict = {
         "company_alert_email": body.get("company_alert_email", ""),
-        "sms_enabled":         body.get("sms_enabled", True),
-        "email_customer":      body.get("email_customer", True),
-        "email_company":       body.get("email_company", True),
+        "sms_enabled": body.get("sms_enabled", True),
+        "email_customer": body.get("email_customer", True),
+        "email_company": body.get("email_company", True),
     }
     # Encrypt and persist API keys if provided; preserve existing if not being updated
-    for key_field in ("resend_api_key", "twilio_account_sid", "twilio_auth_token", "twilio_from_number"):
+    for key_field in (
+        "resend_api_key",
+        "twilio_account_sid",
+        "twilio_auth_token",
+        "twilio_from_number",
+    ):
         val = (body.get(key_field) or "").strip()
         if val:
             notif[key_field] = encryptor.encrypt(val)
@@ -493,7 +549,7 @@ async def update_notification_settings(
 
     config["notifications"] = notif
     tenant.db_config_json = config
-    flag_modified(tenant, "db_config_json")   # ← force SQLAlchemy to detect mutation
+    flag_modified(tenant, "db_config_json")  # ← force SQLAlchemy to detect mutation
     await db.commit()
     return {"success": True, "message": "Notification settings saved"}
 
@@ -501,6 +557,7 @@ async def update_notification_settings(
 # ---------------------------------------------------------------------------
 # Tenant initialisation — seed sample data for brand-new tenants
 # ---------------------------------------------------------------------------
+
 
 @router.post("/initialize")
 async def initialize_tenant(
@@ -550,6 +607,7 @@ async def initialize_tenant(
     # Run the sample-data generator
     try:
         from app.services.seed_service import seed_tenant_sample_data
+
         result = await seed_tenant_sample_data(
             db=db,
             tenant_id=current_user.tenant_id,
@@ -577,6 +635,7 @@ async def initialize_tenant(
 
 PLAN_HIERARCHY = {"free": 0, "pro": 1, "advanced": 2}
 
+
 @router.put("/plan")
 async def update_plan(
     body: dict,
@@ -593,6 +652,7 @@ async def update_plan(
     For now it updates the plan record immediately (demo / dev mode).
     """
     from datetime import timezone, timedelta
+
     new_plan = (body.get("plan") or "").strip().lower()
     if new_plan not in PLAN_HIERARCHY:
         raise HTTPException(status_code=422, detail="Plan must be one of: free, pro, advanced")
@@ -637,7 +697,10 @@ async def get_plan(
 
     # Transaction usage this month
     from datetime import datetime, timezone
-    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
     txn_month = await db.execute(
         select(func.count(Transaction.id)).where(
             Transaction.tenant_id == current_user.tenant_id,
@@ -656,9 +719,9 @@ async def get_plan(
     )
 
     limits = {
-        "free":     {"txn_month": 10_000,   "label": "Free"},
-        "pro":      {"txn_month": 500_000,  "label": "Pro"},
-        "advanced": {"txn_month": None,     "label": "Advanced"},
+        "free": {"txn_month": 10_000, "label": "Free"},
+        "pro": {"txn_month": 500_000, "label": "Pro"},
+        "advanced": {"txn_month": None, "label": "Advanced"},
     }
 
     plan_limits = limits.get(plan, limits["free"])
@@ -668,8 +731,12 @@ async def get_plan(
     return {
         "plan": plan,
         "plan_label": plan_limits["label"],
-        "plan_started_at": tenant.plan_started_at.isoformat() if tenant and tenant.plan_started_at else None,
-        "plan_expires_at": tenant.plan_expires_at.isoformat() if tenant and tenant.plan_expires_at else None,
+        "plan_started_at": tenant.plan_started_at.isoformat()
+        if tenant and tenant.plan_started_at
+        else None,
+        "plan_expires_at": tenant.plan_expires_at.isoformat()
+        if tenant and tenant.plan_expires_at
+        else None,
         "usage": {
             "transactions_this_month": txn_month_val,
             "transactions_total": txn_total.scalar_one() or 0,
@@ -738,54 +805,264 @@ async def get_plan(
 
 # FinShield canonical schema definition — static, used as the "FinShield Column" side
 FINSHIELD_CUSTOMER_SCHEMA = [
-    {"field": "customer_id",          "type": "UUID",       "required": True,  "description": "Unique customer identifier"},
-    {"field": "full_name",             "type": "STRING",     "required": True,  "description": "Customer's full legal name"},
-    {"field": "email",                 "type": "STRING",     "required": False, "description": "Email address"},
-    {"field": "phone_number",          "type": "STRING",     "required": False, "description": "Mobile phone number (E.164 format: +91XXXXXXXXXX)"},
-    {"field": "date_of_birth",         "type": "DATE",       "required": False, "description": "Date of birth (YYYY-MM-DD)"},
-    {"field": "address_line_1",        "type": "STRING",     "required": False, "description": "Street address"},
-    {"field": "city",                  "type": "STRING",     "required": False, "description": "City name"},
-    {"field": "state_province",        "type": "STRING",     "required": False, "description": "State or province"},
-    {"field": "postal_code",           "type": "STRING",     "required": False, "description": "Postal / ZIP code"},
-    {"field": "country_code",          "type": "STRING(2)",  "required": False, "description": "ISO 3166-1 alpha-2 country code (e.g. IN, US)"},
-    {"field": "account_type",          "type": "ENUM",       "required": False, "description": "personal | business | merchant"},
-    {"field": "account_opening_date",  "type": "DATE",       "required": False, "description": "Date account was opened"},
-    {"field": "account_status",        "type": "ENUM",       "required": False, "description": "active | inactive | suspended | closed"},
-    {"field": "kyc_status",            "type": "ENUM",       "required": False, "description": "pending | verified | rejected | expired"},
-    {"field": "risk_score",            "type": "DECIMAL",    "required": False, "description": "Current risk score (0.0–1.0); computed by FinShield"},
-    {"field": "customer_tier",         "type": "ENUM",       "required": False, "description": "standard | premium | vip"},
-    {"field": "balance_amount",        "type": "DECIMAL",    "required": False, "description": "Current account balance"},
-    {"field": "active_card_count",     "type": "INTEGER",    "required": False, "description": "Number of active payment cards"},
-    {"field": "preferred_card_token",  "type": "STRING",     "required": False, "description": "Tokenised primary card identifier (no raw card numbers)"},
+    {
+        "field": "customer_id",
+        "type": "UUID",
+        "required": True,
+        "description": "Unique customer identifier",
+    },
+    {
+        "field": "full_name",
+        "type": "STRING",
+        "required": True,
+        "description": "Customer's full legal name",
+    },
+    {"field": "email", "type": "STRING", "required": False, "description": "Email address"},
+    {
+        "field": "phone_number",
+        "type": "STRING",
+        "required": False,
+        "description": "Mobile phone number (E.164 format: +91XXXXXXXXXX)",
+    },
+    {
+        "field": "date_of_birth",
+        "type": "DATE",
+        "required": False,
+        "description": "Date of birth (YYYY-MM-DD)",
+    },
+    {
+        "field": "address_line_1",
+        "type": "STRING",
+        "required": False,
+        "description": "Street address",
+    },
+    {"field": "city", "type": "STRING", "required": False, "description": "City name"},
+    {
+        "field": "state_province",
+        "type": "STRING",
+        "required": False,
+        "description": "State or province",
+    },
+    {
+        "field": "postal_code",
+        "type": "STRING",
+        "required": False,
+        "description": "Postal / ZIP code",
+    },
+    {
+        "field": "country_code",
+        "type": "STRING(2)",
+        "required": False,
+        "description": "ISO 3166-1 alpha-2 country code (e.g. IN, US)",
+    },
+    {
+        "field": "account_type",
+        "type": "ENUM",
+        "required": False,
+        "description": "personal | business | merchant",
+    },
+    {
+        "field": "account_opening_date",
+        "type": "DATE",
+        "required": False,
+        "description": "Date account was opened",
+    },
+    {
+        "field": "account_status",
+        "type": "ENUM",
+        "required": False,
+        "description": "active | inactive | suspended | closed",
+    },
+    {
+        "field": "kyc_status",
+        "type": "ENUM",
+        "required": False,
+        "description": "pending | verified | rejected | expired",
+    },
+    {
+        "field": "risk_score",
+        "type": "DECIMAL",
+        "required": False,
+        "description": "Current risk score (0.0–1.0); computed by FinShield",
+    },
+    {
+        "field": "customer_tier",
+        "type": "ENUM",
+        "required": False,
+        "description": "standard | premium | vip",
+    },
+    {
+        "field": "balance_amount",
+        "type": "DECIMAL",
+        "required": False,
+        "description": "Current account balance",
+    },
+    {
+        "field": "active_card_count",
+        "type": "INTEGER",
+        "required": False,
+        "description": "Number of active payment cards",
+    },
+    {
+        "field": "preferred_card_token",
+        "type": "STRING",
+        "required": False,
+        "description": "Tokenised primary card identifier (no raw card numbers)",
+    },
 ]
 
 FINSHIELD_TRANSACTION_SCHEMA = [
-    {"field": "transaction_id",        "type": "UUID",       "required": True,  "description": "Unique transaction identifier"},
-    {"field": "customer_id",           "type": "UUID",       "required": True,  "description": "Reference to customers.customer_id"},
-    {"field": "amount",                "type": "DECIMAL",    "required": True,  "description": "Transaction amount (base currency units)"},
-    {"field": "currency",              "type": "STRING(3)",  "required": True,  "description": "ISO 4217 currency code (e.g. INR, USD)"},
-    {"field": "transaction_type",      "type": "ENUM",       "required": True,  "description": "purchase | withdrawal | transfer | refund | reversal"},
-    {"field": "channel",               "type": "ENUM",       "required": True,  "description": "pos_physical | online | atm | mobile | wire | ach"},
-    {"field": "merchant_name",         "type": "STRING",     "required": False, "description": "Merchant or payee name"},
-    {"field": "merchant_category_code","type": "STRING(4)",  "required": False, "description": "ISO 18245 Merchant Category Code (MCC)"},
-    {"field": "transaction_timestamp", "type": "TIMESTAMP",  "required": True,  "description": "When the transaction occurred (UTC ISO 8601)"},
-    {"field": "location_lat",          "type": "DECIMAL",    "required": False, "description": "GPS latitude of transaction location"},
-    {"field": "location_lng",          "type": "DECIMAL",    "required": False, "description": "GPS longitude of transaction location"},
-    {"field": "city",                  "type": "STRING",     "required": False, "description": "City where transaction occurred"},
-    {"field": "country_code",          "type": "STRING(2)",  "required": False, "description": "ISO country code of transaction location"},
-    {"field": "ip_address",            "type": "STRING",     "required": False, "description": "IPv4/IPv6 address of originating device"},
-    {"field": "device_fingerprint",    "type": "STRING",     "required": False, "description": "Unique device identifier / fingerprint hash"},
-    {"field": "device_type",           "type": "ENUM",       "required": False, "description": "mobile | desktop | tablet | pos_terminal | unknown"},
-    {"field": "status",                "type": "ENUM",       "required": False, "description": "pending | completed | failed | reversed | flagged | blocked"},
+    {
+        "field": "transaction_id",
+        "type": "UUID",
+        "required": True,
+        "description": "Unique transaction identifier",
+    },
+    {
+        "field": "customer_id",
+        "type": "UUID",
+        "required": True,
+        "description": "Reference to customers.customer_id",
+    },
+    {
+        "field": "amount",
+        "type": "DECIMAL",
+        "required": True,
+        "description": "Transaction amount (base currency units)",
+    },
+    {
+        "field": "currency",
+        "type": "STRING(3)",
+        "required": True,
+        "description": "ISO 4217 currency code (e.g. INR, USD)",
+    },
+    {
+        "field": "transaction_type",
+        "type": "ENUM",
+        "required": True,
+        "description": "purchase | withdrawal | transfer | refund | reversal",
+    },
+    {
+        "field": "channel",
+        "type": "ENUM",
+        "required": True,
+        "description": "pos_physical | online | atm | mobile | wire | ach",
+    },
+    {
+        "field": "merchant_name",
+        "type": "STRING",
+        "required": False,
+        "description": "Merchant or payee name",
+    },
+    {
+        "field": "merchant_category_code",
+        "type": "STRING(4)",
+        "required": False,
+        "description": "ISO 18245 Merchant Category Code (MCC)",
+    },
+    {
+        "field": "transaction_timestamp",
+        "type": "TIMESTAMP",
+        "required": True,
+        "description": "When the transaction occurred (UTC ISO 8601)",
+    },
+    {
+        "field": "location_lat",
+        "type": "DECIMAL",
+        "required": False,
+        "description": "GPS latitude of transaction location",
+    },
+    {
+        "field": "location_lng",
+        "type": "DECIMAL",
+        "required": False,
+        "description": "GPS longitude of transaction location",
+    },
+    {
+        "field": "city",
+        "type": "STRING",
+        "required": False,
+        "description": "City where transaction occurred",
+    },
+    {
+        "field": "country_code",
+        "type": "STRING(2)",
+        "required": False,
+        "description": "ISO country code of transaction location",
+    },
+    {
+        "field": "ip_address",
+        "type": "STRING",
+        "required": False,
+        "description": "IPv4/IPv6 address of originating device",
+    },
+    {
+        "field": "device_fingerprint",
+        "type": "STRING",
+        "required": False,
+        "description": "Unique device identifier / fingerprint hash",
+    },
+    {
+        "field": "device_type",
+        "type": "ENUM",
+        "required": False,
+        "description": "mobile | desktop | tablet | pos_terminal | unknown",
+    },
+    {
+        "field": "status",
+        "type": "ENUM",
+        "required": False,
+        "description": "pending | completed | failed | reversed | flagged | blocked",
+    },
     # FinShield-computed columns (written back by the platform)
-    {"field": "fraud_score",           "type": "DECIMAL",    "required": False, "description": "[FinShield writes] Fraud probability (0.0–1.0)"},
-    {"field": "fraud_risk_level",      "type": "ENUM",       "required": False, "description": "[FinShield writes] low | medium | high | critical"},
-    {"field": "fraud_category",        "type": "ENUM",       "required": False, "description": "[FinShield writes] legitimate | suspicious | fraudulent | unscored"},
-    {"field": "is_flagged",            "type": "BOOLEAN",    "required": False, "description": "[FinShield writes] True if transaction was flagged"},
-    {"field": "is_blocked",            "type": "BOOLEAN",    "required": False, "description": "[FinShield writes] True if transaction was blocked"},
-    {"field": "model_version",         "type": "STRING",     "required": False, "description": "[FinShield writes] ML model version used for scoring"},
-    {"field": "triggered_rule_ids",    "type": "JSON",       "required": False, "description": "[FinShield writes] List of rule IDs that fired"},
-    {"field": "fraud_scored_at",       "type": "TIMESTAMP",  "required": False, "description": "[FinShield writes] When fraud scoring was performed"},
+    {
+        "field": "fraud_score",
+        "type": "DECIMAL",
+        "required": False,
+        "description": "[FinShield writes] Fraud probability (0.0–1.0)",
+    },
+    {
+        "field": "fraud_risk_level",
+        "type": "ENUM",
+        "required": False,
+        "description": "[FinShield writes] low | medium | high | critical",
+    },
+    {
+        "field": "fraud_category",
+        "type": "ENUM",
+        "required": False,
+        "description": "[FinShield writes] legitimate | suspicious | fraudulent | unscored",
+    },
+    {
+        "field": "is_flagged",
+        "type": "BOOLEAN",
+        "required": False,
+        "description": "[FinShield writes] True if transaction was flagged",
+    },
+    {
+        "field": "is_blocked",
+        "type": "BOOLEAN",
+        "required": False,
+        "description": "[FinShield writes] True if transaction was blocked",
+    },
+    {
+        "field": "model_version",
+        "type": "STRING",
+        "required": False,
+        "description": "[FinShield writes] ML model version used for scoring",
+    },
+    {
+        "field": "triggered_rule_ids",
+        "type": "JSON",
+        "required": False,
+        "description": "[FinShield writes] List of rule IDs that fired",
+    },
+    {
+        "field": "fraud_scored_at",
+        "type": "TIMESTAMP",
+        "required": False,
+        "description": "[FinShield writes] When fraud scoring was performed",
+    },
 ]
 
 
@@ -793,7 +1070,7 @@ FINSHIELD_TRANSACTION_SCHEMA = [
 async def get_schema_definition(_: CurrentUser):
     """Return FinShield's canonical column definitions for both schemas."""
     return {
-        "customers":    FINSHIELD_CUSTOMER_SCHEMA,
+        "customers": FINSHIELD_CUSTOMER_SCHEMA,
         "transactions": FINSHIELD_TRANSACTION_SCHEMA,
     }
 
@@ -838,11 +1115,11 @@ async def get_schema_mapping(
     mapping = (tenant.schema_mapping_json or {}) if tenant else {}
 
     return {
-        "customers":           _normalize_field_mapping(mapping.get("customers", {})),
-        "transactions":        _normalize_field_mapping(mapping.get("transactions", {})),
-        "customers_custom":    mapping.get("customers_custom", []),
+        "customers": _normalize_field_mapping(mapping.get("customers", {})),
+        "transactions": _normalize_field_mapping(mapping.get("transactions", {})),
+        "customers_custom": mapping.get("customers_custom", []),
         "transactions_custom": mapping.get("transactions_custom", []),
-        "last_updated":        mapping.get("_updated_at"),
+        "last_updated": mapping.get("_updated_at"),
     }
 
 
@@ -864,10 +1141,12 @@ async def save_schema_mapping(
     }
     """
     from datetime import datetime, timezone
+
     result = await db.execute(select(Tenant).where(Tenant.id == current_user.tenant_id))
     tenant = result.scalar_one_or_none()
     if not tenant:
         from app.core.exceptions import NotFoundException
+
         raise NotFoundException("Tenant")
 
     existing = tenant.schema_mapping_json or {}
@@ -878,13 +1157,17 @@ async def save_schema_mapping(
 
     # Build a fresh dict so SQLAlchemy detects the mutation (ISSUE-009).
     updated = dict(existing)
-    updated.update({
-        "customers":           _normalize_field_mapping(incoming_customers),
-        "transactions":        _normalize_field_mapping(incoming_transactions),
-        "customers_custom":    body.get("customers_custom", existing.get("customers_custom", [])),
-        "transactions_custom": body.get("transactions_custom", existing.get("transactions_custom", [])),
-        "_updated_at":         datetime.now(timezone.utc).isoformat(),
-    })
+    updated.update(
+        {
+            "customers": _normalize_field_mapping(incoming_customers),
+            "transactions": _normalize_field_mapping(incoming_transactions),
+            "customers_custom": body.get("customers_custom", existing.get("customers_custom", [])),
+            "transactions_custom": body.get(
+                "transactions_custom", existing.get("transactions_custom", [])
+            ),
+            "_updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
     tenant.schema_mapping_json = updated
     await db.commit()
 

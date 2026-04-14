@@ -108,7 +108,7 @@ class FraudClassifier:
 
         # Store combined feature importances (XGB + RF average)
         xgb_fi = self.xgb_model.feature_importances_
-        rf_fi  = self.rf_model.feature_importances_
+        rf_fi = self.rf_model.feature_importances_
         self.feature_importances_ = (xgb_fi + rf_fi) / 2
 
         self._fitted = True
@@ -126,8 +126,8 @@ class FraudClassifier:
 
         X_scaled = self.scaler.transform(X)
         xgb_p = self.xgb_model.predict_proba(X_scaled)[:, 1]
-        rf_p  = self.rf_model.predict_proba(X_scaled)[:, 1]
-        nn_p  = self.nn_model.predict_proba(X_scaled)[:, 1]
+        rf_p = self.rf_model.predict_proba(X_scaled)[:, 1]
+        nn_p = self.nn_model.predict_proba(X_scaled)[:, 1]
 
         return np.clip(0.50 * xgb_p + 0.30 * rf_p + 0.20 * nn_p, 0, 1).astype(np.float32)
 
@@ -138,12 +138,12 @@ class FraudClassifier:
 
         X_scaled = self.scaler.transform(X)
         xgb_p = self.xgb_model.predict_proba(X_scaled)[:, 1]
-        rf_p  = self.rf_model.predict_proba(X_scaled)[:, 1]
-        nn_p  = self.nn_model.predict_proba(X_scaled)[:, 1]
+        rf_p = self.rf_model.predict_proba(X_scaled)[:, 1]
+        nn_p = self.nn_model.predict_proba(X_scaled)[:, 1]
         ensemble = np.clip(0.50 * xgb_p + 0.30 * rf_p + 0.20 * nn_p, 0, 1)
 
         return {
-            "xgboost":       xgb_p.tolist(),
+            "xgboost": xgb_p.tolist(),
             "random_forest": rf_p.tolist(),
             "neural_network": nn_p.tolist(),
             "supervised_ensemble": ensemble.tolist(),

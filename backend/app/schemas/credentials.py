@@ -1,4 +1,5 @@
 """Pydantic schemas for the BYOK Credentials Manager."""
+
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -7,11 +8,11 @@ from pydantic import BaseModel, Field
 # provider catalogue all derive from this list — add one entry here to
 # register a new provider across the whole stack.
 SUPPORTED_PROVIDERS: list[str] = [
-    "resend",    # email — primary
-    "brevo",     # email — fallback (formerly Sendinblue)
-    "twilio",    # SMS + voice
-    "openai",    # LLM enrichment (future)
-    "stripe",    # billing
+    "resend",  # email — primary
+    "brevo",  # email — fallback (formerly Sendinblue)
+    "twilio",  # SMS + voice
+    "openai",  # LLM enrichment (future)
+    "stripe",  # billing
     "firebase",  # push notifications
 ]
 

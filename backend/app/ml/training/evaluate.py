@@ -25,7 +25,7 @@ MODELS_DIR = os.path.join(
 
 
 def evaluate_model(
-    y_true:  np.ndarray,
+    y_true: np.ndarray,
     y_pred_proba: np.ndarray,
     threshold: float = 0.50,
     model_name: str = "ensemble",
@@ -40,8 +40,8 @@ def evaluate_model(
     y_pred = (y_pred_proba >= threshold).astype(int)
 
     precision = precision_score(y_true, y_pred, zero_division=0)
-    recall    = recall_score(y_true, y_pred, zero_division=0)
-    f1        = f1_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
 
     try:
         auc_roc = roc_auc_score(y_true, y_pred_proba)
@@ -58,24 +58,24 @@ def evaluate_model(
     false_negative_rate = fn / (fn + tp) if (fn + tp) > 0 else 0.0
 
     metrics = {
-        "model_name":         model_name,
-        "threshold":          threshold,
-        "precision":          round(precision, 4),
-        "recall":             round(recall, 4),
-        "f1_score":           round(f1, 4),
-        "auc_roc":            round(auc_roc, 4),
-        "avg_precision":      round(avg_precision, 4),
+        "model_name": model_name,
+        "threshold": threshold,
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1_score": round(f1, 4),
+        "auc_roc": round(auc_roc, 4),
+        "avg_precision": round(avg_precision, 4),
         "false_positive_rate": round(false_positive_rate, 4),
         "false_negative_rate": round(false_negative_rate, 4),
-        "true_positives":     int(tp),
-        "false_positives":    int(fp),
-        "true_negatives":     int(tn),
-        "false_negatives":    int(fn),
-        "test_samples":       int(len(y_true)),
-        "fraud_samples":      int(y_true.sum()),
-        "feature_count":      feature_count,
-        "training_samples":   training_samples,
-        "evaluated_at":       datetime.now(timezone.utc).isoformat(),
+        "true_positives": int(tp),
+        "false_positives": int(fp),
+        "true_negatives": int(tn),
+        "false_negatives": int(fn),
+        "test_samples": int(len(y_true)),
+        "fraud_samples": int(y_true.sum()),
+        "feature_count": feature_count,
+        "training_samples": training_samples,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
     }
 
     _print_report(metrics)
@@ -84,9 +84,9 @@ def evaluate_model(
 
 def _print_report(m: dict):
     """Pretty-print the evaluation report."""
-    print("\n  " + "="*60)
+    print("\n  " + "=" * 60)
     print(f"  MODEL EVALUATION — {m['model_name'].upper()}")
-    print("  " + "="*60)
+    print("  " + "=" * 60)
     print(f"  Precision:           {m['precision']:.4f}  (target >0.85)")
     print(f"  Recall:              {m['recall']:.4f}  (target >0.75)")
     print(f"  F1 Score:            {m['f1_score']:.4f}  (target >0.80)")
@@ -104,15 +104,15 @@ def _print_report(m: dict):
 
     # Pass/fail vs targets
     targets_met = (
-        m["precision"] > 0.85 and
-        m["recall"]    > 0.75 and
-        m["f1_score"]  > 0.80 and
-        m["auc_roc"]   > 0.92 and
-        m["false_positive_rate"] < 0.05
+        m["precision"] > 0.85
+        and m["recall"] > 0.75
+        and m["f1_score"] > 0.80
+        and m["auc_roc"] > 0.92
+        and m["false_positive_rate"] < 0.05
     )
     status_str = "[PASS] ALL TARGETS MET" if targets_met else "[WARN] Some below target"
     print(f"\n  Target benchmarks: {status_str}")
-    print("  " + "="*60)
+    print("  " + "=" * 60)
 
 
 def save_evaluation_report(metrics: dict, filename: str = "evaluation_report.json"):

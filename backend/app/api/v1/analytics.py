@@ -1,4 +1,5 @@
 """Analytics endpoints — KPI dashboard data."""
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -91,14 +92,14 @@ async def get_fraud_rate(
         select(
             func.date(Transaction.transaction_timestamp).label("date"),
             func.count(Transaction.id).label("total"),
-            func.sum(
-                func.cast(Transaction.fraud_category == "fraudulent", int)
-            ).label("fraud"),
-        ).where(
+            func.sum(func.cast(Transaction.fraud_category == "fraudulent", int)).label("fraud"),
+        )
+        .where(
             Transaction.tenant_id == current_user.tenant_id,
             Transaction.transaction_timestamp >= since,
             Transaction.is_test == False,  # noqa: E712
-        ).group_by(func.date(Transaction.transaction_timestamp))
+        )
+        .group_by(func.date(Transaction.transaction_timestamp))
         .order_by(func.date(Transaction.transaction_timestamp))
     )
 

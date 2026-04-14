@@ -18,6 +18,7 @@ Phone lookup:
   resolves a matching Customer row (same tenant) and returns cardholder name, city,
   country, masked card, and risk profile for pre-filling the simulator form.
 """
+
 from __future__ import annotations
 
 import re
@@ -53,13 +54,16 @@ router = APIRouter(prefix="/simulator", tags=["Fraud Simulator"])
 # Request / Response schemas
 # ---------------------------------------------------------------------------
 
+
 class SimulatorRequest(BaseModel):
     """Full card-level fraud simulation request."""
 
     # ── Cardholder identity ──────────────────────────────────────────────
     cardholder_name: str = Field(..., min_length=2, max_length=100, description="Name on the card")
     email: Optional[str] = Field(None, description="Cardholder email")
-    mobile_number: Optional[str] = Field(None, description="Mobile number for SMS alert (e.g. +919876543210)")
+    mobile_number: Optional[str] = Field(
+        None, description="Mobile number for SMS alert (e.g. +919876543210)"
+    )
 
     # ── Payment method ────────────────────────────────────────────────────
     payment_method: str = Field(
@@ -70,7 +74,9 @@ class SimulatorRequest(BaseModel):
     upi_vpa: Optional[str] = Field(None, max_length=100, description="e.g. sunil@oksbi")
 
     # ── Card details (NOT persisted) — required for credit_card / debit_card ──
-    card_number: str = Field("0000000000000000", min_length=13, max_length=19, description="Card number (digits only)")
+    card_number: str = Field(
+        "0000000000000000", min_length=13, max_length=19, description="Card number (digits only)"
+    )
     card_type: str = Field("visa", description="visa | mastercard | rupay | amex")
     cvv: str = Field("000", min_length=3, max_length=4, description="CVV / CVC")
     expiry_month: int = Field(12, ge=1, le=12)
@@ -98,7 +104,9 @@ class SimulatorRequest(BaseModel):
     is_new_device: bool = Field(False)
 
     # ── Optional customer linkage ─────────────────────────────────────────
-    customer_id: Optional[str] = Field(None, description="Link to existing customer for history-based scoring")
+    customer_id: Optional[str] = Field(
+        None, description="Link to existing customer for history-based scoring"
+    )
 
     # ── Override timestamp (for replaying past scenarios) ─────────────────
     transaction_timestamp: Optional[datetime] = Field(None)
@@ -128,10 +136,13 @@ class SimulatorRequest(BaseModel):
 # GET /api/v1/simulator/lookup-customer
 # ---------------------------------------------------------------------------
 
+
 @router.get("/lookup-customer")
 async def lookup_customer_by_phone(
     current_user: CurrentUser,
-    phone: str = Query(..., description="Phone number to look up (e.g. +919876543210 or 09876543210)"),
+    phone: str = Query(
+        ..., description="Phone number to look up (e.g. +919876543210 or 09876543210)"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -184,7 +195,7 @@ async def lookup_customer_by_phone(
         raise HTTPException(
             status_code=404,
             detail=f"No customer found with phone number '{phone}'. "
-                   "Try a different number or fill the form manually.",
+            "Try a different number or fill the form manually.",
         )
 
     # Fetch payment methods for this customer
@@ -245,6 +256,7 @@ async def lookup_customer_by_phone(
 # POST /api/v1/simulator/predict
 # ---------------------------------------------------------------------------
 
+
 @router.post("/predict")
 async def predict_fraud(
     body: SimulatorRequest,
@@ -272,9 +284,8 @@ async def predict_fraud(
 
     # Expiry check
     now = datetime.now(timezone.utc)
-    expiry_expired = (
-        body.expiry_year < now.year or
-        (body.expiry_year == now.year and body.expiry_month < now.month)
+    expiry_expired = body.expiry_year < now.year or (
+        body.expiry_year == now.year and body.expiry_month < now.month
     )
     card_flags: list[str] = []
     if expiry_expired:
@@ -363,9 +374,9 @@ async def predict_fraud(
         fraud_score=final_score,
     )
 
-    rules_score    = score_result.get("rules_score", 0.0)
+    rules_score = score_result.get("rules_score", 0.0)
     model_breakdown = score_result.get("model_breakdown") or {}
-    processing_ms  = int((time.time() - t_start) * 1000)
+    processing_ms = int((time.time() - t_start) * 1000)
 
     # ── 5b. Build ML conclusion (natural-language explanation) ──────────
     conclusion = _build_conclusion(
@@ -384,9 +395,7 @@ async def predict_fraud(
     # ── 6. Twilio SMS (if configured and decision is BLOCK/ALERT) ───────
     sms_result = "skipped"
     if decision in ("BLOCK", "ALERT") and body.mobile_number:
-        twilio_creds = await _resolve_twilio_creds(
-            db=db, tenant_id=current_user.tenant_id
-        )
+        twilio_creds = await _resolve_twilio_creds(db=db, tenant_id=current_user.tenant_id)
         sms_result = await _send_twilio_sms(
             to=body.mobile_number,
             amount=body.amount,
@@ -433,7 +442,9 @@ async def predict_fraud(
                         triggered_rules=triggered_rules,
                     )
                     per_recipient.append({"to": recipient, "status": s})
-                    logger.info("Simulator email to=%s status=%s decision=%s", recipient, s, decision)
+                    logger.info(
+                        "Simulator email to=%s status=%s decision=%s", recipient, s, decision
+                    )
                 sent_count = sum(1 for r in per_recipient if r["status"] == "sent")
                 fail_count = len(per_recipient) - sent_count
                 if fail_count == 0:
@@ -468,52 +479,53 @@ async def predict_fraud(
         "fraud_category": _score_to_category(final_score),
         "model_version": model_version,
         "processing_ms": processing_ms,
-
         # Payment method + card summary (masked)
         "payment_method": body.payment_method,
         "upi_vpa": body.upi_vpa if body.payment_method == "upi" else None,
         "card_summary": {
             "masked_number": card_masked if body.payment_method != "upi" else None,
             "card_type": body.card_type.upper() if body.payment_method != "upi" else None,
-            "expiry": f"{body.expiry_month:02d}/{body.expiry_year}" if body.payment_method != "upi" else None,
+            "expiry": f"{body.expiry_month:02d}/{body.expiry_year}"
+            if body.payment_method != "upi"
+            else None,
             "expired": expiry_expired if body.payment_method != "upi" else False,
         },
-
         # Why fraud / why pass
         "reasons": reasons,
         "triggered_rules": triggered_rules,
-
         # Per-layer ML breakdown (new — for the right-side panel)
-        "rules_score":      round(rules_score, 4),
-        "model_breakdown":  model_breakdown,
-        "conclusion":       conclusion,
-
+        "rules_score": round(rules_score, 4),
+        "model_breakdown": model_breakdown,
+        "conclusion": conclusion,
         # SHAP explanation
         "shap_explanation": shap,
-
         # Notification
-        "sms_status":       sms_result,
-        "email_status":     email_result,
+        "sms_status": sms_result,
+        "email_status": email_result,
         "email_recipients": _email_recipients_detail,
-
         # Step-by-step journey data (for the Test Me UI panel)
         "journey": {
-            "step_data_received":   {"ok": True, "ms": 1},
-            "step_rules_engine":    {
+            "step_data_received": {"ok": True, "ms": 1},
+            "step_rules_engine": {
                 "ok": True,
                 "triggered": len([r for r in triggered_rules if r not in card_flags]),
                 "ms": 3,
             },
-            "step_ml_inference":    {
+            "step_ml_inference": {
                 "ok": model_version != "rules_only_v1",
                 "model": model_version,
                 "ms": processing_ms - 5,
             },
-            "step_ensemble_score":  {"ok": True, "score": round(final_score, 4), "decision": decision, "ms": 2},
-            "step_persisted":       {"ok": True, "is_test": True},
-            "step_sms":             {"ok": sms_result.startswith("sent"), "status": sms_result},
+            "step_ensemble_score": {
+                "ok": True,
+                "score": round(final_score, 4),
+                "decision": decision,
+                "ms": 2,
+            },
+            "step_persisted": {"ok": True, "is_test": True},
+            "step_sms": {"ok": sms_result.startswith("sent"), "status": sms_result},
             # partial success (some emails sent) is treated as ok=True — amber detail shown in UI
-            "step_email":           {
+            "step_email": {
                 "ok": email_result.startswith("sent") or email_result.startswith("partial"),
                 "status": email_result,
             },
@@ -525,6 +537,7 @@ async def predict_fraud(
 # GET /api/v1/simulator/sample-customers
 # ---------------------------------------------------------------------------
 
+
 @router.get("/sample-customers")
 async def get_sample_customers(
     current_user: CurrentUser,
@@ -535,6 +548,7 @@ async def get_sample_customers(
     can pick one to auto-fill the simulator form via phone lookup.
     """
     from sqlalchemy import func
+
     result = await db.execute(
         select(Customer)
         .where(
@@ -558,16 +572,18 @@ async def get_sample_customers(
         payment_methods = [pm.to_dict() for pm in pm_res.scalars().all()]
         primary_pm = payment_methods[0] if payment_methods else None
 
-        samples.append({
-            "phone_number": c.phone_number,
-            "full_name":    c.full_name,
-            "city":         c.city or "India",
-            "risk_score":   float(c.risk_score or 0),
-            "customer_tier": c.customer_tier,
-            # Primary payment method summary for chip display
-            "primary_payment_type":  primary_pm["payment_type"] if primary_pm else None,
-            "primary_payment_label": primary_pm["display_label"] if primary_pm else None,
-        })
+        samples.append(
+            {
+                "phone_number": c.phone_number,
+                "full_name": c.full_name,
+                "city": c.city or "India",
+                "risk_score": float(c.risk_score or 0),
+                "customer_tier": c.customer_tier,
+                # Primary payment method summary for chip display
+                "primary_payment_type": primary_pm["payment_type"] if primary_pm else None,
+                "primary_payment_label": primary_pm["display_label"] if primary_pm else None,
+            }
+        )
 
     return {"samples": samples}
 
@@ -575,6 +591,7 @@ async def get_sample_customers(
 # ---------------------------------------------------------------------------
 # GET /api/v1/simulator/examples
 # ---------------------------------------------------------------------------
+
 
 @router.get("/examples")
 async def get_examples(_: CurrentUser):
@@ -669,7 +686,9 @@ async def get_examples(_: CurrentUser):
                     "location_lng": 77.2090,
                     "device_type": "pos_terminal",
                     "is_new_device": True,
-                    "transaction_timestamp": datetime.now(timezone.utc).replace(hour=3, minute=15).isoformat(),
+                    "transaction_timestamp": datetime.now(timezone.utc)
+                    .replace(hour=3, minute=15)
+                    .isoformat(),
                 },
             },
             {
@@ -709,34 +728,35 @@ async def get_examples(_: CurrentUser):
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _purchase_type_to_mcc(purchase_type: str) -> str:
     MCC_MAP = {
-        "grocery":         "5411",
-        "restaurant":      "5812",
+        "grocery": "5411",
+        "restaurant": "5812",
         "online_shopping": "5999",
-        "fuel":            "5541",
-        "travel":          "4722",
-        "atm_withdrawal":  "6011",
-        "electronics":     "5734",
-        "healthcare":      "5912",
-        "wire_transfer":   "4829",
-        "crypto":          "6051",
+        "fuel": "5541",
+        "travel": "4722",
+        "atm_withdrawal": "6011",
+        "electronics": "5734",
+        "healthcare": "5912",
+        "wire_transfer": "4829",
+        "crypto": "6051",
     }
     return MCC_MAP.get(purchase_type, "5999")
 
 
 def _infer_merchant(purchase_type: str) -> str:
     MERCHANTS = {
-        "grocery":         "D-Mart",
-        "restaurant":      "Zomato",
+        "grocery": "D-Mart",
+        "restaurant": "Zomato",
         "online_shopping": "Amazon India",
-        "fuel":            "BPCL Petrol Pump",
-        "travel":          "MakeMyTrip",
-        "atm_withdrawal":  "ATM Withdrawal",
-        "electronics":     "Croma",
-        "healthcare":      "Apollo Pharmacy",
-        "wire_transfer":   "International Wire",
-        "crypto":          "CoinSwitch Kuber",
+        "fuel": "BPCL Petrol Pump",
+        "travel": "MakeMyTrip",
+        "atm_withdrawal": "ATM Withdrawal",
+        "electronics": "Croma",
+        "healthcare": "Apollo Pharmacy",
+        "wire_transfer": "International Wire",
+        "crypto": "CoinSwitch Kuber",
     }
     return MERCHANTS.get(purchase_type, "Online Merchant")
 
@@ -864,17 +884,21 @@ def _build_reasons(
 
     # Fallback summary reasons when no specific rule fired
     if not reasons and fraud_score < 0.30:
-        reasons.append({
-            "title": "No Suspicious Signals Found",
-            "detail": "All rule checks and ML model analysis indicate this transaction matches the customer's normal behaviour. Amount, location, device, and timing are all within expected parameters.",
-            "severity": "low",
-        })
+        reasons.append(
+            {
+                "title": "No Suspicious Signals Found",
+                "detail": "All rule checks and ML model analysis indicate this transaction matches the customer's normal behaviour. Amount, location, device, and timing are all within expected parameters.",
+                "severity": "low",
+            }
+        )
     elif not reasons and fraud_score >= 0.30:
-        reasons.append({
-            "title": "ML Model Detected Anomaly",
-            "detail": f"The ensemble fraud model assigned a score of {fraud_score:.0%}. No single rule triggered, but the overall transaction feature vector is statistically unusual compared to this customer's baseline.",
-            "severity": "medium" if fraud_score < 0.60 else "high",
-        })
+        reasons.append(
+            {
+                "title": "ML Model Detected Anomaly",
+                "detail": f"The ensemble fraud model assigned a score of {fraud_score:.0%}. No single rule triggered, but the overall transaction feature vector is statistically unusual compared to this customer's baseline.",
+                "severity": "medium" if fraud_score < 0.60 else "high",
+            }
+        )
 
     return reasons
 
@@ -905,8 +929,8 @@ def _build_conclusion(
       }
     """
     is_domestic = country_code.upper() in ("IN", "")
-    score_pct   = f"{final_score:.0%}"
-    amount_fmt  = f"₹{amount:,.0f}"
+    score_pct = f"{final_score:.0%}"
+    amount_fmt = f"₹{amount:,.0f}"
 
     # Collect what didn't fire (mitigating factors that kept score low)
     mitigating: list[str] = []
@@ -918,7 +942,10 @@ def _build_conclusion(
         mitigating.append("Normal business hours — no unusual timing")
     if "velocity_spike_1h" not in triggered_rules and "rapid_successive" not in triggered_rules:
         mitigating.append("No velocity spike in recent transaction history")
-    if "impossible_travel" not in triggered_rules and "suspicious_travel_speed" not in triggered_rules:
+    if (
+        "impossible_travel" not in triggered_rules
+        and "suspicious_travel_speed" not in triggered_rules
+    ):
         mitigating.append("No impossible-travel or geo-anomaly detected")
     if not expiry_expired:
         mitigating.append("Card is not expired")
@@ -926,23 +953,23 @@ def _build_conclusion(
     # Risk factors that did fire
     risk_factors: list[str] = []
     rule_label_map = {
-        "large_amount":              f"Transaction amount {amount_fmt} is above normal threshold",
-        "unusual_hour":              "Transaction at unusual hour (1–5 AM)",
-        "foreign_transaction":       f"Foreign country detected ({country_code})",
-        "high_risk_country":         f"High-risk jurisdiction ({country_code})",
-        "new_device":                "New / unrecognised device fingerprint",
-        "velocity_spike_1h":         "5+ transactions in the past hour (velocity spike)",
-        "velocity_moderate":         "Elevated transaction frequency in past hour",
-        "rapid_successive":          "Rapid consecutive transactions within 10 minutes",
-        "structuring_pattern":       "Structuring pattern near ₹8,00,000 reporting threshold",
-        "impossible_travel":         "Impossible travel — location physically unreachable in elapsed time",
-        "suspicious_travel_speed":   "Suspicious travel speed between consecutive locations",
+        "large_amount": f"Transaction amount {amount_fmt} is above normal threshold",
+        "unusual_hour": "Transaction at unusual hour (1–5 AM)",
+        "foreign_transaction": f"Foreign country detected ({country_code})",
+        "high_risk_country": f"High-risk jurisdiction ({country_code})",
+        "new_device": "New / unrecognised device fingerprint",
+        "velocity_spike_1h": "5+ transactions in the past hour (velocity spike)",
+        "velocity_moderate": "Elevated transaction frequency in past hour",
+        "rapid_successive": "Rapid consecutive transactions within 10 minutes",
+        "structuring_pattern": "Structuring pattern near ₹8,00,000 reporting threshold",
+        "impossible_travel": "Impossible travel — location physically unreachable in elapsed time",
+        "suspicious_travel_speed": "Suspicious travel speed between consecutive locations",
         "card_not_present_high_value": f"High-value online/CNP transaction ({amount_fmt})",
         "high_risk_merchant_category": "High-risk merchant category (crypto, wire, gambling)",
-        "large_atm_withdrawal":      f"Large ATM withdrawal of {amount_fmt}",
-        "foreign_wire_transfer":     f"International wire transfer to {country_code}",
-        "round_amount_pattern":      "Repeated round-amount structuring pattern",
-        "expired_card":              "Expired card presented",
+        "large_atm_withdrawal": f"Large ATM withdrawal of {amount_fmt}",
+        "foreign_wire_transfer": f"International wire transfer to {country_code}",
+        "round_amount_pattern": "Repeated round-amount structuring pattern",
+        "expired_card": "Expired card presented",
     }
     for rule in triggered_rules:
         label = rule_label_map.get(rule)
@@ -1023,14 +1050,14 @@ def _build_conclusion(
         )
 
     return {
-        "verdict":            decision,
-        "headline":           headline,
-        "detail":             detail,
-        "risk_factors":       risk_factors,
+        "verdict": decision,
+        "headline": headline,
+        "detail": detail,
+        "risk_factors": risk_factors,
         "mitigating_factors": mitigating,
-        "rules_score":        round(rules_score, 4),
-        "final_score":        round(final_score, 4),
-        "ml_available":       ml_available,
+        "rules_score": round(rules_score, 4),
+        "final_score": round(final_score, 4),
+        "ml_available": ml_available,
     }
 
 
@@ -1050,6 +1077,7 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     # 1. Check BYOK with canonical key_name
     try:
         from app.services.credential_service import get_decrypted as _get_cred
+
         byok_key = await _get_cred(db, tenant_id, "resend", "resend_api_key")
         if byok_key:
             return byok_key
@@ -1059,6 +1087,7 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     # 2. Fallback: any key saved under service="resend" — ISSUE-005 shared helper
     try:
         from app.services.credential_service import scan_any_cred_for_service as _scan_svc
+
         val = await _scan_svc(db, tenant_id, "resend")
         if val:
             return val
@@ -1095,7 +1124,11 @@ async def _resolve_brevo_key(*, db: AsyncSession, tenant_id: str) -> str:
     from app.config import get_settings
 
     try:
-        from app.services.credential_service import get_decrypted as _get_cred, scan_any_cred_for_service as _scan_svc
+        from app.services.credential_service import (
+            get_decrypted as _get_cred,
+            scan_any_cred_for_service as _scan_svc,
+        )
+
         val = await _get_cred(db, tenant_id, "brevo", "brevo_api_key")
         if val:
             return val
@@ -1124,6 +1157,7 @@ async def _resolve_from_email(*, db: AsyncSession, tenant_id: str) -> str:
     # 1. Tenant BYOK — custom verified domain
     try:
         from app.services.credential_service import get_decrypted as _get_cred
+
         custom = await _get_cred(db, tenant_id, "resend", "from_email")
         if custom and "@" in custom:
             return f"FinShield AI <{custom.strip()}>"
@@ -1193,13 +1227,22 @@ async def _send_resend_email(
         return "skipped:no_key"
     try:
         import httpx
+
         amount_str = f"₹{amount:,.0f}"
         ref = str(alert_id)[:8].upper()
         rules_str = ", ".join(triggered_rules[:5]) if triggered_rules else "ML model"
         color = {"BLOCK": "#EF4444", "ALERT": "#F97316", "FLAG": "#F59E0B"}.get(decision, "#6B7280")
-        action = "BLOCKED" if decision == "BLOCK" else "FLAGGED as suspicious" if decision in ("ALERT", "FLAG") else "reviewed"
+        action = (
+            "BLOCKED"
+            if decision == "BLOCK"
+            else "FLAGGED as suspicious"
+            if decision in ("ALERT", "FLAG")
+            else "reviewed"
+        )
         # Truncate customer_id for display (first 8 chars + last 4 for readability)
-        cid_display = customer_id if len(customer_id) <= 12 else f"{customer_id[:8]}\u2026{customer_id[-4:]}"
+        cid_display = (
+            customer_id if len(customer_id) <= 12 else f"{customer_id[:8]}\u2026{customer_id[-4:]}"
+        )
         html = f"""
         <html><body style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E5E7EB;padding:24px;">
         <div style="max-width:560px;margin:0 auto;background:#111118;border:1px solid #1E1E2E;border-radius:12px;overflow:hidden;">
@@ -1254,7 +1297,9 @@ async def _send_resend_email(
             err_body = resp.json().get("message") or resp.text[:150]
         except Exception:
             err_body = resp.text[:150]
-        logger.warning("Resend rejected email to=%s status=%s err=%s", to, resp.status_code, err_body)
+        logger.warning(
+            "Resend rejected email to=%s status=%s err=%s", to, resp.status_code, err_body
+        )
         return f"failed:{resp.status_code}:{err_body[:100]}"
     except Exception as exc:
         logger.warning("Simulator Resend email error: %s", exc)
@@ -1275,10 +1320,11 @@ async def _resolve_twilio_creds(*, db: AsyncSession, tenant_id: str) -> dict:
     # 1. Check BYOK tenant_credentials table first
     try:
         from app.services.credential_service import get_decrypted as _get_cred
+
         for key_name, dest in [
-            ("twilio_account_sid",  "sid"),
-            ("twilio_auth_token",   "auth_token"),
-            ("twilio_from_number",  "from_number"),
+            ("twilio_account_sid", "sid"),
+            ("twilio_auth_token", "auth_token"),
+            ("twilio_from_number", "from_number"),
         ]:
             val = await _get_cred(db, tenant_id, "twilio", key_name)
             if val:
@@ -1290,9 +1336,9 @@ async def _resolve_twilio_creds(*, db: AsyncSession, tenant_id: str) -> dict:
 
     # 2. Fall back to platform env vars
     s = get_settings()
-    result["sid"]          = getattr(s, "TWILIO_ACCOUNT_SID",  "") or ""
-    result["auth_token"]   = getattr(s, "TWILIO_AUTH_TOKEN",   "") or ""
-    result["from_number"]  = getattr(s, "TWILIO_FROM_NUMBER",  "") or ""
+    result["sid"] = getattr(s, "TWILIO_ACCOUNT_SID", "") or ""
+    result["auth_token"] = getattr(s, "TWILIO_AUTH_TOKEN", "") or ""
+    result["from_number"] = getattr(s, "TWILIO_FROM_NUMBER", "") or ""
     return result
 
 
@@ -1314,15 +1360,16 @@ async def _send_twilio_sms(
     """
     if twilio_creds is None:
         from app.config import get_settings
+
         s = get_settings()
         twilio_creds = {
-            "sid":         getattr(s, "TWILIO_ACCOUNT_SID",  "") or "",
-            "auth_token":  getattr(s, "TWILIO_AUTH_TOKEN",   "") or "",
-            "from_number": getattr(s, "TWILIO_FROM_NUMBER",  "") or "",
+            "sid": getattr(s, "TWILIO_ACCOUNT_SID", "") or "",
+            "auth_token": getattr(s, "TWILIO_AUTH_TOKEN", "") or "",
+            "from_number": getattr(s, "TWILIO_FROM_NUMBER", "") or "",
         }
 
-    sid      = twilio_creds.get("sid", "")
-    token    = twilio_creds.get("auth_token", "")
+    sid = twilio_creds.get("sid", "")
+    token = twilio_creds.get("auth_token", "")
     from_num = twilio_creds.get("from_number", "")
 
     if not (sid and token and from_num):
@@ -1331,6 +1378,7 @@ async def _send_twilio_sms(
     try:
         import httpx
         import base64
+
         body_text = (
             f"FinShield Simulator: {decision} — ₹{amount:,.0f} at {merchant}. "
             f"Fraud Score: {score:.0%}. Ref: {str(alert_id)[:8]}"

@@ -1,4 +1,5 @@
 """Auth request/response schemas."""
+
 from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Literal, Optional
 
@@ -10,7 +11,9 @@ class SignupRequest(BaseModel):
     full_name: str
     phone_number: str | None = None
     institution_name: str
-    institution_type: Literal["bank", "fintech", "insurance", "payment_processor", "neobank"] = "bank"
+    institution_type: Literal["bank", "fintech", "insurance", "payment_processor", "neobank"] = (
+        "bank"
+    )
     subscription_plan: Literal["free", "pro", "advanced"] = "free"
     country_code: str = "IN"
     supabase_uid: str | None = None  # Provided when signup goes through Supabase auth

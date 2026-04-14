@@ -1,9 +1,11 @@
 """Custom application exceptions."""
+
 from fastapi import HTTPException, status
 
 
 class AppException(HTTPException):
     """Base application exception."""
+
     pass
 
 

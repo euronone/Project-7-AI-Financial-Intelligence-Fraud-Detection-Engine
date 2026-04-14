@@ -1,4 +1,5 @@
 """Alembic env.py — configures async migrations."""
+
 import asyncio
 import os
 from logging.config import fileConfig

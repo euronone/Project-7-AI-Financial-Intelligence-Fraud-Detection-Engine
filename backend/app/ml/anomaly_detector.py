@@ -78,7 +78,7 @@ class AnomalyDetector:
         X_scaled = self.scaler.transform(X)
 
         # Isolation Forest: raw score in (-1, 0) -> rescale to [0, 1]
-        if_raw = self.isolation_forest.score_samples(X_scaled)           # negative
+        if_raw = self.isolation_forest.score_samples(X_scaled)  # negative
         if_score = 1 - (if_raw - if_raw.min()) / (if_raw.max() - if_raw.min() + 1e-9)
 
         # DBSCAN: measure distance to nearest training cluster center

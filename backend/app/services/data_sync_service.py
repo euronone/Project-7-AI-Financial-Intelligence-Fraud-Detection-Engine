@@ -39,8 +39,13 @@ logger = logging.getLogger(__name__)
 # ── Canonical column names the ML pipeline depends on ────────────────────────
 
 REQUIRED_TXN_COLUMNS = {
-    "transaction_id", "customer_id", "amount", "currency",
-    "transaction_type", "channel", "transaction_timestamp",
+    "transaction_id",
+    "customer_id",
+    "amount",
+    "currency",
+    "transaction_type",
+    "channel",
+    "transaction_timestamp",
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,7 +53,7 @@ REQUIRED_TXN_COLUMNS = {
 
 def _apply_schema_mapping(
     rows: list[dict],
-    mapping: dict,          # { finshield_field: { "client_column": str, "enabled": bool } }
+    mapping: dict,  # { finshield_field: { "client_column": str, "enabled": bool } }
     custom_fields: list[dict],  # [ { "field": str, "client_column": str, "enabled": bool } ]
 ) -> list[dict]:
     """
@@ -85,7 +90,7 @@ def _apply_schema_mapping(
     for row in rows:
         new_row: dict = {}
         for col, val in row.items():
-            target = rename_map.get(col, col)   # keep original name if not in map
+            target = rename_map.get(col, col)  # keep original name if not in map
             new_row[target] = val
         out.append(new_row)
     return out
@@ -165,7 +170,9 @@ async def _fetch_postgresql(
     if not dsn:
         raise ValueError("PostgreSQL credentials incomplete: need host, db_user, and db_name.")
 
-    dsn_clean = dsn.replace("postgresql+asyncpg://", "postgresql://").replace("postgres://", "postgresql://")
+    dsn_clean = dsn.replace("postgresql+asyncpg://", "postgresql://").replace(
+        "postgres://", "postgresql://"
+    )
     conn = await asyncpg.connect(dsn_clean, timeout=10.0)
     try:
         query = f'SELECT * FROM "{table_name}" ORDER BY 1 DESC LIMIT {limit}'
@@ -317,6 +324,7 @@ async def _upsert_transactions(db_session, tenant_id: str, rows: list[dict]) -> 
         if isinstance(ts, str):
             try:
                 from dateutil import parser as dtparser
+
                 ts = dtparser.parse(ts)
             except Exception:
                 ts = datetime.now(timezone.utc)
@@ -343,7 +351,7 @@ async def _upsert_transactions(db_session, tenant_id: str, rows: list[dict]) -> 
             txn = Transaction(tenant_id=tenant_id)
             db_session.add(txn)
 
-        txn.merchant_id = f"ext:{ext_id}"     # store external reference
+        txn.merchant_id = f"ext:{ext_id}"  # store external reference
         txn.amount = amount
         txn.currency = str(row.get("currency") or "INR").upper()
         txn.transaction_type = str(row.get("transaction_type") or "purchase")
@@ -400,13 +408,20 @@ class DataSyncService:
             res = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
             tenant = res.scalar_one_or_none()
             if not tenant:
-                return {"mode": "manual", "tables": ["transactions", "customers"], "row_limit": 100_000}
+                return {
+                    "mode": "manual",
+                    "tables": ["transactions", "customers"],
+                    "row_limit": 100_000,
+                }
             config = tenant.db_config_json or {}
-            return config.get("data_refresh", {
-                "mode": "manual",
-                "tables": ["transactions", "customers"],
-                "row_limit": 100_000,
-            })
+            return config.get(
+                "data_refresh",
+                {
+                    "mode": "manual",
+                    "tables": ["transactions", "customers"],
+                    "row_limit": 100_000,
+                },
+            )
 
     @staticmethod
     async def save_refresh_config(tenant_id: str, refresh_config: dict) -> None:
@@ -433,10 +448,10 @@ class DataSyncService:
             last_sync = config.get("last_sync", {})
             refresh = config.get("data_refresh", {"mode": "manual"})
             return {
-                "last_sync":        last_sync,
-                "refresh_mode":     refresh.get("mode", "manual"),
-                "has_external_db":  bool(tenant.db_type),
-                "db_type":          tenant.db_type,
+                "last_sync": last_sync,
+                "refresh_mode": refresh.get("mode", "manual"),
+                "has_external_db": bool(tenant.db_type),
+                "db_type": tenant.db_type,
             }
 
     @staticmethod
@@ -487,8 +502,7 @@ class DataSyncService:
 
         # Detect unmapped columns (client columns that don't appear in mapping)
         mapped_client_cols = {
-            cfg.get("client_column") if isinstance(cfg, dict) else cfg
-            for cfg in mapping.values()
+            cfg.get("client_column") if isinstance(cfg, dict) else cfg for cfg in mapping.values()
         }
         all_client_cols = set()
         for row in raw_rows[:3]:
@@ -496,8 +510,8 @@ class DataSyncService:
         unmapped = sorted(all_client_cols - mapped_client_cols - {None, ""})
 
         return {
-            "table":         table,
-            "raw_sample":    raw_rows[:limit],
+            "table": table,
+            "raw_sample": raw_rows[:limit],
             "mapped_sample": renamed_rows[:limit],
             "unmapped_columns": unmapped,
             "total_fetched": len(raw_rows),
@@ -567,9 +581,12 @@ class DataSyncService:
                     try:
                         cutoff_dt = datetime.fromisoformat(last_ts) - timedelta(minutes=5)
                         # Find the client-side timestamp column name
-                        ts_mapping = mapping.get("transaction_timestamp") or mapping.get("created_at", {})
+                        ts_mapping = mapping.get("transaction_timestamp") or mapping.get(
+                            "created_at", {}
+                        )
                         cutoff_col = (
-                            ts_mapping.get("client_column") if isinstance(ts_mapping, dict)
+                            ts_mapping.get("client_column")
+                            if isinstance(ts_mapping, dict)
                             else ts_mapping
                         ) or "created_at"
                     except Exception:
@@ -586,7 +603,10 @@ class DataSyncService:
                 )
                 logger.info(
                     "[DataSync] tenant=%s table=%s fetched=%d cutoff=%s",
-                    tenant_id, table, len(raw_rows), cutoff_dt,
+                    tenant_id,
+                    table,
+                    len(raw_rows),
+                    cutoff_dt,
                 )
             except Exception as exc:
                 err = f"Fetch failed for '{table}': {exc}"
@@ -624,9 +644,9 @@ class DataSyncService:
 
         # Persist sync status
         last_sync_out: dict = {
-            "synced_at":         completed_at.isoformat(),
-            "duration_seconds":  duration_s,
-            "errors":            errors,
+            "synced_at": completed_at.isoformat(),
+            "duration_seconds": duration_s,
+            "errors": errors,
         }
         for table in tables:
             table_key = "transactions" if table in ("transactions", "txns") else "customers"
@@ -644,10 +664,12 @@ class DataSyncService:
                 tenant.db_config_json = cfg
                 await db.commit()
 
-        stats.update({
-            "completed_at":    completed_at.isoformat(),
-            "duration_seconds": duration_s,
-            "errors":          errors,
-            "success":         len(errors) == 0,
-        })
+        stats.update(
+            {
+                "completed_at": completed_at.isoformat(),
+                "duration_seconds": duration_s,
+                "errors": errors,
+                "success": len(errors) == 0,
+            }
+        )
         return stats

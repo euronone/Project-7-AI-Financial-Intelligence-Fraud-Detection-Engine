@@ -16,6 +16,7 @@ Revision ID: c1d2e3f4a5b6
 Revises: b3f1a2d4e5c6
 Create Date: 2026-04-14 00:00:00.000000
 """
+
 from __future__ import annotations
 
 import json
@@ -35,7 +36,7 @@ depends_on: Union[str, Sequence[str], None] = None
 # Keys to migrate: (json_field_name, credential_service, credential_key_name)
 _KEYS_TO_MIGRATE = [
     ("resend_api_key", "resend", "resend_api_key"),
-    ("brevo_api_key",  "brevo",  "brevo_api_key"),
+    ("brevo_api_key", "brevo", "brevo_api_key"),
 ]
 
 
@@ -82,15 +83,15 @@ def upgrade() -> None:
                             "VALUES (:id, :tid, :svc, :kn, :lbl, :val, :by, :cat, :uat)"
                         ),
                         {
-                            "id":   str(uuid.uuid4()),
-                            "tid":  tenant_id,
-                            "svc":  svc,
-                            "kn":   key_name,
-                            "lbl":  f"Migrated from legacy config ({json_field})",
-                            "val":  encrypted_val,
-                            "by":   None,
-                            "cat":  now,
-                            "uat":  now,
+                            "id": str(uuid.uuid4()),
+                            "tid": tenant_id,
+                            "svc": svc,
+                            "kn": key_name,
+                            "lbl": f"Migrated from legacy config ({json_field})",
+                            "val": encrypted_val,
+                            "by": None,
+                            "cat": now,
+                            "uat": now,
                         },
                     )
 

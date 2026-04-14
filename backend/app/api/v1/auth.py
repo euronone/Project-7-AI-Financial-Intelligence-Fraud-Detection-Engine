@@ -1,4 +1,5 @@
 """Authentication endpoints — signup, login, forgot/reset password, change password."""
+
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,16 +11,28 @@ import logging
 from app.db.session import get_db
 from app.models.user import User, Tenant
 from app.schemas.auth import (
-    SignupRequest, LoginRequest, TokenResponse, RefreshRequest, UserResponse,
-    ForgotPasswordRequest, ResetPasswordRequest, ChangePasswordRequest,
+    SignupRequest,
+    LoginRequest,
+    TokenResponse,
+    RefreshRequest,
+    UserResponse,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    ChangePasswordRequest,
     AdminSetPasswordRequest,
 )
 from app.core.security import (
-    hash_password, verify_password,
-    create_access_token, create_refresh_token, decode_token,
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
 )
 from app.core.exceptions import (
-    ConflictException, UnauthorizedException, NotFoundException, ForbiddenException,
+    ConflictException,
+    UnauthorizedException,
+    NotFoundException,
+    ForbiddenException,
 )
 from app.dependencies import CurrentUser, AdminUser
 from app.config import get_settings
@@ -32,6 +45,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_reset_token(user: User) -> str:
     """
@@ -74,6 +88,7 @@ async def _send_reset_email(email: str, reset_link: str) -> bool:
         return False
     try:
         import httpx
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://api.resend.com/emails",
@@ -110,6 +125,7 @@ async def _send_reset_email(email: str, reset_link: str) -> bool:
 # ---------------------------------------------------------------------------
 # POST /auth/signup
 # ---------------------------------------------------------------------------
+
 
 @router.post("/signup", response_model=dict, status_code=201)
 async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
@@ -177,6 +193,7 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
 # POST /auth/login
 # ---------------------------------------------------------------------------
 
+
 @router.post("/login", response_model=dict)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Email/password login — returns JWT tokens."""
@@ -210,6 +227,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 # POST /auth/refresh
 # ---------------------------------------------------------------------------
 
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     """Exchange a refresh token for new access + refresh tokens."""
@@ -239,6 +257,7 @@ async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)
 # GET /auth/me
 # ---------------------------------------------------------------------------
 
+
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     """Return current authenticated user profile."""
@@ -251,6 +270,7 @@ async def get_me(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
 # POST /auth/logout
 # ---------------------------------------------------------------------------
 
+
 @router.post("/logout")
 async def logout(current_user: CurrentUser):
     """Logout — client should discard tokens (stateless JWT)."""
@@ -260,6 +280,7 @@ async def logout(current_user: CurrentUser):
 # ---------------------------------------------------------------------------
 # POST /auth/forgot-password
 # ---------------------------------------------------------------------------
+
 
 @router.post("/forgot-password")
 async def forgot_password(
@@ -307,6 +328,7 @@ async def forgot_password(
 # POST /auth/reset-password
 # ---------------------------------------------------------------------------
 
+
 @router.post("/reset-password")
 async def reset_password(
     body: ResetPasswordRequest,
@@ -336,6 +358,7 @@ async def reset_password(
 # POST /auth/change-password  (authenticated user changing own password)
 # ---------------------------------------------------------------------------
 
+
 @router.post("/change-password")
 async def change_password(
     body: ChangePasswordRequest,
@@ -357,6 +380,7 @@ async def change_password(
 # ---------------------------------------------------------------------------
 # POST /auth/admin/set-password  (admin sets/resets another user's password)
 # ---------------------------------------------------------------------------
+
 
 @router.post("/admin/set-password")
 async def admin_set_password(

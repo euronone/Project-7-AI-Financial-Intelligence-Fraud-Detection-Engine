@@ -26,10 +26,11 @@ MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
 @dataclass
 class FeatureContribution:
     """A single feature's contribution to the fraud score."""
-    feature_name:  str
-    shap_value:    float
+
+    feature_name: str
+    shap_value: float
     feature_value: float
-    direction:     str    # "increases_risk" | "decreases_risk"
+    direction: str  # "increases_risk" | "decreases_risk"
 
 
 class SHAPExplainer:
@@ -39,7 +40,7 @@ class SHAPExplainer:
     """
 
     def __init__(self, explainer: shap.TreeExplainer, feature_names: list[str]):
-        self._explainer    = explainer
+        self._explainer = explainer
         self.feature_names = feature_names
 
     # ── Build & save ──────────────────────────────────────────────────────────
@@ -58,8 +59,8 @@ class SHAPExplainer:
         """
         print("  [SHAP] Building TreeExplainer on XGBoost model...")
         xgb_model = fraud_classifier.xgb_model
-        scaler    = fraud_classifier.scaler
-        X_scaled  = scaler.transform(X_background)
+        scaler = fraud_classifier.scaler
+        X_scaled = scaler.transform(X_background)
 
         # Use a sample for background (faster)
         sample_size = min(200, len(X_scaled))
@@ -112,12 +113,14 @@ class SHAPExplainer:
             name = self.feature_names[i] if i < len(self.feature_names) else f"feat_{i}"
             # Strip "feat_" prefix for readability
             display_name = name.replace("feat_", "")
-            results.append(FeatureContribution(
-                feature_name=display_name,
-                shap_value=round(float(sv[i]), 4),
-                feature_value=round(float(feature_vals[i]), 4),
-                direction="increases_risk" if sv[i] > 0 else "decreases_risk",
-            ))
+            results.append(
+                FeatureContribution(
+                    feature_name=display_name,
+                    shap_value=round(float(sv[i]), 4),
+                    feature_value=round(float(feature_vals[i]), 4),
+                    direction="increases_risk" if sv[i] > 0 else "decreases_risk",
+                )
+            )
 
         return results
 
@@ -132,12 +135,14 @@ class SHAPExplainer:
             sv = shap_values
 
         mean_abs = np.abs(sv).mean(axis=0)
-        indices  = np.argsort(mean_abs)[::-1][:top_n]
+        indices = np.argsort(mean_abs)[::-1][:top_n]
 
         return [
             {
-                "rank":          int(rank + 1),
-                "feature":       self.feature_names[i].replace("feat_", "") if i < len(self.feature_names) else f"feat_{i}",
+                "rank": int(rank + 1),
+                "feature": self.feature_names[i].replace("feat_", "")
+                if i < len(self.feature_names)
+                else f"feat_{i}",
                 "mean_abs_shap": round(float(mean_abs[i]), 4),
             }
             for rank, i in enumerate(indices)

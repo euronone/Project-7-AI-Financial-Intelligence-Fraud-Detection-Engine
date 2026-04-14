@@ -6,6 +6,7 @@ Provides:
   GET /api/v1/data-sources/schema       – table schema with column name, type, sample values
   GET /api/v1/data-sources/field-map    – transaction table key fields with descriptions
 """
+
 from datetime import datetime, timezone
 from typing import Any
 
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/data-sources", tags=["Data Sources"])
 # 1. Overview: connected sources + record counts
 # ---------------------------------------------------------------------------
 
+
 @router.get("")
 async def get_data_sources(
     current_user: CurrentUser,
@@ -40,6 +42,7 @@ async def get_data_sources(
     - last updated timestamp (most recent row in transactions)
     """
     from app.config import get_settings
+
     settings = get_settings()
 
     # Detect DB type from connection URL
@@ -62,6 +65,7 @@ async def get_data_sources(
     db_latency_ms = None
     try:
         import time
+
         t0 = time.time()
         await db.execute(text("SELECT 1"))
         db_latency_ms = round((time.time() - t0) * 1000, 1)
@@ -72,9 +76,7 @@ async def get_data_sources(
     tid = current_user.tenant_id
 
     # Record counts per table (scoped to tenant where possible)
-    cust_res = await db.execute(
-        select(func.count(Customer.id)).where(Customer.tenant_id == tid)
-    )
+    cust_res = await db.execute(select(func.count(Customer.id)).where(Customer.tenant_id == tid))
     txn_res = await db.execute(
         select(func.count(Transaction.id)).where(
             Transaction.tenant_id == tid,
@@ -84,9 +86,7 @@ async def get_data_sources(
     alert_res = await db.execute(
         select(func.count(FraudAlert.id)).where(FraudAlert.tenant_id == tid)
     )
-    rule_res = await db.execute(
-        select(func.count(FraudRule.id))
-    )
+    rule_res = await db.execute(select(func.count(FraudRule.id)))
 
     customer_count = cust_res.scalar_one() or 0
     txn_count = txn_res.scalar_one() or 0
@@ -95,9 +95,7 @@ async def get_data_sources(
 
     # Last updated: most recent transaction timestamp
     last_txn_res = await db.execute(
-        select(func.max(Transaction.transaction_timestamp)).where(
-            Transaction.tenant_id == tid
-        )
+        select(func.max(Transaction.transaction_timestamp)).where(Transaction.tenant_id == tid)
     )
     last_updated = last_txn_res.scalar_one()
     last_updated_str = last_updated.isoformat() if last_updated else None
@@ -160,19 +158,21 @@ async def get_data_sources(
         # Already covered by primary — mark as same source
         pass
     elif settings.SUPABASE_URL and settings.SUPABASE_ANON_KEY:
-        sources.append({
-            "source_id": "supabase_connector",
-            "name": "Supabase Cloud",
-            "type": "API",
-            "connector_type": "Supabase REST",
-            "connector_icon": "cloud",
-            "status": "configured",
-            "latency_ms": None,
-            "tables": [],
-            "total_records": 0,
-            "last_synced": None,
-            "active_users": 0,
-        })
+        sources.append(
+            {
+                "source_id": "supabase_connector",
+                "name": "Supabase Cloud",
+                "type": "API",
+                "connector_type": "Supabase REST",
+                "connector_icon": "cloud",
+                "status": "configured",
+                "latency_ms": None,
+                "tables": [],
+                "total_records": 0,
+                "last_synced": None,
+                "active_users": 0,
+            }
+        )
 
     return {
         "sources": sources,
@@ -186,6 +186,7 @@ async def get_data_sources(
 # ---------------------------------------------------------------------------
 # 2. Schema introspection
 # ---------------------------------------------------------------------------
+
 
 @router.get("/schema")
 async def get_schema(
@@ -204,23 +205,71 @@ async def get_schema(
     schema: list[dict] = []
 
     # ── Customers ──────────────────────────────────────────────────────────
-    sample_custs = await db.execute(
-        select(Customer).where(Customer.tenant_id == tid).limit(3)
-    )
+    sample_custs = await db.execute(select(Customer).where(Customer.tenant_id == tid).limit(3))
     cust_rows = sample_custs.scalars().all()
 
     cust_columns = [
-        {"name": "id",                    "type": "UUID (PK)",     "nullable": False, "description": "Unique customer identifier"},
-        {"name": "full_name",             "type": "VARCHAR(255)",  "nullable": False, "description": "Customer full name"},
-        {"name": "email",                 "type": "VARCHAR(255)",  "nullable": True,  "description": "Contact email"},
-        {"name": "phone_number",          "type": "VARCHAR(30)",   "nullable": True,  "description": "Mobile number"},
-        {"name": "city",                  "type": "VARCHAR(100)",  "nullable": True,  "description": "City of residence"},
-        {"name": "account_type",          "type": "VARCHAR(20)",   "nullable": False, "description": "personal | business | merchant"},
-        {"name": "kyc_status",            "type": "VARCHAR(20)",   "nullable": False, "description": "pending | verified | rejected"},
-        {"name": "risk_score",            "type": "DECIMAL(5,4)",  "nullable": False, "description": "Fraud risk 0.0–1.0"},
-        {"name": "customer_tier",         "type": "VARCHAR(20)",   "nullable": False, "description": "standard | premium | vip"},
-        {"name": "balance_amount",        "type": "DECIMAL(18,2)", "nullable": False, "description": "Current account balance (INR)"},
-        {"name": "active_card_count",     "type": "INTEGER",       "nullable": False, "description": "Number of active cards"},
+        {
+            "name": "id",
+            "type": "UUID (PK)",
+            "nullable": False,
+            "description": "Unique customer identifier",
+        },
+        {
+            "name": "full_name",
+            "type": "VARCHAR(255)",
+            "nullable": False,
+            "description": "Customer full name",
+        },
+        {"name": "email", "type": "VARCHAR(255)", "nullable": True, "description": "Contact email"},
+        {
+            "name": "phone_number",
+            "type": "VARCHAR(30)",
+            "nullable": True,
+            "description": "Mobile number",
+        },
+        {
+            "name": "city",
+            "type": "VARCHAR(100)",
+            "nullable": True,
+            "description": "City of residence",
+        },
+        {
+            "name": "account_type",
+            "type": "VARCHAR(20)",
+            "nullable": False,
+            "description": "personal | business | merchant",
+        },
+        {
+            "name": "kyc_status",
+            "type": "VARCHAR(20)",
+            "nullable": False,
+            "description": "pending | verified | rejected",
+        },
+        {
+            "name": "risk_score",
+            "type": "DECIMAL(5,4)",
+            "nullable": False,
+            "description": "Fraud risk 0.0–1.0",
+        },
+        {
+            "name": "customer_tier",
+            "type": "VARCHAR(20)",
+            "nullable": False,
+            "description": "standard | premium | vip",
+        },
+        {
+            "name": "balance_amount",
+            "type": "DECIMAL(18,2)",
+            "nullable": False,
+            "description": "Current account balance (INR)",
+        },
+        {
+            "name": "active_card_count",
+            "type": "INTEGER",
+            "nullable": False,
+            "description": "Number of active cards",
+        },
     ]
 
     for col in cust_columns:
@@ -232,38 +281,155 @@ async def get_schema(
 
     # ── Transactions ───────────────────────────────────────────────────────
     sample_txns = await db.execute(
-        select(Transaction).where(
+        select(Transaction)
+        .where(
             Transaction.tenant_id == tid,
             Transaction.is_test == False,  # noqa: E712
-        ).limit(3)
+        )
+        .limit(3)
     )
     txn_rows = sample_txns.scalars().all()
 
     txn_columns = [
-        {"name": "id",                  "type": "UUID (PK)",      "nullable": False, "description": "Unique transaction ID"},
-        {"name": "customer_id",         "type": "UUID (FK)",      "nullable": False, "description": "References customers.id"},
-        {"name": "amount",              "type": "DECIMAL(18,2)",  "nullable": False, "description": "Transaction amount (INR)"},
-        {"name": "currency",            "type": "VARCHAR(3)",     "nullable": False, "description": "ISO 4217 currency code"},
-        {"name": "channel",             "type": "VARCHAR(20)",    "nullable": False, "description": "pos_physical | online | atm | mobile"},
-        {"name": "merchant_name",       "type": "VARCHAR(255)",   "nullable": True,  "description": "Merchant or payee name"},
-        {"name": "city",                "type": "VARCHAR(100)",   "nullable": True,  "description": "Transaction city"},
-        {"name": "country_code",        "type": "VARCHAR(2)",     "nullable": True,  "description": "ISO 3166-1 country code"},
-        {"name": "location_lat",        "type": "DECIMAL(10,8)",  "nullable": True,  "description": "Transaction latitude"},
-        {"name": "location_lng",        "type": "DECIMAL(10,8)",  "nullable": True,  "description": "Transaction longitude"},
-        {"name": "device_type",         "type": "VARCHAR(20)",    "nullable": True,  "description": "mobile | desktop | tablet | pos_terminal"},
-        {"name": "device_fingerprint",  "type": "VARCHAR(255)",   "nullable": True,  "description": "Device fingerprint hash"},
-        {"name": "ip_address",          "type": "VARCHAR(45)",    "nullable": True,  "description": "Client IP address"},
-        {"name": "transaction_timestamp","type": "TIMESTAMPTZ",   "nullable": False, "description": "When the transaction occurred"},
-        {"name": "status",              "type": "VARCHAR(20)",    "nullable": False, "description": "completed | blocked | flagged"},
+        {
+            "name": "id",
+            "type": "UUID (PK)",
+            "nullable": False,
+            "description": "Unique transaction ID",
+        },
+        {
+            "name": "customer_id",
+            "type": "UUID (FK)",
+            "nullable": False,
+            "description": "References customers.id",
+        },
+        {
+            "name": "amount",
+            "type": "DECIMAL(18,2)",
+            "nullable": False,
+            "description": "Transaction amount (INR)",
+        },
+        {
+            "name": "currency",
+            "type": "VARCHAR(3)",
+            "nullable": False,
+            "description": "ISO 4217 currency code",
+        },
+        {
+            "name": "channel",
+            "type": "VARCHAR(20)",
+            "nullable": False,
+            "description": "pos_physical | online | atm | mobile",
+        },
+        {
+            "name": "merchant_name",
+            "type": "VARCHAR(255)",
+            "nullable": True,
+            "description": "Merchant or payee name",
+        },
+        {
+            "name": "city",
+            "type": "VARCHAR(100)",
+            "nullable": True,
+            "description": "Transaction city",
+        },
+        {
+            "name": "country_code",
+            "type": "VARCHAR(2)",
+            "nullable": True,
+            "description": "ISO 3166-1 country code",
+        },
+        {
+            "name": "location_lat",
+            "type": "DECIMAL(10,8)",
+            "nullable": True,
+            "description": "Transaction latitude",
+        },
+        {
+            "name": "location_lng",
+            "type": "DECIMAL(10,8)",
+            "nullable": True,
+            "description": "Transaction longitude",
+        },
+        {
+            "name": "device_type",
+            "type": "VARCHAR(20)",
+            "nullable": True,
+            "description": "mobile | desktop | tablet | pos_terminal",
+        },
+        {
+            "name": "device_fingerprint",
+            "type": "VARCHAR(255)",
+            "nullable": True,
+            "description": "Device fingerprint hash",
+        },
+        {
+            "name": "ip_address",
+            "type": "VARCHAR(45)",
+            "nullable": True,
+            "description": "Client IP address",
+        },
+        {
+            "name": "transaction_timestamp",
+            "type": "TIMESTAMPTZ",
+            "nullable": False,
+            "description": "When the transaction occurred",
+        },
+        {
+            "name": "status",
+            "type": "VARCHAR(20)",
+            "nullable": False,
+            "description": "completed | blocked | flagged",
+        },
         # FinShield fraud columns
-        {"name": "fraud_score",         "type": "DECIMAL(5,4)",   "nullable": True,  "description": "ML fraud probability 0.0–1.0"},
-        {"name": "fraud_category",      "type": "VARCHAR(20)",    "nullable": True,  "description": "legitimate | suspicious | fraudulent | unscored"},
-        {"name": "fraud_risk_level",    "type": "VARCHAR(10)",    "nullable": True,  "description": "low | medium | high | critical"},
-        {"name": "is_flagged",          "type": "BOOLEAN",        "nullable": False, "description": "True if flagged for review"},
-        {"name": "is_blocked",          "type": "BOOLEAN",        "nullable": False, "description": "True if transaction was blocked"},
-        {"name": "triggered_rule_ids",  "type": "JSON",           "nullable": True,  "description": "List of rule names triggered"},
-        {"name": "model_version",       "type": "VARCHAR(50)",    "nullable": True,  "description": "ML model version used"},
-        {"name": "fraud_scored_at",     "type": "TIMESTAMPTZ",    "nullable": True,  "description": "When fraud scoring completed"},
+        {
+            "name": "fraud_score",
+            "type": "DECIMAL(5,4)",
+            "nullable": True,
+            "description": "ML fraud probability 0.0–1.0",
+        },
+        {
+            "name": "fraud_category",
+            "type": "VARCHAR(20)",
+            "nullable": True,
+            "description": "legitimate | suspicious | fraudulent | unscored",
+        },
+        {
+            "name": "fraud_risk_level",
+            "type": "VARCHAR(10)",
+            "nullable": True,
+            "description": "low | medium | high | critical",
+        },
+        {
+            "name": "is_flagged",
+            "type": "BOOLEAN",
+            "nullable": False,
+            "description": "True if flagged for review",
+        },
+        {
+            "name": "is_blocked",
+            "type": "BOOLEAN",
+            "nullable": False,
+            "description": "True if transaction was blocked",
+        },
+        {
+            "name": "triggered_rule_ids",
+            "type": "JSON",
+            "nullable": True,
+            "description": "List of rule names triggered",
+        },
+        {
+            "name": "model_version",
+            "type": "VARCHAR(50)",
+            "nullable": True,
+            "description": "ML model version used",
+        },
+        {
+            "name": "fraud_scored_at",
+            "type": "TIMESTAMPTZ",
+            "nullable": True,
+            "description": "When fraud scoring completed",
+        },
     ]
 
     for col in txn_columns:
@@ -279,6 +445,7 @@ async def get_schema(
 # ---------------------------------------------------------------------------
 # 3. Transaction field map (for the UI's "field details" panel)
 # ---------------------------------------------------------------------------
+
 
 @router.get("/field-map")
 async def get_field_map(
@@ -322,11 +489,15 @@ async def get_field_map(
         ).where(Transaction.tenant_id == tid, Transaction.is_test == False)  # noqa: E712
     )
     amt_row = amt_res.first()
-    amount_stats = {
-        "min": float(amt_row.min or 0),
-        "max": float(amt_row.max or 0),
-        "avg": round(float(amt_row.avg or 0), 2),
-    } if amt_row else {}
+    amount_stats = (
+        {
+            "min": float(amt_row.min or 0),
+            "max": float(amt_row.max or 0),
+            "avg": round(float(amt_row.avg or 0), 2),
+        }
+        if amt_row
+        else {}
+    )
 
     return {
         "key_fields": [
@@ -380,6 +551,7 @@ async def get_field_map(
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def _safe_get(obj: Any, attr: str) -> Any:
     val = getattr(obj, attr, None)
     if val is None:
@@ -389,6 +561,7 @@ def _safe_get(obj: Any, attr: str) -> Any:
         return val.isoformat()
     try:
         import decimal
+
         if isinstance(val, decimal.Decimal):
             return float(val)
     except Exception:

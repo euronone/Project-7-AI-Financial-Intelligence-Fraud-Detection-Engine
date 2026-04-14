@@ -15,6 +15,7 @@ Usage in routes:
         except WebSocketDisconnect:
             ws_manager.disconnect(conn_id)
 """
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,9 @@ class ConnectionManager:
             websocket=websocket,
             tenant_id=tenant_id,
         )
-        logger.info("WS connected | conn=%s tenant=%s total=%d", conn_id, tenant_id, len(self._connections))
+        logger.info(
+            "WS connected | conn=%s tenant=%s total=%d", conn_id, tenant_id, len(self._connections)
+        )
         return conn_id
 
     def disconnect(self, connection_id: str):

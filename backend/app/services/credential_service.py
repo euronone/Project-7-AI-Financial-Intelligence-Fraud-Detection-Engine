@@ -1,4 +1,5 @@
 """BYOK Credentials Manager — save, retrieve (masked), rotate, delete, and test credentials."""
+
 import logging
 import time
 from datetime import datetime, timezone
@@ -39,6 +40,7 @@ def _to_out(row: TenantCredential, decrypted_value: str) -> CredentialOut:
 
 
 # ── CRUD ─────────────────────────────────────────────────────────────────────
+
 
 async def list_credentials(db: AsyncSession, tenant_id: str) -> list[CredentialOut]:
     """Return all credentials for a tenant (values masked)."""
@@ -127,10 +129,12 @@ async def scan_any_cred_for_service(
     key_name first; this is the second-chance lookup.
     """
     result = await db.execute(
-        select(TenantCredential).where(
+        select(TenantCredential)
+        .where(
             TenantCredential.tenant_id == tenant_id,
             TenantCredential.service == service,
-        ).limit(1)
+        )
+        .limit(1)
     )
     row = result.scalar_one_or_none()
     if not row:
@@ -138,7 +142,9 @@ async def scan_any_cred_for_service(
     try:
         val = encryptor.decrypt(row.value_encrypted)
         if val:
-            logger.debug("Cred resolved via service-scan | service=%s key_name=%s", service, row.key_name)
+            logger.debug(
+                "Cred resolved via service-scan | service=%s key_name=%s", service, row.key_name
+            )
             return val
     except Exception as exc:
         logger.warning("scan_any_cred_for_service decrypt error service=%s: %s", service, exc)
@@ -165,11 +171,18 @@ async def get_decrypted(
     try:
         return encryptor.decrypt(row.value_encrypted)
     except Exception as exc:
-        logger.error("Decryption error for tenant=%s service=%s key=%s: %s", tenant_id, service, key_name, exc)
+        logger.error(
+            "Decryption error for tenant=%s service=%s key=%s: %s",
+            tenant_id,
+            service,
+            key_name,
+            exc,
+        )
         return None
 
 
 # ── Connection testers ────────────────────────────────────────────────────────
+
 
 async def test_credential(
     db: AsyncSession,
@@ -181,16 +194,19 @@ async def test_credential(
     plain = await get_decrypted(db, tenant_id, service, key_name)
     if not plain:
         return CredentialTestResult(
-            service=service, key_name=key_name,
-            success=False, message="Credential not found or decryption failed"
+            service=service,
+            key_name=key_name,
+            success=False,
+            message="Credential not found or decryption failed",
         )
 
     tester = _TESTERS.get(service)
     if tester is None:
         return CredentialTestResult(
-            service=service, key_name=key_name,
+            service=service,
+            key_name=key_name,
             success=True,
-            message="No live test available for this service — credential is stored and encrypted."
+            message="No live test available for this service — credential is stored and encrypted.",
         )
 
     return await tester(service, key_name, plain)
@@ -206,13 +222,24 @@ async def _test_resend(service: str, key_name: str, api_key: str) -> CredentialT
             )
         ms = int((time.monotonic() - start) * 1000)
         if r.status_code in (200, 403):
-            return CredentialTestResult(service=service, key_name=key_name, success=True,
-                                        message="Resend API key is valid.", latency_ms=ms)
-        return CredentialTestResult(service=service, key_name=key_name, success=False,
-                                    message=f"Resend returned HTTP {r.status_code}", latency_ms=ms)
+            return CredentialTestResult(
+                service=service,
+                key_name=key_name,
+                success=True,
+                message="Resend API key is valid.",
+                latency_ms=ms,
+            )
+        return CredentialTestResult(
+            service=service,
+            key_name=key_name,
+            success=False,
+            message=f"Resend returned HTTP {r.status_code}",
+            latency_ms=ms,
+        )
     except Exception as exc:
-        return CredentialTestResult(service=service, key_name=key_name, success=False,
-                                    message=f"Connection error: {exc}")
+        return CredentialTestResult(
+            service=service, key_name=key_name, success=False, message=f"Connection error: {exc}"
+        )
 
 
 async def _test_twilio(service: str, key_name: str, value: str) -> CredentialTestResult:
@@ -221,11 +248,19 @@ async def _test_twilio(service: str, key_name: str, value: str) -> CredentialTes
     if key_name == "twilio_account_sid":
         ok = value.startswith("AC") and len(value) == 34
         return CredentialTestResult(
-            service=service, key_name=key_name, success=ok,
-            message="Twilio Account SID format valid." if ok else "Invalid Twilio Account SID format (should start with 'AC' and be 34 chars)."
+            service=service,
+            key_name=key_name,
+            success=ok,
+            message="Twilio Account SID format valid."
+            if ok
+            else "Invalid Twilio Account SID format (should start with 'AC' and be 34 chars).",
         )
-    return CredentialTestResult(service=service, key_name=key_name, success=True,
-                                message="Credential stored. Use Test Connection in Settings to validate full Twilio flow.")
+    return CredentialTestResult(
+        service=service,
+        key_name=key_name,
+        success=True,
+        message="Credential stored. Use Test Connection in Settings to validate full Twilio flow.",
+    )
 
 
 async def _test_stripe(service: str, key_name: str, api_key: str) -> CredentialTestResult:
@@ -239,13 +274,16 @@ async def _test_stripe(service: str, key_name: str, api_key: str) -> CredentialT
         ms = int((time.monotonic() - start) * 1000)
         success = r.status_code == 200
         return CredentialTestResult(
-            service=service, key_name=key_name, success=success,
+            service=service,
+            key_name=key_name,
+            success=success,
             message="Stripe key valid." if success else f"Stripe returned HTTP {r.status_code}",
             latency_ms=ms,
         )
     except Exception as exc:
-        return CredentialTestResult(service=service, key_name=key_name, success=False,
-                                    message=f"Connection error: {exc}")
+        return CredentialTestResult(
+            service=service, key_name=key_name, success=False, message=f"Connection error: {exc}"
+        )
 
 
 async def _test_openai(service: str, key_name: str, api_key: str) -> CredentialTestResult:
@@ -259,13 +297,16 @@ async def _test_openai(service: str, key_name: str, api_key: str) -> CredentialT
         ms = int((time.monotonic() - start) * 1000)
         success = r.status_code == 200
         return CredentialTestResult(
-            service=service, key_name=key_name, success=success,
+            service=service,
+            key_name=key_name,
+            success=success,
             message="OpenAI API key valid." if success else f"OpenAI returned HTTP {r.status_code}",
             latency_ms=ms,
         )
     except Exception as exc:
-        return CredentialTestResult(service=service, key_name=key_name, success=False,
-                                    message=f"Connection error: {exc}")
+        return CredentialTestResult(
+            service=service, key_name=key_name, success=False, message=f"Connection error: {exc}"
+        )
 
 
 async def _test_brevo(service: str, key_name: str, api_key: str) -> CredentialTestResult:
@@ -279,19 +320,30 @@ async def _test_brevo(service: str, key_name: str, api_key: str) -> CredentialTe
             )
         ms = int((time.monotonic() - start) * 1000)
         if r.status_code == 200:
-            return CredentialTestResult(service=service, key_name=key_name, success=True,
-                                        message="Brevo API key is valid.", latency_ms=ms)
-        return CredentialTestResult(service=service, key_name=key_name, success=False,
-                                    message=f"Brevo returned HTTP {r.status_code}", latency_ms=ms)
+            return CredentialTestResult(
+                service=service,
+                key_name=key_name,
+                success=True,
+                message="Brevo API key is valid.",
+                latency_ms=ms,
+            )
+        return CredentialTestResult(
+            service=service,
+            key_name=key_name,
+            success=False,
+            message=f"Brevo returned HTTP {r.status_code}",
+            latency_ms=ms,
+        )
     except Exception as exc:
-        return CredentialTestResult(service=service, key_name=key_name, success=False,
-                                    message=f"Connection error: {exc}")
+        return CredentialTestResult(
+            service=service, key_name=key_name, success=False, message=f"Connection error: {exc}"
+        )
 
 
 # Map service name → tester function
 _TESTERS = {
     "resend": _test_resend,
-    "brevo":  _test_brevo,
+    "brevo": _test_brevo,
     "twilio": _test_twilio,
     "stripe": _test_stripe,
     "openai": _test_openai,

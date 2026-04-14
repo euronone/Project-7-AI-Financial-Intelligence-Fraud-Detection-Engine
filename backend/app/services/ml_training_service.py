@@ -44,6 +44,7 @@ from sklearn.model_selection import cross_val_score, train_test_split
 
 try:
     from imblearn.over_sampling import SMOTE
+
     _SMOTE_AVAILABLE = True
 except ImportError:
     _SMOTE_AVAILABLE = False
@@ -56,12 +57,14 @@ from app.models.training_job import TrainingJob
 
 try:
     import xgboost as xgb
+
     _XGB_AVAILABLE = True
 except ImportError:
     _XGB_AVAILABLE = False
 
 try:
     import lightgbm as lgb
+
     _LGB_AVAILABLE = True
 except ImportError:
     _LGB_AVAILABLE = False
@@ -198,21 +201,42 @@ ALGORITHM_CATALOGUE = {
 _PARAM_GRIDS: dict[str, list[dict]] = {
     "xgboost": [
         # Grid 1 — fast, good baseline
-        {"max_depth": 4, "learning_rate": 0.1,  "n_estimators": 200,
-         "subsample": 0.8, "colsample_bytree": 0.8, "min_child_weight": 5,
-         "reg_alpha": 0.1, "reg_lambda": 1.0},
+        {
+            "max_depth": 4,
+            "learning_rate": 0.1,
+            "n_estimators": 200,
+            "subsample": 0.8,
+            "colsample_bytree": 0.8,
+            "min_child_weight": 5,
+            "reg_alpha": 0.1,
+            "reg_lambda": 1.0,
+        },
         # Grid 2 — deeper, slower learning rate (better for imbalanced)
-        {"max_depth": 6, "learning_rate": 0.05, "n_estimators": 400,
-         "subsample": 0.8, "colsample_bytree": 0.7, "min_child_weight": 3,
-         "reg_alpha": 0.01, "reg_lambda": 2.0},
+        {
+            "max_depth": 6,
+            "learning_rate": 0.05,
+            "n_estimators": 400,
+            "subsample": 0.8,
+            "colsample_bytree": 0.7,
+            "min_child_weight": 3,
+            "reg_alpha": 0.01,
+            "reg_lambda": 2.0,
+        },
         # Grid 3 — aggressive regularization to prevent overfitting on small fraud sets
-        {"max_depth": 3, "learning_rate": 0.03, "n_estimators": 600,
-         "subsample": 0.7, "colsample_bytree": 0.6, "min_child_weight": 10,
-         "reg_alpha": 1.0, "reg_lambda": 5.0},
+        {
+            "max_depth": 3,
+            "learning_rate": 0.03,
+            "n_estimators": 600,
+            "subsample": 0.7,
+            "colsample_bytree": 0.6,
+            "min_child_weight": 10,
+            "reg_alpha": 1.0,
+            "reg_lambda": 5.0,
+        },
     ],
     "random_forest": [
-        {"n_estimators": 200, "max_depth": 8,    "min_samples_leaf": 4, "max_features": "sqrt"},
-        {"n_estimators": 300, "max_depth": 12,   "min_samples_leaf": 2, "max_features": "sqrt"},
+        {"n_estimators": 200, "max_depth": 8, "min_samples_leaf": 4, "max_features": "sqrt"},
+        {"n_estimators": 300, "max_depth": 12, "min_samples_leaf": 2, "max_features": "sqrt"},
         {"n_estimators": 400, "max_depth": None, "min_samples_leaf": 1, "max_features": 0.5},
     ],
     "gradient_boosting": [
@@ -221,23 +245,35 @@ _PARAM_GRIDS: dict[str, list[dict]] = {
         {"n_estimators": 400, "max_depth": 3, "learning_rate": 0.03, "subsample": 0.6},
     ],
     "neural_network": [
-        {"hidden_layer_sizes": (128, 64),        "alpha": 0.01,   "max_iter": 300, "batch_size": 64},
-        {"hidden_layer_sizes": (256, 128, 64),   "alpha": 0.001,  "max_iter": 400, "batch_size": 128},
-        {"hidden_layer_sizes": (512, 256, 128),  "alpha": 0.0001, "max_iter": 500, "batch_size": 256},
+        {"hidden_layer_sizes": (128, 64), "alpha": 0.01, "max_iter": 300, "batch_size": 64},
+        {"hidden_layer_sizes": (256, 128, 64), "alpha": 0.001, "max_iter": 400, "batch_size": 128},
+        {
+            "hidden_layer_sizes": (512, 256, 128),
+            "alpha": 0.0001,
+            "max_iter": 500,
+            "batch_size": 256,
+        },
     ],
     "lightgbm": [
-        {"num_leaves": 31,  "learning_rate": 0.1,  "n_estimators": 200},
-        {"num_leaves": 63,  "learning_rate": 0.05, "n_estimators": 300},
+        {"num_leaves": 31, "learning_rate": 0.1, "n_estimators": 200},
+        {"num_leaves": 63, "learning_rate": 0.05, "n_estimators": 300},
         {"num_leaves": 127, "learning_rate": 0.03, "n_estimators": 400},
     ],
 }
 
 _UNSUPERVISED = {"isolation_forest", "dbscan", "lof"}
-_SUPERVISED = {"xgboost", "random_forest", "gradient_boosting", "neural_network",
-               "logistic_regression", "lightgbm"}
+_SUPERVISED = {
+    "xgboost",
+    "random_forest",
+    "gradient_boosting",
+    "neural_network",
+    "logistic_regression",
+    "lightgbm",
+}
 
 
 # ── Progress helpers ───────────────────────────────────────────────────────────
+
 
 def _log(job_id: str, msg: str, pct: int | None = None, stage: str | None = None) -> None:
     """Append a log line to the in-memory cache (non-blocking)."""
@@ -252,6 +288,7 @@ def _log(job_id: str, msg: str, pct: int | None = None, stage: str | None = None
 
 
 # ── Sync helpers (run in executor) ────────────────────────────────────────────
+
 
 def _build_model(algo_id: str, params: dict, spw: float) -> Any:
     """Instantiate a fresh model with given hyperparameters."""
@@ -276,9 +313,7 @@ def _build_model(algo_id: str, params: dict, spw: float) -> Any:
     if algo_id == "neural_network":
         return MLPClassifier(**params, early_stopping=True, random_state=42)
     if algo_id == "logistic_regression":
-        return LogisticRegression(
-            C=1.0, class_weight="balanced", max_iter=1000, random_state=42
-        )
+        return LogisticRegression(C=1.0, class_weight="balanced", max_iter=1000, random_state=42)
     if algo_id == "lightgbm" and _LGB_AVAILABLE:
         return lgb.LGBMClassifier(
             **params,
@@ -298,13 +333,13 @@ def _score_unsupervised(algo_id: str, params: dict, X_all: np.ndarray) -> np.nda
     if algo_id == "isolation_forest":
         clf = IsolationForest(**params, random_state=42, n_jobs=-1)
         clf.fit(X_all)
-        raw = -clf.score_samples(X_all)       # higher = more anomalous
+        raw = -clf.score_samples(X_all)  # higher = more anomalous
 
     elif algo_id == "lof":
         contamination = params.get("contamination", 0.05)
         clf = LocalOutlierFactor(contamination=contamination, n_jobs=-1)
         raw = -clf.fit_predict(X_all).astype(float)  # -1 = outlier → positive
-        raw = np.where(raw > 0, 1.0, 0.0)            # binary: outlier or not
+        raw = np.where(raw > 0, 1.0, 0.0)  # binary: outlier or not
 
     elif algo_id == "dbscan":
         eps = params.get("eps", 1.0)
@@ -312,7 +347,7 @@ def _score_unsupervised(algo_id: str, params: dict, X_all: np.ndarray) -> np.nda
         scaler = RobustScaler()
         X_scaled = scaler.fit_transform(X_all)
         labels = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit_predict(X_scaled)
-        raw = (labels == -1).astype(float)            # noise points = anomalous
+        raw = (labels == -1).astype(float)  # noise points = anomalous
 
     else:
         raise ValueError(f"Unknown unsupervised algorithm: {algo_id}")
@@ -322,7 +357,9 @@ def _score_unsupervised(algo_id: str, params: dict, X_all: np.ndarray) -> np.nda
     return (raw - raw.min()) / (rng + 1e-9) if rng > 1e-9 else raw
 
 
-def _compute_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float | None = None) -> dict:
+def _compute_metrics(
+    y_true: np.ndarray, scores: np.ndarray, threshold: float | None = None
+) -> dict:
     """Return precision/recall/F1/AUC-ROC for a score array.
 
     When threshold is None (default), the optimal cut-off is found by
@@ -340,7 +377,7 @@ def _compute_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float | 
     if threshold is None:
         try:
             fpr, tpr, thresholds = roc_curve(y_true, scores)
-            j_scores = tpr - fpr          # Youden's J = sensitivity + specificity - 1
+            j_scores = tpr - fpr  # Youden's J = sensitivity + specificity - 1
             best_idx = int(np.argmax(j_scores))
             threshold = float(thresholds[best_idx])
         except Exception:
@@ -349,9 +386,9 @@ def _compute_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float | 
     y_pred = (scores >= threshold).astype(int)
     return {
         "precision": round(float(precision_score(y_true, y_pred, zero_division=0)), 4),
-        "recall":    round(float(recall_score(y_true, y_pred, zero_division=0)), 4),
-        "f1_score":  round(float(f1_score(y_true, y_pred, zero_division=0)), 4),
-        "auc_roc":   round(auc, 4),
+        "recall": round(float(recall_score(y_true, y_pred, zero_division=0)), 4),
+        "f1_score": round(float(f1_score(y_true, y_pred, zero_division=0)), 4),
+        "auc_roc": round(auc, 4),
         "threshold": round(float(threshold), 4),
         "test_samples": int(len(y_true)),
         "fraud_samples": int(y_true.sum()),
@@ -381,7 +418,9 @@ def _optimize_supervised(
         try:
             model = _build_model(algo_id, params, spw)
             scores = cross_val_score(
-                model, X_train, y_train,
+                model,
+                X_train,
+                y_train,
                 cv=min(3, max(2, int(y_train.sum() // 5))),
                 scoring="roc_auc",
                 n_jobs=-1,
@@ -474,11 +513,14 @@ def _sync_training_pipeline(
 
     if schema_mapping:
         disabled_fields = {
-            f for f, cfg in schema_mapping.get("transactions", {}).items()
+            f
+            for f, cfg in schema_mapping.get("transactions", {}).items()
             if isinstance(cfg, dict) and not cfg.get("enabled", True)
         }
         if disabled_fields:
-            log(f"  Disabling {len(disabled_fields)} columns per schema mapping: {sorted(disabled_fields)}")
+            log(
+                f"  Disabling {len(disabled_fields)} columns per schema mapping: {sorted(disabled_fields)}"
+            )
             txn_records = _apply_disabled_columns(txn_records, schema_mapping)
 
     txn_df = pd.DataFrame(txn_records)
@@ -508,7 +550,7 @@ def _sync_training_pipeline(
         # [customer_id, timestamp].  We MUST use it to re-align labels.
         result_fe = batch_features(txn_df, cust_df)
         if isinstance(result_fe, tuple):
-            X_all    = result_fe[0]   # feature matrix (sorted order)
+            X_all = result_fe[0]  # feature matrix (sorted order)
             orig_pos = result_fe[2] if len(result_fe) > 2 else None
         else:
             X_all = result_fe
@@ -549,7 +591,9 @@ def _sync_training_pipeline(
             y_all = (_raw >= _threshold).astype(int)
             fraud_count = int(y_all.sum())
             has_labels = fraud_count >= 5
-            log(f"Synthetic labels: {fraud_count} pseudo-fraud / {n_samples - fraud_count} legitimate (top-5% anomalies)")
+            log(
+                f"Synthetic labels: {fraud_count} pseudo-fraud / {n_samples - fraud_count} legitimate (top-5% anomalies)"
+            )
         except Exception as exc:
             log(f"Synthetic label generation failed: {exc} — unsupervised only")
 
@@ -568,9 +612,7 @@ def _sync_training_pipeline(
                 X_scaled, y_all, test_size=test_size, stratify=y_all, random_state=42
             )
         except ValueError:
-            X_train, X_test, y_train, y_test = (
-                X_scaled, X_scaled, y_all, y_all
-            )
+            X_train, X_test, y_train, y_test = (X_scaled, X_scaled, y_all, y_all)
 
         # ── SMOTE oversampling ────────────────────────────────────────────────
         # When fraud samples are rare (< 100 in training), oversample minority
@@ -581,11 +623,15 @@ def _sync_training_pipeline(
                 k = min(5, train_fraud - 1)
                 smote = SMOTE(random_state=42, k_neighbors=k)
                 X_train, y_train = smote.fit_resample(X_train, y_train)
-                log(f"SMOTE: oversampled training set to {len(X_train):,} rows ({int(y_train.sum())} fraud)")
+                log(
+                    f"SMOTE: oversampled training set to {len(X_train):,} rows ({int(y_train.sum())} fraud)"
+                )
             except Exception as exc:
                 log(f"SMOTE skipped: {exc}")
         elif not _SMOTE_AVAILABLE and train_fraud < 100:
-            log("Tip: install imbalanced-learn (pip install imbalanced-learn) for SMOTE oversampling")
+            log(
+                "Tip: install imbalanced-learn (pip install imbalanced-learn) for SMOTE oversampling"
+            )
 
         log(
             f"Train/test split: {len(X_train):,}/{len(X_test):,}  "
@@ -598,9 +644,9 @@ def _sync_training_pipeline(
         y_train = y_test = y_all
 
     # ── Stage 4: Train algorithms ─────────────────────────────────────────────
-    algo_models:   dict[str, Any] = {}
-    algo_scores:   dict[str, np.ndarray] = {}
-    algo_metrics:  dict[str, dict] = {}
+    algo_models: dict[str, Any] = {}
+    algo_scores: dict[str, np.ndarray] = {}
+    algo_metrics: dict[str, dict] = {}
     n_algos = len(algo_ids)
 
     for idx, algo_id in enumerate(algo_ids):
@@ -658,7 +704,10 @@ def _sync_training_pipeline(
             log(f"Optimizing {algo_id}…")
             try:
                 best_params = _optimize_supervised(
-                    algo_id, X_train, y_train, spw,
+                    algo_id,
+                    X_train,
+                    y_train,
+                    spw,
                     log_fn=lambda m, a=algo_id: _log(job_id, m),
                 )
                 # Retrain with best params
@@ -674,10 +723,7 @@ def _sync_training_pipeline(
                     algo_metrics[algo_id] = {**new_m, "best_params": best_params}
                     algo_models[algo_id] = model
                     algo_scores[algo_id] = scores
-                    log(
-                        f"  {algo_id} improved: "
-                        f"AUC-ROC {old_auc:.4f} → {new_auc:.4f}"
-                    )
+                    log(f"  {algo_id} improved: " f"AUC-ROC {old_auc:.4f} → {new_auc:.4f}")
                 else:
                     log(f"  {algo_id} original params better, keeping.")
                 opt_rounds += 1
@@ -687,8 +733,7 @@ def _sync_training_pipeline(
     # ── Stage 6: Ensemble scoring ─────────────────────────────────────────────
     log("Building ensemble…", pct=88, stage="Evaluating")
     scored_algos = {
-        a: s for a, s in algo_scores.items()
-        if a in algo_metrics and "auc_roc" in algo_metrics[a]
+        a: s for a, s in algo_scores.items() if a in algo_metrics and "auc_roc" in algo_metrics[a]
     }
 
     ensemble_metrics: dict = {}
@@ -737,16 +782,17 @@ def _sync_training_pipeline(
     all_metrics = {**algo_metrics, "ensemble": ensemble_metrics}
 
     return {
-        "metrics":           all_metrics,
-        "best_algorithm":    best_algo,
+        "metrics": all_metrics,
+        "best_algorithm": best_algo,
         "optimization_rounds": opt_rounds,
-        "feature_count":     n_features,
-        "training_samples":  n_samples,
-        "artifacts":         artifacts,
+        "feature_count": n_features,
+        "training_samples": n_samples,
+        "artifacts": artifacts,
     }
 
 
 # ── Service class ──────────────────────────────────────────────────────────────
+
 
 class MLTrainingService:
     """Async service facade — called from API route handlers."""
@@ -819,9 +865,7 @@ class MLTrainingService:
         data window. Returns the new child job.
         """
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
-                select(TrainingJob).where(TrainingJob.id == parent_job_id)
-            )
+            result = await db.execute(select(TrainingJob).where(TrainingJob.id == parent_job_id))
             parent = result.scalar_one_or_none()
             if not parent:
                 raise ValueError(f"Job {parent_job_id} not found")
@@ -850,21 +894,23 @@ class MLTrainingService:
         out = []
         for j in jobs:
             live = _JOB_CACHE.get(j.id, {})
-            out.append({
-                "job_id":             j.id,
-                "status":             live.get("status") or j.status,
-                "progress_pct":       live.get("progress_pct") or j.progress_pct,
-                "current_stage":      live.get("current_stage") or j.current_stage,
-                "algorithms":         j.selected_algorithms or [],
-                "data_window_days":   j.data_window_days,
-                "auto_optimize":      j.auto_optimize,
-                "best_algorithm":     live.get("best_algorithm") or j.best_algorithm,
-                "training_samples":   j.training_samples,
-                "result_model_id":    j.result_model_id,
-                "parent_job_id":      j.parent_job_id,
-                "created_at":         j.created_at.isoformat() if j.created_at else None,
-                "completed_at":       j.completed_at.isoformat() if j.completed_at else None,
-            })
+            out.append(
+                {
+                    "job_id": j.id,
+                    "status": live.get("status") or j.status,
+                    "progress_pct": live.get("progress_pct") or j.progress_pct,
+                    "current_stage": live.get("current_stage") or j.current_stage,
+                    "algorithms": j.selected_algorithms or [],
+                    "data_window_days": j.data_window_days,
+                    "auto_optimize": j.auto_optimize,
+                    "best_algorithm": live.get("best_algorithm") or j.best_algorithm,
+                    "training_samples": j.training_samples,
+                    "result_model_id": j.result_model_id,
+                    "parent_job_id": j.parent_job_id,
+                    "created_at": j.created_at.isoformat() if j.created_at else None,
+                    "completed_at": j.completed_at.isoformat() if j.completed_at else None,
+                }
+            )
         return out
 
     # ── Poll a single job ──────────────────────────────────────────────────────
@@ -890,20 +936,20 @@ class MLTrainingService:
                 raise ValueError(f"Job {job_id} not found")
 
         return {
-            "job_id":           job.id,
-            "status":           job.status,
-            "progress_pct":     job.progress_pct,
-            "current_stage":    job.current_stage,
-            "log_lines":        job.log_lines or [],
-            "metrics":          job.metrics_json or {},
-            "best_algorithm":   job.best_algorithm,
+            "job_id": job.id,
+            "status": job.status,
+            "progress_pct": job.progress_pct,
+            "current_stage": job.current_stage,
+            "log_lines": job.log_lines or [],
+            "metrics": job.metrics_json or {},
+            "best_algorithm": job.best_algorithm,
             "training_samples": job.training_samples,
-            "feature_count":    job.feature_count,
-            "result_model_id":  job.result_model_id,
+            "feature_count": job.feature_count,
+            "result_model_id": job.result_model_id,
             "optimization_rounds": job.optimization_rounds,
-            "error_message":    job.error_message,
-            "created_at":       job.created_at.isoformat() if job.created_at else None,
-            "completed_at":     job.completed_at.isoformat() if job.completed_at else None,
+            "error_message": job.error_message,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         }
 
     # ── Promote trained job → active MLModel ─────────────────────────────────
@@ -978,7 +1024,7 @@ class MLTrainingService:
         Returns model metadata without persisting a full training job.
         """
         try:
-            payload = pickle.loads(file_bytes)   # noqa: S301 — file is user-controlled
+            payload = pickle.loads(file_bytes)  # noqa: S301 — file is user-controlled
         except Exception as exc:
             raise ValueError(f"Cannot unpickle file: {exc}") from exc
 
@@ -1027,10 +1073,10 @@ class MLTrainingService:
             await db.refresh(new_model)
 
         return {
-            "model_id":   new_model.id,
+            "model_id": new_model.id,
             "model_name": model_name,
-            "version":    version,
-            "message":    f"Model '{model_name}' registered and set as active.",
+            "version": version,
+            "message": f"Model '{model_name}' registered and set as active.",
         }
 
     # ── Background training coroutine ─────────────────────────────────────────
@@ -1056,9 +1102,7 @@ class MLTrainingService:
         try:
             # ── Update job started_at ────────────────────────────────────────
             async with AsyncSessionLocal() as db:
-                res = await db.execute(
-                    select(TrainingJob).where(TrainingJob.id == job_id)
-                )
+                res = await db.execute(select(TrainingJob).where(TrainingJob.id == job_id))
                 job = res.scalar_one_or_none()
                 if job:
                     job.status = "running"
@@ -1067,6 +1111,7 @@ class MLTrainingService:
 
             # ── Auto data refresh (if schedule = on_training_start) ──────────
             from app.models.user import Tenant
+
             schema_mapping: dict | None = None
 
             async with AsyncSessionLocal() as db:
@@ -1081,9 +1126,15 @@ class MLTrainingService:
                     refresh_mode = "manual"
 
             if refresh_mode == "on_training_start" and tenant_config.get("data_refresh"):
-                _log(job_id, "Auto data refresh triggered (mode=on_training_start)…", pct=4, stage="Data Refresh")
+                _log(
+                    job_id,
+                    "Auto data refresh triggered (mode=on_training_start)…",
+                    pct=4,
+                    stage="Data Refresh",
+                )
                 try:
                     from app.services.data_sync_service import DataSyncService
+
                     refresh_cfg = tenant_config["data_refresh"]
                     sync_stats = await DataSyncService.run_sync(
                         tenant_id=tenant_id,
@@ -1091,8 +1142,12 @@ class MLTrainingService:
                         row_limit=refresh_cfg.get("row_limit", 100_000),
                         incremental=True,
                     )
-                    synced_txn = sync_stats.get("tables", {}).get("transactions", {}).get("upserted", 0)
-                    synced_cst = sync_stats.get("tables", {}).get("customers", {}).get("upserted", 0)
+                    synced_txn = (
+                        sync_stats.get("tables", {}).get("transactions", {}).get("upserted", 0)
+                    )
+                    synced_cst = (
+                        sync_stats.get("tables", {}).get("customers", {}).get("upserted", 0)
+                    )
                     _log(
                         job_id,
                         f"  Data refresh complete: {synced_txn:,} transactions, {synced_cst:,} customers synced.",
@@ -1116,6 +1171,7 @@ class MLTrainingService:
                 )
                 if data_window_days and data_window_days > 0:
                     from datetime import timedelta
+
                     cutoff = datetime.now(timezone.utc) - timedelta(days=data_window_days)
                     txn_query = txn_query.where(Transaction.transaction_timestamp >= cutoff)
 
@@ -1136,38 +1192,38 @@ class MLTrainingService:
             # Serialise ORM objects to plain dicts BEFORE leaving the session scope
             def _txn_to_dict(t: Transaction) -> dict:
                 return {
-                    "transaction_id":       t.id,
-                    "customer_id":          t.customer_id,
-                    "amount":               float(t.amount or 0),
-                    "currency":             t.currency or "INR",
-                    "transaction_type":     t.transaction_type or "purchase",
-                    "channel":              t.channel or "online",
-                    "merchant_name":        t.merchant_name or "",
+                    "transaction_id": t.id,
+                    "customer_id": t.customer_id,
+                    "amount": float(t.amount or 0),
+                    "currency": t.currency or "INR",
+                    "transaction_type": t.transaction_type or "purchase",
+                    "channel": t.channel or "online",
+                    "merchant_name": t.merchant_name or "",
                     "merchant_category_code": t.merchant_category_code or "",
                     "transaction_timestamp": t.transaction_timestamp,
-                    "location_lat":         float(t.location_lat or 0),
-                    "location_lng":         float(t.location_lng or 0),
-                    "city":                 t.city or "",
-                    "country_code":         t.country_code or "IN",
-                    "ip_address":           str(t.ip_address or ""),
-                    "device_fingerprint":   t.device_fingerprint or "",
-                    "device_type":          t.device_type or "unknown",
-                    "status":               t.status or "completed",
-                    "fraud_score":          float(t.fraud_score or 0),
-                    "fraud_category":       t.fraud_category or "unscored",
-                    "is_flagged":           bool(t.is_flagged),
-                    "is_blocked":           bool(t.is_blocked),
+                    "location_lat": float(t.location_lat or 0),
+                    "location_lng": float(t.location_lng or 0),
+                    "city": t.city or "",
+                    "country_code": t.country_code or "IN",
+                    "ip_address": str(t.ip_address or ""),
+                    "device_fingerprint": t.device_fingerprint or "",
+                    "device_type": t.device_type or "unknown",
+                    "status": t.status or "completed",
+                    "fraud_score": float(t.fraud_score or 0),
+                    "fraud_category": t.fraud_category or "unscored",
+                    "is_flagged": bool(t.is_flagged),
+                    "is_blocked": bool(t.is_blocked),
                 }
 
             def _cust_to_dict(c: Customer) -> dict:
                 return {
-                    "customer_id":          c.id,
-                    "risk_score":           float(c.risk_score or 0.1),
-                    "customer_tier":        c.customer_tier or "standard",
-                    "balance_amount":       float(c.balance_amount or 50000),
+                    "customer_id": c.id,
+                    "risk_score": float(c.risk_score or 0.1),
+                    "customer_tier": c.customer_tier or "standard",
+                    "balance_amount": float(c.balance_amount or 50000),
                     "account_opening_date": c.account_opening_date,
-                    "kyc_level":            c.kyc_verification_level or "basic",
-                    "profile_type":         c.account_type or "personal",
+                    "kyc_level": c.kyc_verification_level or "basic",
+                    "profile_type": c.account_type or "personal",
                 }
 
             txn_records = [_txn_to_dict(t) for t in txn_objs]
@@ -1207,30 +1263,30 @@ class MLTrainingService:
 
             # ── Persist to DB ─────────────────────────────────────────────────
             async with AsyncSessionLocal() as db:
-                res = await db.execute(
-                    select(TrainingJob).where(TrainingJob.id == job_id)
-                )
+                res = await db.execute(select(TrainingJob).where(TrainingJob.id == job_id))
                 job = res.scalar_one_or_none()
                 if job:
-                    job.status            = "completed"
-                    job.progress_pct      = 100
-                    job.current_stage     = "Completed"
-                    job.metrics_json      = result["metrics"]
-                    job.best_algorithm    = result["best_algorithm"]
+                    job.status = "completed"
+                    job.progress_pct = 100
+                    job.current_stage = "Completed"
+                    job.metrics_json = result["metrics"]
+                    job.best_algorithm = result["best_algorithm"]
                     job.optimization_rounds = result["optimization_rounds"]
-                    job.training_samples  = result["training_samples"]
-                    job.feature_count     = result["feature_count"]
-                    job.log_lines         = cache.get("log_lines", [])
-                    job.completed_at      = datetime.now(timezone.utc)
+                    job.training_samples = result["training_samples"]
+                    job.feature_count = result["feature_count"]
+                    job.log_lines = cache.get("log_lines", [])
+                    job.completed_at = datetime.now(timezone.utc)
                     await db.commit()
 
-            cache.update({
-                "status": "completed",
-                "progress_pct": 100,
-                "current_stage": "Completed",
-                "metrics": result["metrics"],
-                "best_algorithm": result["best_algorithm"],
-            })
+            cache.update(
+                {
+                    "status": "completed",
+                    "progress_pct": 100,
+                    "current_stage": "Completed",
+                    "metrics": result["metrics"],
+                    "best_algorithm": result["best_algorithm"],
+                }
+            )
             _log(
                 job_id,
                 f"✓ Training complete. Best algorithm: {result['best_algorithm']}",
@@ -1239,22 +1295,22 @@ class MLTrainingService:
         except Exception as exc:
             err = str(exc)
             logger.exception("Training job %s failed: %s", job_id, err)
-            cache.update({
-                "status": "failed",
-                "current_stage": "Failed",
-                "error_message": err,
-            })
+            cache.update(
+                {
+                    "status": "failed",
+                    "current_stage": "Failed",
+                    "error_message": err,
+                }
+            )
             _log(job_id, f"✗ Job failed: {err}")
 
             async with AsyncSessionLocal() as db:
-                res = await db.execute(
-                    select(TrainingJob).where(TrainingJob.id == job_id)
-                )
+                res = await db.execute(select(TrainingJob).where(TrainingJob.id == job_id))
                 job = res.scalar_one_or_none()
                 if job:
-                    job.status        = "failed"
+                    job.status = "failed"
                     job.current_stage = "Failed"
                     job.error_message = err
-                    job.log_lines     = cache.get("log_lines", [])
-                    job.completed_at  = datetime.now(timezone.utc)
+                    job.log_lines = cache.get("log_lines", [])
+                    job.completed_at = datetime.now(timezone.utc)
                     await db.commit()

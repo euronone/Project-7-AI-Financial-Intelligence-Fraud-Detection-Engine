@@ -1,4 +1,5 @@
 """Fraud alert endpoints — list, detail, update, report-fraud, freeze account."""
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +36,9 @@ async def list_alerts(
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()
 
-    query = query.order_by(FraudAlert.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
+    query = (
+        query.order_by(FraudAlert.created_at.desc()).offset((page - 1) * per_page).limit(per_page)
+    )
     result = await db.execute(query)
     items = result.scalars().all()
 
@@ -96,9 +99,10 @@ async def update_alert(
 # Customer / analyst marks an alert as confirmed fraud
 # ---------------------------------------------------------------------------
 
+
 class ReportFraudRequest(BaseModel):
     notes: str | None = None
-    freeze_account: bool = False   # If True, freeze the customer's account (admin action)
+    freeze_account: bool = False  # If True, freeze the customer's account (admin action)
 
 
 @router.post("/{alert_id}/report-fraud")
@@ -146,9 +150,7 @@ async def report_fraud(
     # Optionally freeze customer account (admin-only)
     customer_frozen = False
     if body.freeze_account and current_user.role == "admin" and alert.customer_id:
-        cust_result = await db.execute(
-            select(Customer).where(Customer.id == alert.customer_id)
-        )
+        cust_result = await db.execute(select(Customer).where(Customer.id == alert.customer_id))
         customer = cust_result.scalar_one_or_none()
         if customer:
             customer.account_status = "suspended"
@@ -169,6 +171,7 @@ async def report_fraud(
 # GET /alerts/summary — fraud stats summary (for dashboard)
 # ---------------------------------------------------------------------------
 
+
 @router.get("/summary")
 async def alert_summary(
     current_user: CurrentUser,
@@ -181,7 +184,13 @@ async def alert_summary(
     all_alerts = result.scalars().all()
 
     by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    by_status   = {"open": 0, "under_review": 0, "confirmed_fraud": 0, "false_positive": 0, "closed": 0}
+    by_status = {
+        "open": 0,
+        "under_review": 0,
+        "confirmed_fraud": 0,
+        "false_positive": 0,
+        "closed": 0,
+    }
 
     for a in all_alerts:
         if a.severity in by_severity:

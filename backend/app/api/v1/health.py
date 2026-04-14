@@ -1,4 +1,5 @@
 """Health check endpoints."""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -26,5 +27,7 @@ async def health_detailed(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         checks["database"] = f"error: {str(e)[:50]}"
 
-    overall = "ok" if all(v == "ok" for v in checks.values() if v != settings.APP_ENV) else "degraded"
+    overall = (
+        "ok" if all(v == "ok" for v in checks.values() if v != settings.APP_ENV) else "degraded"
+    )
     return {"status": overall, "checks": checks}

@@ -1,4 +1,5 @@
 """Transaction endpoints — ingest, score, list, detail, OTP pre-block, CSV upload."""
+
 import csv
 import io
 import random
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/transactions", tags=["Transactions"])
 # NOTE: Static-path routes (/test, /upload) MUST be declared before the
 # parameterised route (/{transaction_id}) so FastAPI matches them first.
 # ---------------------------------------------------------------------------
+
 
 @router.post("", response_model=TransactionResponse, status_code=201)
 async def create_transaction(
@@ -81,7 +83,10 @@ async def create_transaction(
     except Exception as _score_err:
         import traceback
         import logging
-        logging.getLogger(__name__).error("Fraud scoring failed: %s\n%s", _score_err, traceback.format_exc())
+
+        logging.getLogger(__name__).error(
+            "Fraud scoring failed: %s\n%s", _score_err, traceback.format_exc()
+        )
 
     return txn
 
@@ -122,6 +127,7 @@ async def list_transactions(
 # Static-path routes before /{transaction_id} to avoid shadowing
 # ---------------------------------------------------------------------------
 
+
 @router.post("/test", response_model=TransactionResponse, status_code=201)
 async def test_transaction(
     body: TransactionCreate,
@@ -142,6 +148,7 @@ async def get_transaction(
 ):
     """Get a single transaction by ID."""
     from app.core.exceptions import NotFoundException
+
     result = await db.execute(
         select(Transaction).where(
             Transaction.id == transaction_id,
@@ -158,6 +165,7 @@ async def get_transaction(
 # POST /transactions/{id}/request-otp
 # Blocks the transaction and sends an OTP to the customer (pre-settlement guard)
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{transaction_id}/request-otp")
 async def request_otp(
@@ -191,6 +199,7 @@ async def request_otp(
     # Generate 6-digit OTP
     otp = "".join(random.choices(string.digits, k=6))
     from datetime import timedelta
+
     _OTP_STORE[transaction_id] = {
         "otp": otp,
         "expires": datetime.now(timezone.utc) + timedelta(minutes=10),
@@ -200,9 +209,8 @@ async def request_otp(
     customer_phone: str | None = None
     if txn.customer_id:
         from app.models.customer import Customer
-        cust_result = await db.execute(
-            select(Customer).where(Customer.id == txn.customer_id)
-        )
+
+        cust_result = await db.execute(select(Customer).where(Customer.id == txn.customer_id))
         cust = cust_result.scalar_one_or_none()
         if cust:
             customer_phone = cust.phone_number
@@ -212,6 +220,7 @@ async def request_otp(
     if settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and customer_phone:
         try:
             from twilio.rest import Client
+
             client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
             client.messages.create(
                 body=f"FinShield OTP: {otp} — Use this to verify your ₹{float(txn.amount):,.0f} transaction. Valid 10 min.",
@@ -238,6 +247,7 @@ async def request_otp(
 # ---------------------------------------------------------------------------
 # POST /transactions/{id}/verify-otp
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{transaction_id}/verify-otp")
 async def verify_otp(
@@ -286,6 +296,7 @@ async def verify_otp(
 # POST /transactions/upload — CSV batch ingestion
 # ---------------------------------------------------------------------------
 
+
 @router.post("/upload", status_code=201)
 async def upload_transactions_csv(
     background_tasks: BackgroundTasks,
@@ -331,7 +342,7 @@ async def upload_transactions_csv(
         return default
 
     ingested = 0
-    skipped  = 0
+    skipped = 0
     errors: list[str] = []
     batch_txns: list[Transaction] = []
 
@@ -345,7 +356,11 @@ async def upload_transactions_csv(
             amount = float(amount_raw.replace(",", "").replace("₹", "").strip())
             ts_raw = get_col(row, "timestamp", "transaction_timestamp", "date", "txn_date")
             try:
-                ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00")) if ts_raw else datetime.now(timezone.utc)
+                ts = (
+                    datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                    if ts_raw
+                    else datetime.now(timezone.utc)
+                )
             except ValueError:
                 ts = datetime.now(timezone.utc)
 

@@ -2,6 +2,7 @@
 Admin user management endpoints.
 All routes require admin role and enforce tenant isolation.
 """
+
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 # ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
+
 
 class CreateUserRequest(BaseModel):
     email: str
@@ -53,6 +55,7 @@ class UserListItem(BaseModel):
 # GET /users  — list all users in tenant
 # ---------------------------------------------------------------------------
 
+
 @router.get("", response_model=List[UserListItem])
 async def list_users(
     admin: AdminUser,
@@ -60,9 +63,7 @@ async def list_users(
 ):
     """List all users within the admin's tenant."""
     result = await db.execute(
-        select(User)
-        .where(User.tenant_id == admin.tenant_id)
-        .order_by(User.created_at.desc())
+        select(User).where(User.tenant_id == admin.tenant_id).order_by(User.created_at.desc())
     )
     users = result.scalars().all()
     return [
@@ -84,6 +85,7 @@ async def list_users(
 # ---------------------------------------------------------------------------
 # POST /users  — admin creates a new user with a temp password
 # ---------------------------------------------------------------------------
+
 
 @router.post("", status_code=201)
 async def create_user(
@@ -125,6 +127,7 @@ async def create_user(
 # PUT /users/{user_id}/role  — change a user's role
 # ---------------------------------------------------------------------------
 
+
 @router.put("/{user_id}/role")
 async def update_user_role(
     user_id: str,
@@ -155,6 +158,7 @@ async def update_user_role(
 # POST /users/{user_id}/freeze  — freeze or unfreeze an account
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{user_id}/freeze")
 async def freeze_user(
     user_id: str,
@@ -184,6 +188,7 @@ async def freeze_user(
 # POST /users/{user_id}/force-reset  — force password reset on next login
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{user_id}/force-reset")
 async def force_password_reset(
     user_id: str,
@@ -208,6 +213,7 @@ async def force_password_reset(
 # ---------------------------------------------------------------------------
 # GET /users/me  — current user's own profile (any role)
 # ---------------------------------------------------------------------------
+
 
 @router.get("/me", response_model=UserResponse)
 async def get_my_profile(

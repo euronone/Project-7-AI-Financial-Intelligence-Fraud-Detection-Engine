@@ -5,6 +5,7 @@ for a brand-new tenant so their dashboard is populated immediately.
 Called by POST /settings/initialize (idempotent — only runs when the
 tenant has zero transaction records).
 """
+
 from __future__ import annotations
 
 import logging
@@ -25,66 +26,164 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _FIRST_NAMES = [
-    "Aarav", "Arjun", "Rohan", "Vikram", "Kiran", "Suresh", "Rahul", "Amit",
-    "Deepak", "Rajesh", "Sanjay", "Manish", "Nikhil", "Vishal", "Kartik",
-    "Priya", "Divya", "Ananya", "Sneha", "Pooja", "Kavya", "Meera", "Ritu",
-    "Shreya", "Nisha", "Lakshmi", "Geeta", "Sunita", "Rekha", "Anjali",
-    "Mohammed", "Arun", "Sunil", "Prakash", "Ravi", "Gopal", "Mohan",
-    "Venkat", "Srikanth", "Ramesh", "Ganesh", "Mahesh", "Dinesh", "Harish",
-    "Naveen", "Sridhar", "Balaji", "Vijay", "Anil", "Ashok", "Pankaj",
-    "Yogesh", "Rakesh", "Sudhir", "Ajay", "Vijayalakshmi", "Chandra",
-    "Pallavi", "Archana", "Usha", "Radha", "Saritha", "Vidya", "Smitha",
+    "Aarav",
+    "Arjun",
+    "Rohan",
+    "Vikram",
+    "Kiran",
+    "Suresh",
+    "Rahul",
+    "Amit",
+    "Deepak",
+    "Rajesh",
+    "Sanjay",
+    "Manish",
+    "Nikhil",
+    "Vishal",
+    "Kartik",
+    "Priya",
+    "Divya",
+    "Ananya",
+    "Sneha",
+    "Pooja",
+    "Kavya",
+    "Meera",
+    "Ritu",
+    "Shreya",
+    "Nisha",
+    "Lakshmi",
+    "Geeta",
+    "Sunita",
+    "Rekha",
+    "Anjali",
+    "Mohammed",
+    "Arun",
+    "Sunil",
+    "Prakash",
+    "Ravi",
+    "Gopal",
+    "Mohan",
+    "Venkat",
+    "Srikanth",
+    "Ramesh",
+    "Ganesh",
+    "Mahesh",
+    "Dinesh",
+    "Harish",
+    "Naveen",
+    "Sridhar",
+    "Balaji",
+    "Vijay",
+    "Anil",
+    "Ashok",
+    "Pankaj",
+    "Yogesh",
+    "Rakesh",
+    "Sudhir",
+    "Ajay",
+    "Vijayalakshmi",
+    "Chandra",
+    "Pallavi",
+    "Archana",
+    "Usha",
+    "Radha",
+    "Saritha",
+    "Vidya",
+    "Smitha",
 ]
 
 _LAST_NAMES = [
-    "Sharma", "Gupta", "Singh", "Kumar", "Verma", "Patel", "Shah", "Mehta",
-    "Joshi", "Rao", "Reddy", "Nair", "Iyer", "Pillai", "Menon", "Agarwal",
-    "Srivastava", "Mishra", "Tiwari", "Pandey", "Yadav", "Chauhan", "Jain",
-    "Bose", "Das", "Mukherjee", "Chatterjee", "Banerjee", "Ghosh", "Sen",
-    "Kapoor", "Malhotra", "Khanna", "Chopra", "Arora", "Sethi", "Bajaj",
-    "Desai", "Chaudhary", "Saxena", "Soni", "Bhatt", "Naik", "Kulkarni",
-    "Deshpande", "Joshi", "More", "Patil", "Shinde", "Pawar",
+    "Sharma",
+    "Gupta",
+    "Singh",
+    "Kumar",
+    "Verma",
+    "Patel",
+    "Shah",
+    "Mehta",
+    "Joshi",
+    "Rao",
+    "Reddy",
+    "Nair",
+    "Iyer",
+    "Pillai",
+    "Menon",
+    "Agarwal",
+    "Srivastava",
+    "Mishra",
+    "Tiwari",
+    "Pandey",
+    "Yadav",
+    "Chauhan",
+    "Jain",
+    "Bose",
+    "Das",
+    "Mukherjee",
+    "Chatterjee",
+    "Banerjee",
+    "Ghosh",
+    "Sen",
+    "Kapoor",
+    "Malhotra",
+    "Khanna",
+    "Chopra",
+    "Arora",
+    "Sethi",
+    "Bajaj",
+    "Desai",
+    "Chaudhary",
+    "Saxena",
+    "Soni",
+    "Bhatt",
+    "Naik",
+    "Kulkarni",
+    "Deshpande",
+    "Joshi",
+    "More",
+    "Patil",
+    "Shinde",
+    "Pawar",
 ]
 
 _CITIES = [
-    ("Mumbai",     "Maharashtra",  "400001", 19.076,  72.878),
-    ("Delhi",      "Delhi",        "110001", 28.613,  77.209),
-    ("Bangalore",  "Karnataka",    "560001", 12.972,  77.594),
-    ("Hyderabad",  "Telangana",    "500001", 17.385,  78.487),
-    ("Chennai",    "Tamil Nadu",   "600001", 13.083,  80.270),
-    ("Kolkata",    "West Bengal",  "700001", 22.573,  88.364),
-    ("Pune",       "Maharashtra",  "411001", 18.520,  73.857),
-    ("Ahmedabad",  "Gujarat",      "380001", 23.022,  72.571),
-    ("Jaipur",     "Rajasthan",    "302001", 26.913,  75.787),
-    ("Lucknow",    "Uttar Pradesh","226001", 26.847,  80.947),
-    ("Surat",      "Gujarat",      "395001", 21.170,  72.831),
-    ("Kochi",      "Kerala",       "682001", 9.939,   76.270),
-    ("Chandigarh", "Punjab",       "160001", 30.734,  76.779),
-    ("Nagpur",     "Maharashtra",  "440001", 21.146,  79.089),
-    ("Indore",     "Madhya Pradesh","452001",22.719,  75.857),
+    ("Mumbai", "Maharashtra", "400001", 19.076, 72.878),
+    ("Delhi", "Delhi", "110001", 28.613, 77.209),
+    ("Bangalore", "Karnataka", "560001", 12.972, 77.594),
+    ("Hyderabad", "Telangana", "500001", 17.385, 78.487),
+    ("Chennai", "Tamil Nadu", "600001", 13.083, 80.270),
+    ("Kolkata", "West Bengal", "700001", 22.573, 88.364),
+    ("Pune", "Maharashtra", "411001", 18.520, 73.857),
+    ("Ahmedabad", "Gujarat", "380001", 23.022, 72.571),
+    ("Jaipur", "Rajasthan", "302001", 26.913, 75.787),
+    ("Lucknow", "Uttar Pradesh", "226001", 26.847, 80.947),
+    ("Surat", "Gujarat", "395001", 21.170, 72.831),
+    ("Kochi", "Kerala", "682001", 9.939, 76.270),
+    ("Chandigarh", "Punjab", "160001", 30.734, 76.779),
+    ("Nagpur", "Maharashtra", "440001", 21.146, 79.089),
+    ("Indore", "Madhya Pradesh", "452001", 22.719, 75.857),
 ]
 
 _MERCHANTS = [
-    ("Swiggy",           "5812", "online",       "food"),
-    ("Zomato",           "5812", "online",       "food"),
-    ("Amazon",           "5999", "online",       "shopping"),
-    ("Flipkart",         "5999", "online",       "shopping"),
-    ("Myntra",           "5691", "online",       "shopping"),
-    ("Reliance Fresh",   "5411", "pos_physical", "grocery"),
-    ("BigBazaar",        "5411", "pos_physical", "grocery"),
-    ("Dmart",            "5411", "pos_physical", "grocery"),
-    ("HPCL Pump",        "5541", "pos_physical", "fuel"),
-    ("BPCL Pump",        "5541", "pos_physical", "fuel"),
-    ("PVR Cinemas",      "7832", "pos_physical", "entertainment"),
-    ("BookMyShow",       "7832", "online",       "entertainment"),
-    ("MakeMyTrip",       "4722", "online",       "travel"),
-    ("Irctc",            "4112", "online",       "travel"),
-    ("Apollo Pharmacy",  "5912", "pos_physical", "healthcare"),
-    ("Practo",           "8099", "online",       "healthcare"),
-    ("Starbucks",        "5812", "pos_physical", "food"),
-    ("McDonalds",        "5812", "pos_physical", "food"),
-    ("Urban Company",    "7389", "online",       "services"),
-    ("ATM Withdrawal",   "6011", "atm",          "atm"),
+    ("Swiggy", "5812", "online", "food"),
+    ("Zomato", "5812", "online", "food"),
+    ("Amazon", "5999", "online", "shopping"),
+    ("Flipkart", "5999", "online", "shopping"),
+    ("Myntra", "5691", "online", "shopping"),
+    ("Reliance Fresh", "5411", "pos_physical", "grocery"),
+    ("BigBazaar", "5411", "pos_physical", "grocery"),
+    ("Dmart", "5411", "pos_physical", "grocery"),
+    ("HPCL Pump", "5541", "pos_physical", "fuel"),
+    ("BPCL Pump", "5541", "pos_physical", "fuel"),
+    ("PVR Cinemas", "7832", "pos_physical", "entertainment"),
+    ("BookMyShow", "7832", "online", "entertainment"),
+    ("MakeMyTrip", "4722", "online", "travel"),
+    ("Irctc", "4112", "online", "travel"),
+    ("Apollo Pharmacy", "5912", "pos_physical", "healthcare"),
+    ("Practo", "8099", "online", "healthcare"),
+    ("Starbucks", "5812", "pos_physical", "food"),
+    ("McDonalds", "5812", "pos_physical", "food"),
+    ("Urban Company", "7389", "online", "services"),
+    ("ATM Withdrawal", "6011", "atm", "atm"),
 ]
 
 
@@ -94,12 +193,12 @@ _MERCHANTS = [
 
 _PROFILES = [
     # (type_name, count, avg_balance, avg_spend, risk_base, tier, kyc)
-    ("standard_salaried", 40, 145_000,  25_000, 0.08, "standard", "verified"),
-    ("high_net_worth",    15, 850_000, 200_000, 0.05, "vip",      "verified"),
-    ("student",           15,  12_000,   8_000, 0.15, "standard", "basic"),
-    ("small_business",    15, 320_000,  75_000, 0.12, "premium",  "verified"),
-    ("senior_citizen",    10,  90_000,  15_000, 0.20, "standard", "verified"),
-    ("compromised",        5,  55_000,  30_000, 0.75, "standard", "verified"),
+    ("standard_salaried", 40, 145_000, 25_000, 0.08, "standard", "verified"),
+    ("high_net_worth", 15, 850_000, 200_000, 0.05, "vip", "verified"),
+    ("student", 15, 12_000, 8_000, 0.15, "standard", "basic"),
+    ("small_business", 15, 320_000, 75_000, 0.12, "premium", "verified"),
+    ("senior_citizen", 10, 90_000, 15_000, 0.20, "standard", "verified"),
+    ("compromised", 5, 55_000, 30_000, 0.75, "standard", "verified"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -107,12 +206,12 @@ _PROFILES = [
 # ---------------------------------------------------------------------------
 
 _FRAUD_PATTERNS = [
-    "card_not_present_fraud",   # 80
-    "account_takeover",         # 60
-    "impossible_travel",        # 50
-    "velocity_fraud",           # 40
-    "identity_theft",           # 40
-    "money_mule",               # 30
+    "card_not_present_fraud",  # 80
+    "account_takeover",  # 60
+    "impossible_travel",  # 50
+    "velocity_fraud",  # 40
+    "identity_theft",  # 40
+    "money_mule",  # 30
 ]
 
 _FRAUD_PATTERN_WEIGHTS = [80, 60, 50, 40, 40, 30]
@@ -154,7 +253,7 @@ async def seed_tenant_sample_data(
         for _ in range(actual):
             cid = str(uuid.uuid4())
             first = rng.choice(_FIRST_NAMES)
-            last  = rng.choice(_LAST_NAMES)
+            last = rng.choice(_LAST_NAMES)
             city_row = rng.choice(_CITIES)
             city, state, postal, _lat, _lng = city_row
 
@@ -195,7 +294,7 @@ async def seed_tenant_sample_data(
         city_row = rng.choice(_CITIES)
         city, state, postal, _lat, _lng = city_row
         first = rng.choice(_FIRST_NAMES)
-        last  = rng.choice(_LAST_NAMES)
+        last = rng.choice(_LAST_NAMES)
         c = Customer(
             id=cid,
             tenant_id=tenant_id,
@@ -322,7 +421,9 @@ async def seed_tenant_sample_data(
             channel=channel,
             location_lat=round(txn_lat, 6),
             location_lng=round(txn_lng, 6),
-            country_code="IN" if pattern not in ("impossible_travel",) else rng.choice(["US", "GB", "SG", "AE"]),
+            country_code="IN"
+            if pattern not in ("impossible_travel",)
+            else rng.choice(["US", "GB", "SG", "AE"]),
             device_fingerprint=f"df_fraud_{uuid.uuid4().hex[:8]}",
             device_type="mobile",
             status="blocked" if is_blocked else "flagged",
@@ -347,7 +448,10 @@ async def seed_tenant_sample_data(
 
     logger.info(
         "Seeded tenant %s: %d customers, %d transactions (%d fraud)",
-        tenant_id, len(customers), len(transactions), n_fraud,
+        tenant_id,
+        len(customers),
+        len(transactions),
+        n_fraud,
     )
     return {
         "customers_created": len(customers),

@@ -1,6 +1,8 @@
 """FinShield AI — FastAPI application entry point."""
+
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import structlog
@@ -75,10 +77,13 @@ def create_app() -> FastAPI:
         conn_id = await ws_manager.connect(websocket, tenant_id)
         try:
             # Send a welcome ping so client knows it's connected
-            await ws_manager.send_to_connection(conn_id, {
-                "event": "connected",
-                "data": {"tenant_id": tenant_id, "connection_id": conn_id},
-            })
+            await ws_manager.send_to_connection(
+                conn_id,
+                {
+                    "event": "connected",
+                    "data": {"tenant_id": tenant_id, "connection_id": conn_id},
+                },
+            )
             while True:
                 # Keep connection alive; client can send pings
                 data = await websocket.receive_text()

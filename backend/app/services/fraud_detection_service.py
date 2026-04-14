@@ -27,6 +27,7 @@ Rules Engine Coverage:
   R13 - Round-amount pattern (structuring variant)
   R14 - Compound boosters (foreign+new-device, night+large+new-device, etc.)
 """
+
 from __future__ import annotations
 
 import math
@@ -54,6 +55,7 @@ def _get_pipeline():
     if _pipeline is None:
         try:
             from app.ml.pipeline import FraudScoringPipeline
+
             _pipeline = FraudScoringPipeline.get_instance()
             logger.info("ML pipeline loaded successfully")
         except Exception as exc:
@@ -107,6 +109,7 @@ def _severity_for_score(score: float) -> str:
 # Haversine distance helper
 # ---------------------------------------------------------------------------
 
+
 def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
     """
     Normalise a datetime to UTC-aware.
@@ -140,11 +143,21 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 # High-risk country list  (ISO-3166-1 alpha-2)
 # ---------------------------------------------------------------------------
 _HIGH_RISK_COUNTRIES = {
-    "NG", "GH", "CM", "CI",  # West Africa — high CNP fraud
-    "UA", "RU", "BY",         # Eastern Europe — carding rings
-    "PK", "BD",               # South Asia — synthetic identity
-    "IR", "SY", "KP",         # Sanctioned jurisdictions
-    "VE", "YE", "LY",         # High-risk / conflict zones
+    "NG",
+    "GH",
+    "CM",
+    "CI",  # West Africa — high CNP fraud
+    "UA",
+    "RU",
+    "BY",  # Eastern Europe — carding rings
+    "PK",
+    "BD",  # South Asia — synthetic identity
+    "IR",
+    "SY",
+    "KP",  # Sanctioned jurisdictions
+    "VE",
+    "YE",
+    "LY",  # High-risk / conflict zones
 }
 
 # High-risk Merchant Category Codes
@@ -164,6 +177,7 @@ _HIGH_RISK_MCC = {
 # Rules engine (12+ deterministic rules, additive + compound scoring)
 # ---------------------------------------------------------------------------
 
+
 def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple[float, list[str]]:
     """
     Multi-signal deterministic rule engine.
@@ -181,7 +195,7 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
     country = (txn.country_code or "").upper().strip()
     channel = (txn.channel or "").lower()
     mcc = (txn.merchant_category_code or "").strip()
-    device_fp = (txn.device_fingerprint or "")
+    device_fp = txn.device_fingerprint or ""
     hour = txn.transaction_timestamp.hour if txn.transaction_timestamp else -1
     lat = float(txn.location_lat) if txn.location_lat is not None else None
     lng = float(txn.location_lng) if txn.location_lng is not None else None
@@ -233,12 +247,16 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
         one_hour_ago = now_utc - timedelta(hours=1)
 
         cnt_10m = sum(
-            1 for t in recent_txns
-            if _ensure_utc(t.transaction_timestamp) and _ensure_utc(t.transaction_timestamp) >= ten_min_ago
+            1
+            for t in recent_txns
+            if _ensure_utc(t.transaction_timestamp)
+            and _ensure_utc(t.transaction_timestamp) >= ten_min_ago
         )
         cnt_1h = sum(
-            1 for t in recent_txns
-            if _ensure_utc(t.transaction_timestamp) and _ensure_utc(t.transaction_timestamp) >= one_hour_ago
+            1
+            for t in recent_txns
+            if _ensure_utc(t.transaction_timestamp)
+            and _ensure_utc(t.transaction_timestamp) >= one_hour_ago
         )
 
         if cnt_1h >= 8:
@@ -262,14 +280,12 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
     if recent_txns:
         now_utc = datetime.now(timezone.utc)
         recent_24h = [
-            t for t in recent_txns
+            t
+            for t in recent_txns
             if _ensure_utc(t.transaction_timestamp)
             and _ensure_utc(t.transaction_timestamp) >= now_utc - timedelta(hours=24)
         ]
-        near_threshold_prev = [
-            t for t in recent_24h
-            if 600_000 <= float(t.amount or 0) <= 799_999
-        ]
+        near_threshold_prev = [t for t in recent_24h if 600_000 <= float(t.amount or 0) <= 799_999]
         is_near_threshold_now = 600_000 <= amount <= 799_999
         if len(near_threshold_prev) >= 2 or (near_threshold_prev and is_near_threshold_now):
             score += 0.60
@@ -287,12 +303,18 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
                     and txn.transaction_timestamp
                 ):
                     elapsed_min = abs(
-                        (_ensure_utc(txn.transaction_timestamp) - _ensure_utc(prev.transaction_timestamp)).total_seconds() / 60
+                        (
+                            _ensure_utc(txn.transaction_timestamp)
+                            - _ensure_utc(prev.transaction_timestamp)
+                        ).total_seconds()
+                        / 60
                     )
                     if elapsed_min < 180 and elapsed_min > 0:
                         dist_km = _haversine_km(
-                            float(prev.location_lat), float(prev.location_lng),
-                            lat, lng,
+                            float(prev.location_lat),
+                            float(prev.location_lng),
+                            lat,
+                            lng,
                         )
                         speed_kmh = (dist_km / elapsed_min) * 60
                         if speed_kmh > 900 and dist_km > 50:
@@ -318,7 +340,11 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
                 and country
             ):
                 elapsed_min = abs(
-                    (_ensure_utc(txn.transaction_timestamp) - _ensure_utc(last.transaction_timestamp)).total_seconds() / 60
+                    (
+                        _ensure_utc(txn.transaction_timestamp)
+                        - _ensure_utc(last.transaction_timestamp)
+                    ).total_seconds()
+                    / 60
                 )
                 if elapsed_min < 90 and last.country_code.upper() != country:
                     score += 0.75
@@ -347,7 +373,8 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
     # ── R13: Repeated round-amount pattern ──────────────────────────────────
     if recent_txns and amount > 0 and amount % 1_000 == 0:
         round_prev = sum(
-            1 for t in recent_txns[:15]
+            1
+            for t in recent_txns[:15]
             if float(t.amount or 0) % 1_000 == 0 and float(t.amount or 0) > 0
         )
         if round_prev >= 3:
@@ -381,6 +408,7 @@ def _run_simple_rules(txn: Transaction, recent_txns: list[Transaction]) -> tuple
 # ---------------------------------------------------------------------------
 # Main scoring function
 # ---------------------------------------------------------------------------
+
 
 async def score_transaction(
     txn: Transaction,
@@ -519,7 +547,9 @@ async def score_transaction(
         await db.refresh(alert)
         logger.info(
             "Fraud alert created | txn=%s score=%.3f severity=%s",
-            txn.id, final_score, alert.severity,
+            txn.id,
+            final_score,
+            alert.severity,
         )
 
     # ---- Step 7: Send notifications (fire-and-forget, non-blocking) ----------
@@ -530,6 +560,7 @@ async def score_transaction(
             from app.models.customer import Customer
             from app.models.user import Tenant
             from sqlalchemy import select as sa_select
+
             cust_res = await db.execute(sa_select(Customer).where(Customer.id == txn.customer_id))
             cust = cust_res.scalar_one_or_none()
             # Pull tenant-configured company alert email
@@ -541,21 +572,29 @@ async def score_transaction(
             tenant_plan: str = "free"
             if tenant_obj and tenant_obj.db_config_json:
                 notif_cfg = tenant_obj.db_config_json.get("notifications", {})
-                tenant_plan = (tenant_obj.subscription_plan or "free")
+                tenant_plan = tenant_obj.subscription_plan or "free"
 
             tenant_alert_email: str | None = notif_cfg.get("company_alert_email") or None
             # ISSUE-003: read channel toggles
-            sms_enabled          = bool(notif_cfg.get("sms_enabled",      True))
-            email_customer_on    = bool(notif_cfg.get("email_customer",   True))
-            email_company_on     = bool(notif_cfg.get("email_company",    True))
+            sms_enabled = bool(notif_cfg.get("sms_enabled", True))
+            email_customer_on = bool(notif_cfg.get("email_customer", True))
+            email_company_on = bool(notif_cfg.get("email_company", True))
 
             # Pre-fetch BYOK credentials while db session is still open
-            from app.services.credential_service import get_decrypted as _get_cred, scan_any_cred_for_service as _scan_svc
-            byok_resend   = await _get_cred(db, txn.tenant_id, "resend",  "resend_api_key") or await _scan_svc(db, txn.tenant_id, "resend")
-            byok_brevo    = await _get_cred(db, txn.tenant_id, "brevo",   "brevo_api_key")  or await _scan_svc(db, txn.tenant_id, "brevo")
-            byok_twilio_sid   = await _get_cred(db, txn.tenant_id, "twilio", "twilio_account_sid")
+            from app.services.credential_service import (
+                get_decrypted as _get_cred,
+                scan_any_cred_for_service as _scan_svc,
+            )
+
+            byok_resend = await _get_cred(
+                db, txn.tenant_id, "resend", "resend_api_key"
+            ) or await _scan_svc(db, txn.tenant_id, "resend")
+            byok_brevo = await _get_cred(
+                db, txn.tenant_id, "brevo", "brevo_api_key"
+            ) or await _scan_svc(db, txn.tenant_id, "brevo")
+            byok_twilio_sid = await _get_cred(db, txn.tenant_id, "twilio", "twilio_account_sid")
             byok_twilio_token = await _get_cred(db, txn.tenant_id, "twilio", "twilio_auth_token")
-            byok_twilio_from  = await _get_cred(db, txn.tenant_id, "twilio", "twilio_from_number")
+            byok_twilio_from = await _get_cred(db, txn.tenant_id, "twilio", "twilio_from_number")
             # ISSUE-008: resolve verified sender address before the session closes
             byok_from_email = await _get_cred(db, txn.tenant_id, "resend", "from_email") or None
 
@@ -594,6 +633,7 @@ async def score_transaction(
     if broadcast_fn is not None:
         try:
             import asyncio
+
             payload = {
                 "event": "transaction_scored",
                 "data": {
@@ -623,9 +663,9 @@ async def score_transaction(
     if ml_result:
         key_map = {
             "anomaly_score": "Anomaly Detector",
-            "xgb_score":     "XGBoost",
-            "rf_score":      "Random Forest",
-            "nn_score":      "Neural Network",
+            "xgb_score": "XGBoost",
+            "rf_score": "Random Forest",
+            "nn_score": "Neural Network",
         }
         for key, label in key_map.items():
             val = ml_result.get(key)
@@ -635,30 +675,31 @@ async def score_transaction(
     # Final ensemble weight allocation (approximate, matches pipeline defaults)
     if ml_result:
         rules_weight = 0.25
-        ml_weight    = 0.75
+        ml_weight = 0.75
     else:
         rules_weight = 1.0
-        ml_weight    = 0.0
+        ml_weight = 0.0
 
     model_breakdown = {
         "layers": [
             {
-                "name":    "Rules Engine",
-                "layer":   "rules",
-                "score":   round(rules_score, 4),
-                "weight":  rules_weight,
+                "name": "Rules Engine",
+                "layer": "rules",
+                "score": round(rules_score, 4),
+                "weight": rules_weight,
                 "contribution": round(rules_score * rules_weight, 4),
                 "triggered_rules": triggered_rules,
                 "description": (
                     f"{len(triggered_rules)} rule(s) triggered"
-                    if triggered_rules else "No rules triggered"
+                    if triggered_rules
+                    else "No rules triggered"
                 ),
             },
             {
-                "name":    "ML Ensemble" if ml_result else "ML Model (unavailable)",
-                "layer":   "ml",
-                "score":   round(float(ml_result.get("fraud_score", 0)) if ml_result else 0, 4),
-                "weight":  ml_weight,
+                "name": "ML Ensemble" if ml_result else "ML Model (unavailable)",
+                "layer": "ml",
+                "score": round(float(ml_result.get("fraud_score", 0)) if ml_result else 0, 4),
+                "weight": ml_weight,
                 "contribution": round(
                     float(ml_result.get("fraud_score", 0)) * ml_weight if ml_result else 0,
                     4,
@@ -667,15 +708,19 @@ async def score_transaction(
                 "description": (
                     f"Trained ensemble · {len(ml_individual)} model(s): "
                     + ", ".join(ml_individual.keys())
-                    if ml_result and ml_individual else
-                    ("Ensemble active (scores loading)" if ml_result else "ML pipeline not loaded — rules-only mode")
+                    if ml_result and ml_individual
+                    else (
+                        "Ensemble active (scores loading)"
+                        if ml_result
+                        else "ML pipeline not loaded — rules-only mode"
+                    )
                 ),
             },
         ],
-        "final_score":    round(final_score, 4),
+        "final_score": round(final_score, 4),
         "final_decision": decision,
-        "rules_score":    round(rules_score, 4),
-        "ml_available":   ml_result is not None,
+        "rules_score": round(rules_score, 4),
+        "ml_available": ml_result is not None,
     }
 
     return {

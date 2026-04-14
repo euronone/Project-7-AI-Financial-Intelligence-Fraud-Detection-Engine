@@ -8,6 +8,7 @@ Provides:
   GET /api/v1/customers/charts/activity    – daily transaction activity over N days
   GET /api/v1/customers/top-risky          – paginated table of riskiest profiles
 """
+
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -29,6 +30,7 @@ router = APIRouter(prefix="/customers", tags=["Customers"])
 # 1. Stats card
 # ---------------------------------------------------------------------------
 
+
 @router.get("/stats")
 async def get_customer_stats(
     current_user: CurrentUser,
@@ -41,9 +43,7 @@ async def get_customer_stats(
     """
     tid = current_user.tenant_id
 
-    total_res = await db.execute(
-        select(func.count(Customer.id)).where(Customer.tenant_id == tid)
-    )
+    total_res = await db.execute(select(func.count(Customer.id)).where(Customer.tenant_id == tid))
     total = total_res.scalar_one() or 0
 
     # Customers who have had at least one fraudulent transaction
@@ -89,6 +89,7 @@ async def get_customer_stats(
 # 2. Chart: risk score distribution
 # ---------------------------------------------------------------------------
 
+
 @router.get("/charts/risk-dist")
 async def get_risk_distribution(
     current_user: CurrentUser,
@@ -108,10 +109,10 @@ async def get_risk_distribution(
     tid = current_user.tenant_id
 
     bands = [
-        ("low",      0.00, 0.20, "#22C55E"),
-        ("guarded",  0.20, 0.40, "#84CC16"),
-        ("medium",   0.40, 0.60, "#EAB308"),
-        ("high",     0.60, 0.80, "#F97316"),
+        ("low", 0.00, 0.20, "#22C55E"),
+        ("guarded", 0.20, 0.40, "#84CC16"),
+        ("medium", 0.40, 0.60, "#EAB308"),
+        ("high", 0.60, 0.80, "#F97316"),
         ("critical", 0.80, 1.01, "#EF4444"),
     ]
 
@@ -124,13 +125,15 @@ async def get_risk_distribution(
                 Customer.risk_score < hi,
             )
         )
-        result.append({
-            "band": label,
-            "min": lo,
-            "max": hi,
-            "count": res.scalar_one() or 0,
-            "color": color,
-        })
+        result.append(
+            {
+                "band": label,
+                "min": lo,
+                "max": hi,
+                "count": res.scalar_one() or 0,
+                "color": color,
+            }
+        )
 
     return {"distribution": result}
 
@@ -138,6 +141,7 @@ async def get_risk_distribution(
 # ---------------------------------------------------------------------------
 # 3. Chart: fraud vs legitimate breakdown per account tier
 # ---------------------------------------------------------------------------
+
 
 @router.get("/charts/fraud-legit")
 async def get_fraud_vs_legit(
@@ -154,12 +158,10 @@ async def get_fraud_vs_legit(
         select(
             Customer.customer_tier,
             func.count(Transaction.id).label("total"),
-            func.sum(
-                case((Transaction.fraud_category == "fraudulent", 1), else_=0)
-            ).label("fraud"),
-            func.sum(
-                case((Transaction.fraud_category == "legitimate", 1), else_=0)
-            ).label("legitimate"),
+            func.sum(case((Transaction.fraud_category == "fraudulent", 1), else_=0)).label("fraud"),
+            func.sum(case((Transaction.fraud_category == "legitimate", 1), else_=0)).label(
+                "legitimate"
+            ),
         )
         .join(Transaction, Transaction.customer_id == Customer.id)
         .where(
@@ -172,12 +174,14 @@ async def get_fraud_vs_legit(
 
     data = []
     for row in rows.all():
-        data.append({
-            "tier": row.customer_tier or "unknown",
-            "total": row.total,
-            "fraud": int(row.fraud or 0),
-            "legitimate": int(row.legitimate or 0),
-        })
+        data.append(
+            {
+                "tier": row.customer_tier or "unknown",
+                "total": row.total,
+                "fraud": int(row.fraud or 0),
+                "legitimate": int(row.legitimate or 0),
+            }
+        )
 
     return {"breakdown": data}
 
@@ -185,6 +189,7 @@ async def get_fraud_vs_legit(
 # ---------------------------------------------------------------------------
 # 4. Chart: transaction activity over time
 # ---------------------------------------------------------------------------
+
 
 @router.get("/charts/activity")
 async def get_activity_over_time(
@@ -203,9 +208,7 @@ async def get_activity_over_time(
         select(
             func.date(Transaction.transaction_timestamp).label("date"),
             func.count(Transaction.id).label("total"),
-            func.sum(
-                case((Transaction.fraud_category == "fraudulent", 1), else_=0)
-            ).label("fraud"),
+            func.sum(case((Transaction.fraud_category == "fraudulent", 1), else_=0)).label("fraud"),
         )
         .where(
             Transaction.tenant_id == tid,
@@ -231,6 +234,7 @@ async def get_activity_over_time(
 # ---------------------------------------------------------------------------
 # 5. Top risky profiles table
 # ---------------------------------------------------------------------------
+
 
 @router.get("/top-risky")
 async def get_top_risky_customers(
@@ -258,9 +262,9 @@ async def get_top_risky_customers(
         select(
             Transaction.customer_id,
             func.count(Transaction.id).label("txn_total"),
-            func.sum(
-                case((Transaction.fraud_category == "fraudulent", 1), else_=0)
-            ).label("txn_fraud"),
+            func.sum(case((Transaction.fraud_category == "fraudulent", 1), else_=0)).label(
+                "txn_fraud"
+            ),
         )
         .where(
             Transaction.tenant_id == tid,
@@ -302,9 +306,7 @@ async def get_top_risky_customers(
 
     if search:
         like_term = f"%{search}%"
-        query = query.where(
-            Customer.full_name.ilike(like_term) | Customer.email.ilike(like_term)
-        )
+        query = query.where(Customer.full_name.ilike(like_term) | Customer.email.ilike(like_term))
     if account_type:
         query = query.where(Customer.account_type == account_type)
     if kyc_status:
@@ -317,8 +319,9 @@ async def get_top_risky_customers(
 
     # Sorted by risk descending, then open alerts descending
     query = (
-        query
-        .order_by(Customer.risk_score.desc(), func.coalesce(alert_counts.c.open_alerts, 0).desc())
+        query.order_by(
+            Customer.risk_score.desc(), func.coalesce(alert_counts.c.open_alerts, 0).desc()
+        )
         .offset((page - 1) * per_page)
         .limit(per_page)
     )
@@ -352,30 +355,32 @@ async def get_top_risky_customers(
         primary_pm = pm_map.get(cust.id)
 
         # Build payment_methods summary label
-        payment_type  = primary_pm["payment_type"]  if primary_pm else None
+        payment_type = primary_pm["payment_type"] if primary_pm else None
         payment_label = primary_pm["display_label"] if primary_pm else None
 
-        items.append({
-            "customer_id": cust.id,
-            "full_name": cust.full_name,
-            "email": cust.email,
-            "phone_number": cust.phone_number,
-            "city": cust.city,
-            "account_type": cust.account_type,
-            "kyc_status": cust.kyc_status,
-            "customer_tier": cust.customer_tier,
-            "risk_score": round(risk, 4),
-            "risk_level": _risk_level(risk),
-            "risk_color": _risk_color(risk),
-            "balance_amount": float(cust.balance_amount or 0),
-            "transaction_count": int(row[1]),
-            "fraud_flags": int(row[2]),
-            "open_alerts": int(row[3]),
-            "created_at": cust.created_at.isoformat() if cust.created_at else None,
-            # Payment method info
-            "primary_payment_type":  payment_type,
-            "primary_payment_label": payment_label,
-        })
+        items.append(
+            {
+                "customer_id": cust.id,
+                "full_name": cust.full_name,
+                "email": cust.email,
+                "phone_number": cust.phone_number,
+                "city": cust.city,
+                "account_type": cust.account_type,
+                "kyc_status": cust.kyc_status,
+                "customer_tier": cust.customer_tier,
+                "risk_score": round(risk, 4),
+                "risk_level": _risk_level(risk),
+                "risk_color": _risk_color(risk),
+                "balance_amount": float(cust.balance_amount or 0),
+                "transaction_count": int(row[1]),
+                "fraud_flags": int(row[2]),
+                "open_alerts": int(row[3]),
+                "created_at": cust.created_at.isoformat() if cust.created_at else None,
+                # Payment method info
+                "primary_payment_type": payment_type,
+                "primary_payment_label": payment_label,
+            }
+        )
 
     return {
         "items": items,
@@ -389,6 +394,7 @@ async def get_top_risky_customers(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _risk_level(score: float) -> str:
     if score < 0.20:

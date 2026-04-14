@@ -1,4 +1,5 @@
 """FastAPI dependency injection — shared across all routes."""
+
 from typing import Annotated
 import jwt
 from fastapi import Depends, Header
@@ -43,10 +44,12 @@ async def get_current_user(
 
 def require_role(*roles: str):
     """Factory that returns a dependency enforcing the given roles."""
+
     async def _check(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
             raise ForbiddenException(f"Requires one of roles: {', '.join(roles)}")
         return user
+
     return _check
 
 
