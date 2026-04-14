@@ -77,7 +77,10 @@ async def update_database_settings(
         raise NotFoundException("Tenant")
 
     tenant.db_type = body.db_type
-    # Store full config as JSON with encrypted secrets
+    # Store full config as JSON with encrypted secrets.
+    # ISSUE-009: we assign a *new* dict object so SQLAlchemy detects the change.
+    # Never mutate tenant.db_config_json in-place without calling
+    # flag_modified(tenant, "db_config_json") afterwards.
     config = {k: v for k, v in body.model_dump().items() if v is not None}
     config["label"] = body.label or body.db_type
 
@@ -374,9 +377,9 @@ async def get_keys_summary(
     for service, key_name in rows:
         service_keys.setdefault(service, []).append(key_name)
 
-    # Build summary for all known services + any extra ones stored
-    known_services = ["resend", "twilio", "openai", "stripe", "firebase"]
-    all_services = sorted(set(known_services) | set(service_keys.keys()))
+    # ISSUE-004: derive known services from the single-source-of-truth constant
+    from app.schemas.credentials import SUPPORTED_PROVIDERS
+    all_services = sorted(set(SUPPORTED_PROVIDERS) | set(service_keys.keys()))
 
     return {
         svc: {
@@ -411,11 +414,11 @@ async def get_notification_settings(
     tenant = result.scalar_one_or_none()
     notif_config = (tenant.db_config_json or {}).get("notifications", {}) if tenant else {}
 
-    # Check tenant_credentials table for Resend and Twilio keys
+    # Check tenant_credentials table for email/SMS provider keys
     cred_result = await db.execute(
         select(TenantCredential.service, TenantCredential.key_name).where(
             TenantCredential.tenant_id == current_user.tenant_id,
-            TenantCredential.service.in_(["resend", "twilio"]),
+            TenantCredential.service.in_(["resend", "brevo", "twilio"]),
         )
     )
     cred_rows = cred_result.all()
@@ -429,16 +432,26 @@ async def get_notification_settings(
         or bool(notif_config.get("resend_api_key"))             # legacy db_config_json path
         or bool(getattr(settings, "RESEND_API_KEY", ""))        # platform env var
     )
+    has_brevo = (
+        "brevo" in configured_services                          # BYOK tenant_credentials
+        or bool(notif_config.get("brevo_api_key"))              # legacy db_config_json path
+        or bool(getattr(settings, "BREVO_API_KEY", ""))         # platform env var
+    )
     has_twilio = (
         "twilio" in configured_services                         # BYOK tenant_credentials
         or bool(notif_config.get("twilio_account_sid"))         # legacy db_config_json path
         or bool(getattr(settings, "TWILIO_ACCOUNT_SID", ""))    # platform env var
     )
 
+    # Check if a custom from_email (verified sender domain) is stored
+    has_from_email = ("resend", "from_email") in cred_services
+
     return {
         "company_alert_email": notif_config.get("company_alert_email", getattr(settings, "ALERT_COMPANY_EMAIL", "")),
         "has_resend":          has_resend,
+        "has_brevo":           has_brevo,
         "has_twilio":          has_twilio,
+        "has_from_email":      has_from_email,
         "sms_enabled":         notif_config.get("sms_enabled", True),
         "email_customer":      notif_config.get("email_customer", True),
         "email_company":       notif_config.get("email_company", True),
@@ -863,14 +876,16 @@ async def save_schema_mapping(
     incoming_customers = body.get("customers", existing.get("customers", {}))
     incoming_transactions = body.get("transactions", existing.get("transactions", {}))
 
-    existing.update({
+    # Build a fresh dict so SQLAlchemy detects the mutation (ISSUE-009).
+    updated = dict(existing)
+    updated.update({
         "customers":           _normalize_field_mapping(incoming_customers),
         "transactions":        _normalize_field_mapping(incoming_transactions),
         "customers_custom":    body.get("customers_custom", existing.get("customers_custom", [])),
         "transactions_custom": body.get("transactions_custom", existing.get("transactions_custom", [])),
         "_updated_at":         datetime.now(timezone.utc).isoformat(),
     })
-    tenant.schema_mapping_json = existing
+    tenant.schema_mapping_json = updated
     await db.commit()
 
     return {"success": True, "message": "Schema mapping saved"}

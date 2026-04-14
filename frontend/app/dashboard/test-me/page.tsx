@@ -112,6 +112,8 @@ interface SimResult {
   shap_explanation: Array<{ feature: string; shap_value: number; direction: string }> | null;
   journey: Record<string, { ok: boolean; ms?: number; triggered?: number; status?: string; model?: string; score?: number; decision?: string; is_test?: boolean }>;
   sms_status: string | null;
+  email_status: string | null;
+  email_recipients: Array<{ to: string; status: string }> | null;
   fraud_category: string;
   fraud_risk_level: string | null;
   is_blocked: boolean;
@@ -1291,13 +1293,27 @@ export default function TestMePage() {
                     <div className="space-y-2">
                       {Object.entries(result.journey).map(([key, step], idx) => {
                         const isOk = step.ok;
+                        const isSkipped = step.status?.startsWith("skipped");
+                        const isPartial = step.status?.startsWith("partial");
                         const label = key.replace(/^step_/, "").replace(/_/g, " ");
+
+                        // Human-readable status line
+                        const statusText = (() => {
+                          const s = step.status ?? "";
+                          if (s.startsWith("sent:")) return `sent to ${s.replace("sent:", "")} recipient(s)`;
+                          if (s.startsWith("partial:")) return s.replace("partial:", "partial — ");
+                          if (s.startsWith("skipped:")) return `skipped — ${s.replace("skipped:", "")}`;
+                          if (s.startsWith("failed:")) return s.replace("failed:", "failed: ");
+                          if (s.startsWith("error:")) return s.replace("error:", "error: ");
+                          return s || (isOk ? "ok" : "skipped");
+                        })();
+
                         return (
                           <div key={key} className="flex items-start gap-3">
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
                               isOk
                                 ? "bg-[#00FF87]/10 text-[#00FF87]"
-                                : step.status?.startsWith("skipped")
+                                : isSkipped
                                   ? "bg-[#6B7280]/20 text-gray-500"
                                   : "bg-[#F59E0B]/10 text-[#F59E0B]"
                             }`}>
@@ -1310,12 +1326,15 @@ export default function TestMePage() {
                                   <span className="text-xs text-gray-600 font-mono">{step.ms}ms</span>
                                 )}
                               </div>
-                              <div className={`text-xs mt-0.5 ${isOk ? "text-gray-500" : "text-[#F59E0B]/80"}`}>
+                              <div className={`text-xs mt-0.5 ${
+                                isOk && !isPartial ? "text-gray-500"
+                                : isPartial ? "text-[#F59E0B]/80"
+                                : isSkipped ? "text-gray-600"
+                                : "text-[#F59E0B]/80"
+                              }`}>
                                 {step.triggered != null && `${step.triggered} rule(s) triggered · `}
                                 {step.score != null && `score: ${(step.score * 100).toFixed(1)}% · `}
-                                {step.decision
-                                  || step.status?.replace(/^skipped:/, "skipped — ").replace(/^sent:/, "sent to ").replace(/^error:/, "error: ").replace(/^failed:/, "failed: ")
-                                  || (isOk ? "ok" : "skipped")}
+                                {step.decision || statusText}
                               </div>
                             </div>
                           </div>
@@ -1424,6 +1443,44 @@ export default function TestMePage() {
                     <MessageSquare size={14} className="text-[#3B82F6]" />
                     <div className="text-xs text-gray-400">
                       SMS Alert: <span className="text-white capitalize">{result.sms_status}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Email notification status */}
+                {result.email_recipients && result.email_recipients.length > 0 && (
+                  <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-4">
+                    <div className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">
+                      Email Notifications
+                    </div>
+                    <div className="space-y-2">
+                      {result.email_recipients.map((r, i) => {
+                        const sent = r.status === "sent";
+                        const isTestDomainErr = r.status.includes("testing emails") || r.status.includes("422");
+                        return (
+                          <div key={i} className="flex items-start gap-2">
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5 ${
+                              sent ? "bg-[#00FF87]/10 text-[#00FF87]" : "bg-[#F59E0B]/10 text-[#F59E0B]"
+                            }`}>
+                              {sent ? "✓" : "!"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-white font-mono truncate">{r.to}</div>
+                              <div className={`text-[10px] mt-0.5 ${sent ? "text-gray-500" : "text-[#F59E0B]/80"}`}>
+                                {sent ? "delivered" : r.status.replace(/^failed:\d+:/, "").trim()}
+                              </div>
+                              {isTestDomainErr && (
+                                <div className="text-[10px] text-[#F59E0B] mt-1 bg-[#F59E0B]/5 border border-[#F59E0B]/20 rounded px-2 py-1">
+                                  Resend test domain can only deliver to your Resend account email.
+                                  To send to any address, verify a custom domain at{" "}
+                                  <span className="underline font-mono">resend.com/domains</span>{" "}
+                                  and save it in Settings → Integrations → Verified Sender Email.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

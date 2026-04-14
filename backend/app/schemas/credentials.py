@@ -2,6 +2,19 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+# ISSUE-004: single source of truth for known provider names.
+# settings.py /keys-summary, credential_service testers, and the frontend
+# provider catalogue all derive from this list — add one entry here to
+# register a new provider across the whole stack.
+SUPPORTED_PROVIDERS: list[str] = [
+    "resend",    # email — primary
+    "brevo",     # email — fallback (formerly Sendinblue)
+    "twilio",    # SMS + voice
+    "openai",    # LLM enrichment (future)
+    "stripe",    # billing
+    "firebase",  # push notifications
+]
+
 
 class CredentialUpsert(BaseModel):
     """Request body to create or update a credential."""

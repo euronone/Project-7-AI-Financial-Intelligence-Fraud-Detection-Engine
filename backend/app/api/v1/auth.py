@@ -127,12 +127,22 @@ async def signup(body: SignupRequest, db: AsyncSession = Depends(get_db)):
     role = "admin" if body.signup_role == "admin" else "analyst"
 
     # Create tenant (institution)
+    # Pre-seed notification config with the signup email so fraud alerts have a
+    # destination from day one — user can edit later in Settings → Notifications.
     tenant = Tenant(
         id=str(uuid.uuid4()),
         organization_name=body.institution_name,
         institution_type=body.institution_type,
         subscription_plan=body.subscription_plan,
         plan_started_at=datetime.now(timezone.utc),
+        db_config_json={
+            "notifications": {
+                "company_alert_email": body.email,
+                "sms_enabled": bool(body.phone_number),
+                "email_customer": True,
+                "email_company": True,
+            }
+        },
     )
     db.add(tenant)
     await db.flush()  # get tenant.id before creating user

@@ -99,7 +99,9 @@
       "Bash(powershell -Command \"Stop-Process -Id 14956 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 22444 -Force -ErrorAction SilentlyContinue; Write-Host 'Stopped'\")",
       "Bash(powershell -Command \"wmic process where ProcessId=14956 get ProcessId,Name,CommandLine 2>&1 | head -5\")",
       "Bash(powershell -Command \"Invoke-RestMethod 'http://localhost:8000/api/v1/health' -TimeoutSec 5\")",
-      "Bash(powershell -Command \"Invoke-RestMethod 'http://localhost:3000' -TimeoutSec 5 -Method Head\")"
+      "Bash(powershell -Command \"Invoke-RestMethod 'http://localhost:3000' -TimeoutSec 5 -Method Head\")",
+      "Bash(PYTHONPATH=. poetry run python -c \"from app.main import app; print\\('App imported OK'\\)\")",
+      "Bash(xargs grep:*)"
     ],
     "additionalDirectories": [
       "\\tmp",

@@ -162,13 +162,11 @@ export default function HeroSection() {
             { label: "Features", href: "#features" },
             { label: "Pricing", href: "#pricing" },
             { label: "How It Works", href: "#how-it-works" },
-            { label: "Docs", href: `${process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ?? "http://localhost:8003"}/docs` },
+            { label: "Docs", href: "/docs" },
           ].map((item) => (
             <a
               key={item.label}
               href={item.href}
-              target={item.label === "Docs" ? "_blank" : undefined}
-              rel={item.label === "Docs" ? "noopener noreferrer" : undefined}
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
               {item.label}

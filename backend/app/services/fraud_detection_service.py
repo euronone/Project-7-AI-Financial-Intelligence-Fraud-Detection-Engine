@@ -535,19 +535,29 @@ async def score_transaction(
             # Pull tenant-configured company alert email
             tenant_res = await db.execute(sa_select(Tenant).where(Tenant.id == txn.tenant_id))
             tenant_obj = tenant_res.scalar_one_or_none()
-            tenant_alert_email: str | None = None
+            # Read ALL tenant notification settings while the DB session is open.
+            # After create_task fires the session is gone, so we pre-resolve everything.
+            notif_cfg: dict = {}
+            tenant_plan: str = "free"
             if tenant_obj and tenant_obj.db_config_json:
-                tenant_alert_email = (
-                    tenant_obj.db_config_json
-                    .get("notifications", {})
-                    .get("company_alert_email", "") or None
-                )
+                notif_cfg = tenant_obj.db_config_json.get("notifications", {})
+                tenant_plan = (tenant_obj.subscription_plan or "free")
+
+            tenant_alert_email: str | None = notif_cfg.get("company_alert_email") or None
+            # ISSUE-003: read channel toggles
+            sms_enabled          = bool(notif_cfg.get("sms_enabled",      True))
+            email_customer_on    = bool(notif_cfg.get("email_customer",   True))
+            email_company_on     = bool(notif_cfg.get("email_company",    True))
+
             # Pre-fetch BYOK credentials while db session is still open
-            from app.services.credential_service import get_decrypted as _get_cred
-            byok_resend   = await _get_cred(db, txn.tenant_id, "resend",  "resend_api_key")
+            from app.services.credential_service import get_decrypted as _get_cred, scan_any_cred_for_service as _scan_svc
+            byok_resend   = await _get_cred(db, txn.tenant_id, "resend",  "resend_api_key") or await _scan_svc(db, txn.tenant_id, "resend")
+            byok_brevo    = await _get_cred(db, txn.tenant_id, "brevo",   "brevo_api_key")  or await _scan_svc(db, txn.tenant_id, "brevo")
             byok_twilio_sid   = await _get_cred(db, txn.tenant_id, "twilio", "twilio_account_sid")
             byok_twilio_token = await _get_cred(db, txn.tenant_id, "twilio", "twilio_auth_token")
             byok_twilio_from  = await _get_cred(db, txn.tenant_id, "twilio", "twilio_from_number")
+            # ISSUE-008: resolve verified sender address before the session closes
+            byok_from_email = await _get_cred(db, txn.tenant_id, "resend", "from_email") or None
 
             asyncio.create_task(
                 send_fraud_alert_notifications(
@@ -566,9 +576,15 @@ async def score_transaction(
                     analyst_email=tenant_alert_email,
                     is_test=txn.is_test,
                     override_resend_key=byok_resend,
+                    override_brevo_key=byok_brevo,
                     override_twilio_sid=byok_twilio_sid,
                     override_twilio_token=byok_twilio_token,
                     override_twilio_from=byok_twilio_from,
+                    override_from_email=byok_from_email,
+                    sms_enabled=sms_enabled,
+                    email_customer_enabled=email_customer_on,
+                    email_company_enabled=email_company_on,
+                    tenant_plan=tenant_plan,
                 )
             )
         except Exception as _notif_exc:

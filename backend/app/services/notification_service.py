@@ -38,9 +38,17 @@ async def send_fraud_alert_notifications(
     is_test: bool = False,
     # BYOK overrides — pre-fetched from tenant_credentials before the task fires
     override_resend_key: Optional[str] = None,
+    override_brevo_key: Optional[str] = None,
     override_twilio_sid: Optional[str] = None,
     override_twilio_token: Optional[str] = None,
     override_twilio_from: Optional[str] = None,
+    override_from_email: Optional[str] = None,
+    # Channel toggles — read from tenant settings, honoured here (ISSUE-003)
+    sms_enabled: bool = True,
+    email_customer_enabled: bool = True,
+    email_company_enabled: bool = True,
+    # Plan gate — SMS is Pro+ only (ISSUE-006)
+    tenant_plan: str = "free",
 ) -> dict:
     """
     Fire all applicable notification channels.
@@ -62,13 +70,23 @@ async def send_fraud_alert_notifications(
     if is_test:
         return {"skipped": "is_test=true"}
 
+    # Base channels from severity
     channels_by_severity = {
         "critical": ["email", "sms"],
         "high":     ["email", "sms"],
         "medium":   ["email"],
         "low":      [],
     }
-    channels = channels_by_severity.get(severity, [])
+    channels = list(channels_by_severity.get(severity, []))
+
+    # ISSUE-003: honour tenant-level toggles
+    if not sms_enabled and "sms" in channels:
+        channels.remove("sms")
+        results["sms_customer"] = "skipped:sms_disabled_by_tenant"
+    # ISSUE-006: SMS only on Pro / Advanced plans
+    if tenant_plan not in ("pro", "advanced") and "sms" in channels:
+        channels.remove("sms")
+        results["sms_customer"] = "skipped:plan_upgrade_required"
 
     amount_str = f"₹{amount:,.0f}"
     merchant_str = merchant_name or "Unknown Merchant"
@@ -76,17 +94,46 @@ async def send_fraud_alert_notifications(
     cust_name = customer_name or "Customer"
     ref = alert_id[:8].upper()
 
-    # Tenant BYOK key takes priority; fall back to platform-level env var
+    # Tenant BYOK key takes priority; fall back to platform-level env var.
+    # If Resend isn't configured, Brevo is tried next (same fallback chain).
     resend_key = override_resend_key or getattr(settings, "RESEND_API_KEY", "") or ""
-    email_from = getattr(settings, "EMAIL_FROM", "alerts@finshield.ai")
+    brevo_key  = override_brevo_key  or getattr(settings, "BREVO_API_KEY",  "") or ""
     email_from_name = getattr(settings, "EMAIL_FROM_NAME", "FinShield AI")
 
+    # ISSUE-008: use pre-resolved verified sender when provided, else fall
+    # back to the Resend sandbox domain so delivery doesn't silently 403.
+    if override_from_email:
+        email_from = override_from_email
+    else:
+        _env_from = getattr(settings, "EMAIL_FROM", "") or ""
+        # If the platform EMAIL_FROM is still the unowned placeholder, swap to
+        # Resend's sandbox (only delivers to the Resend account owner's inbox).
+        email_from = _env_from if (_env_from and "finshield.ai" not in _env_from) else "onboarding@resend.dev"
+
+    async def _send_email(*, to: str, subject: str, html: str) -> str:
+        """Provider-agnostic email dispatch: Resend first, Brevo fallback."""
+        if resend_key:
+            return await _send_resend(
+                api_key=resend_key,
+                from_addr=f"{email_from_name} <{email_from}>",
+                to=to, subject=subject, html=html,
+            )
+        if brevo_key:
+            return await _send_brevo(
+                api_key=brevo_key,
+                from_email=email_from, from_name=email_from_name,
+                to=to, subject=subject, html=html,
+            )
+        return "skipped:no_key"
+
     # ── Email → Company (one email per configured recipient) ─────────────────
-    if "email" in channels:
+    if "email" in channels and not email_company_enabled:
+        results["email_company"] = "skipped:email_company_disabled_by_tenant"
+    elif "email" in channels:
         raw_company_email = analyst_email or getattr(settings, "ALERT_COMPANY_EMAIL", "") or ""
         # Support comma-separated list of alert recipients
         company_emails = [e.strip() for e in raw_company_email.split(",") if e.strip()]
-        if resend_key and company_emails:
+        if (resend_key or brevo_key) and company_emails:
             html_body = _company_email_html(
                 alert_id=alert_id,
                 fraud_score=fraud_score,
@@ -102,40 +149,29 @@ async def send_fraud_alert_notifications(
                 ref=ref,
             )
             subject = f"[FinShield] {severity.upper()} — {decision} | {amount_str} · {cust_name} · Ref {ref}"
-            sent_statuses = []
             for recipient in company_emails:
-                status = await _send_resend(
-                    api_key=resend_key,
-                    from_addr=f"{email_from_name} <{email_from}>",
-                    to=recipient,
-                    subject=subject,
-                    html=html_body,
-                )
-                sent_statuses.append(status)
+                status = await _send_email(to=recipient, subject=subject, html=html_body)
                 logger.info("Company alert email sent | alert=%s to=%s status=%s", alert_id, recipient, status)
             results["email_company"] = f"sent:{len(company_emails)}"
         else:
             results["email_company"] = "skipped:no_key_or_email"
 
     # ── Email → Customer ─────────────────────────────────────────────────────
-    if "email" in channels and customer_email:
-        if resend_key:
-            results["email_customer"] = await _send_resend(
-                api_key=resend_key,
-                from_addr=f"{email_from_name} <{email_from}>",
-                to=customer_email,
-                subject=f"Security Alert: {decision} — {amount_str} at {merchant_str} | Ref {ref}",
-                html=_customer_email_html(
-                    customer_name=cust_name,
-                    amount_str=amount_str,
-                    merchant_str=merchant_str,
-                    decision=decision,
-                    fraud_score=fraud_score,
-                    ref=ref,
-                ),
-            )
-        else:
-            results["email_customer"] = "skipped:no_key"
+    if "email" in channels and customer_email and not email_customer_enabled:
+        results["email_customer"] = "skipped:email_customer_disabled_by_tenant"
+    elif "email" in channels and customer_email:
+        results["email_customer"] = await _send_email(
+            to=customer_email,
+            subject=f"Security Alert: {decision} — {amount_str} at {merchant_str} | Ref {ref}",
+            html=_customer_email_html(
+                customer_name=cust_name,
+                amount_str=amount_str,
+                merchant_str=merchant_str,
+                decision=decision,
+                fraud_score=fraud_score,
+                ref=ref,
+            ),
+        )
 
     # ── SMS → Customer (Twilio) ──────────────────────────────────────────────
     if "sms" in channels and customer_phone:
@@ -182,6 +218,29 @@ async def _send_resend(
         return "sent" if resp.status_code in (200, 201) else f"failed:{resp.status_code}"
     except Exception as exc:
         logger.warning("Resend error: %s", exc)
+        return f"error:{str(exc)[:60]}"
+
+
+async def _send_brevo(
+    *, api_key: str, from_email: str, from_name: str, to: str, subject: str, html: str
+) -> str:
+    """Send a transactional email via Brevo (formerly Sendinblue)."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={"api-key": api_key, "accept": "application/json", "content-type": "application/json"},
+                json={
+                    "sender":      {"email": from_email, "name": from_name},
+                    "to":          [{"email": to}],
+                    "subject":     subject,
+                    "htmlContent": html,
+                },
+            )
+        return "sent" if resp.status_code in (200, 201) else f"failed:{resp.status_code}"
+    except Exception as exc:
+        logger.warning("Brevo error: %s", exc)
         return f"error:{str(exc)[:60]}"
 
 
@@ -271,46 +330,3 @@ def _customer_email_html(
       </div></div></body></html>"""
 
 
-def _build_email_html(
-    *,
-    alert_id: str,
-    fraud_score: float,
-    severity: str,
-    decision: str,
-    amount_str: str,
-    merchant_str: str,
-    rules_str: str,
-) -> str:
-    severity_color = {
-        "critical": "#EF4444",
-        "high":     "#F97316",
-        "medium":   "#EAB308",
-        "low":      "#22C55E",
-    }.get(severity, "#6B7280")
-
-    return f"""
-    <html><body style="font-family:sans-serif;background:#0A0A0F;color:#E5E7EB;padding:24px;">
-      <div style="max-width:560px;margin:0 auto;background:#111118;border:1px solid #1E1E2E;border-radius:8px;padding:24px;">
-        <h2 style="color:{severity_color};margin-top:0;">
-          FinShield AI -- Fraud Alert
-        </h2>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:6px 0;color:#9CA3AF;">Alert ID</td>
-              <td style="padding:6px 0;font-family:monospace;">{alert_id[:16]}...</td></tr>
-          <tr><td style="padding:6px 0;color:#9CA3AF;">Decision</td>
-              <td style="padding:6px 0;font-weight:bold;color:{severity_color};">{decision}</td></tr>
-          <tr><td style="padding:6px 0;color:#9CA3AF;">Fraud Score</td>
-              <td style="padding:6px 0;">{fraud_score:.1%}</td></tr>
-          <tr><td style="padding:6px 0;color:#9CA3AF;">Amount</td>
-              <td style="padding:6px 0;">{amount_str}</td></tr>
-          <tr><td style="padding:6px 0;color:#9CA3AF;">Merchant</td>
-              <td style="padding:6px 0;">{merchant_str}</td></tr>
-          <tr><td style="padding:6px 0;color:#9CA3AF;">Triggered Rules</td>
-              <td style="padding:6px 0;">{rules_str}</td></tr>
-        </table>
-        <p style="margin-bottom:0;color:#6B7280;font-size:12px;">
-          Log in to your FinShield dashboard to review and take action on this alert.
-        </p>
-      </div>
-    </body></html>
-    """

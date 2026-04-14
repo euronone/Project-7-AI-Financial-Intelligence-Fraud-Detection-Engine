@@ -397,21 +397,18 @@ async def predict_fraud(
             twilio_creds=twilio_creds,
         )
 
-    # ── 7. Resend email (if configured and email provided) ───────────────
+    # ── 7. Resend email (if configured and decision warrants it) ────────
     email_result = "skipped"
     if decision in ("BLOCK", "ALERT", "FLAG"):
-        # Resolve Resend key: tenant DB config → env fallback
-        resend_key = await _resolve_resend_key(
-            db=db, tenant_id=current_user.tenant_id
-        )
+        # Resolve Resend API key and sender address from tenant credentials → env fallback
+        resend_key = await _resolve_resend_key(db=db, tenant_id=current_user.tenant_id)
+        from_email = await _resolve_from_email(db=db, tenant_id=current_user.tenant_id)
 
         if resend_key:
-            # Collect all recipient emails: test-form email + company alert emails
+            # Collect all recipient emails: form email + company alert emails
             recipients: list[str] = []
             if body.email:
                 recipients.append(body.email)
-
-            # Also send to all company alert emails configured in Settings
             company_emails = await _resolve_company_alert_emails(
                 db=db, tenant_id=current_user.tenant_id
             )
@@ -420,12 +417,14 @@ async def predict_fraud(
                     recipients.append(ce)
 
             if recipients:
-                statuses = []
+                per_recipient: list[dict] = []
                 for recipient in recipients:
                     s = await _send_resend_email(
                         api_key=resend_key,
+                        from_email=from_email,
                         to=recipient,
                         cardholder_name=body.cardholder_name,
+                        customer_id=resolved_customer_id or "N/A",
                         amount=body.amount,
                         merchant=body.merchant_name or _infer_merchant(body.purchase_type),
                         decision=decision,
@@ -433,12 +432,28 @@ async def predict_fraud(
                         alert_id=score_result.get("alert_id", "SIM"),
                         triggered_rules=triggered_rules,
                     )
-                    statuses.append(s)
-                email_result = f"sent:{len(recipients)}" if all(s == "sent" for s in statuses) else f"partial:{','.join(statuses)}"
+                    per_recipient.append({"to": recipient, "status": s})
+                    logger.info("Simulator email to=%s status=%s decision=%s", recipient, s, decision)
+                sent_count = sum(1 for r in per_recipient if r["status"] == "sent")
+                fail_count = len(per_recipient) - sent_count
+                if fail_count == 0:
+                    email_result = f"sent:{sent_count}"
+                elif sent_count == 0:
+                    # All failed — surface first error message
+                    first_err = per_recipient[0]["status"]
+                    email_result = f"failed:{first_err}"
+                else:
+                    email_result = f"partial:{sent_count}/{len(per_recipient)} sent"
+                # Attach per-recipient detail to return value (set later)
+                _email_recipients_detail = per_recipient
             else:
                 email_result = "skipped:no_recipients"
+                _email_recipients_detail = []
         else:
             email_result = "skipped:no_resend_key"
+            _email_recipients_detail = []
+    else:
+        _email_recipients_detail = []
 
     risk_color = _score_color(final_score)
 
@@ -477,8 +492,9 @@ async def predict_fraud(
         "shap_explanation": shap,
 
         # Notification
-        "sms_status":   sms_result,
-        "email_status": email_result,
+        "sms_status":       sms_result,
+        "email_status":     email_result,
+        "email_recipients": _email_recipients_detail,
 
         # Step-by-step journey data (for the Test Me UI panel)
         "journey": {
@@ -496,7 +512,11 @@ async def predict_fraud(
             "step_ensemble_score":  {"ok": True, "score": round(final_score, 4), "decision": decision, "ms": 2},
             "step_persisted":       {"ok": True, "is_test": True},
             "step_sms":             {"ok": sms_result.startswith("sent"), "status": sms_result},
-            "step_email":           {"ok": email_result.startswith("sent"), "status": email_result},
+            # partial success (some emails sent) is treated as ok=True — amber detail shown in UI
+            "step_email":           {
+                "ok": email_result.startswith("sent") or email_result.startswith("partial"),
+                "status": email_result,
+            },
         },
     }
 
@@ -1037,26 +1057,12 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     except Exception as exc:
         logger.warning("BYOK credential lookup failed: %s", exc)
 
-    # 2. Fallback: any key saved under service="resend" (handles non-canonical key_name)
+    # 2. Fallback: any key saved under service="resend" — ISSUE-005 shared helper
     try:
-        any_resend = await db.execute(
-            select(TenantCredential).where(
-                TenantCredential.tenant_id == tenant_id,
-                TenantCredential.service == "resend",
-            ).limit(1)
-        )
-        row = any_resend.scalar_one_or_none()
-        if row:
-            try:
-                val = encryptor.decrypt(row.value_encrypted)
-                if val:
-                    logger.debug(
-                        "Resend key resolved via fallback (service=resend, key_name=%s)",
-                        row.key_name,
-                    )
-                    return val
-            except Exception:
-                pass
+        from app.services.credential_service import scan_any_cred_for_service as _scan_svc
+        val = await _scan_svc(db, tenant_id, "resend")
+        if val:
+            return val
     except Exception as exc:
         logger.warning("BYOK resend-service scan failed: %s", exc)
 
@@ -1077,6 +1083,62 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     # 4. Fall back to platform env var
     s = get_settings()
     return getattr(s, "RESEND_API_KEY", "") or ""
+
+
+async def _resolve_brevo_key(*, db: AsyncSession, tenant_id: str) -> str:
+    """
+    ISSUE-005: Returns the Brevo API key for a tenant using the same 3-step
+    resolution chain as _resolve_resend_key.
+      1. BYOK tenant_credentials key_name="brevo_api_key"  (canonical)
+      2. BYOK tenant_credentials any key_name under service="brevo"
+      3. BREVO_API_KEY environment variable
+    """
+    from app.config import get_settings
+
+    try:
+        from app.services.credential_service import get_decrypted as _get_cred, scan_any_cred_for_service as _scan_svc
+        val = await _get_cred(db, tenant_id, "brevo", "brevo_api_key")
+        if val:
+            return val
+        val = await _scan_svc(db, tenant_id, "brevo")
+        if val:
+            return val
+    except Exception as exc:
+        logger.warning("Brevo BYOK lookup failed: %s", exc)
+
+    s = get_settings()
+    return getattr(s, "BREVO_API_KEY", "") or ""
+
+
+async def _resolve_from_email(*, db: AsyncSession, tenant_id: str) -> str:
+    """
+    Returns the verified sender address for Resend emails.
+
+    Priority:
+      1. BYOK tenant_credentials service='resend', key_name='from_email'
+         (user stores their verified Resend domain address here, e.g. alerts@acmebank.com)
+      2. RESEND_FROM_EMAIL env var / EMAIL_FROM setting
+      3. Resend test domain (only works for the Resend account owner's email)
+    """
+    from app.config import get_settings
+
+    # 1. Tenant BYOK — custom verified domain
+    try:
+        from app.services.credential_service import get_decrypted as _get_cred
+        custom = await _get_cred(db, tenant_id, "resend", "from_email")
+        if custom and "@" in custom:
+            return f"FinShield AI <{custom.strip()}>"
+    except Exception as exc:
+        logger.warning("Could not load BYOK from_email: %s", exc)
+
+    # 2. Platform env var
+    s = get_settings()
+    env_from = getattr(s, "EMAIL_FROM", "") or ""
+    if env_from and "@" in env_from and "finshield.ai" not in env_from:
+        return f"FinShield AI <{env_from}>"
+
+    # 3. Resend test domain — only delivers to Resend account owner email
+    return "FinShield AI <onboarding@resend.dev>"
 
 
 async def _resolve_company_alert_emails(*, db: AsyncSession, tenant_id: str) -> list[str]:
@@ -1106,8 +1168,10 @@ async def _resolve_company_alert_emails(*, db: AsyncSession, tenant_id: str) -> 
 async def _send_resend_email(
     *,
     api_key: str,
+    from_email: str,
     to: str,
     cardholder_name: str,
+    customer_id: str,
     amount: float,
     merchant: str,
     decision: str,
@@ -1117,7 +1181,14 @@ async def _send_resend_email(
 ) -> str:
     """
     Sends a fraud alert email via Resend.com for simulator/Test Me transactions.
-    Returns 'sent', 'skipped:no_key', or 'error:<msg>'.
+
+    from_email must be a Resend-verified sender address.
+      - If you use onboarding@resend.dev (Resend test domain), Resend will ONLY
+        deliver to the email address registered with your Resend account.
+      - To send to arbitrary recipients, verify a custom domain in Resend and
+        store it as service='resend', key_name='from_email' in tenant credentials.
+
+    Returns 'sent', 'skipped:no_key', or 'failed:<code>:<detail>'.
     """
     if not api_key:
         return "skipped:no_key"
@@ -1128,6 +1199,8 @@ async def _send_resend_email(
         rules_str = ", ".join(triggered_rules[:5]) if triggered_rules else "ML model"
         color = {"BLOCK": "#EF4444", "ALERT": "#F97316", "FLAG": "#F59E0B"}.get(decision, "#6B7280")
         action = "BLOCKED" if decision == "BLOCK" else "FLAGGED as suspicious" if decision in ("ALERT", "FLAG") else "reviewed"
+        # Truncate customer_id for display (first 8 chars + last 4 for readability)
+        cid_display = customer_id if len(customer_id) <= 12 else f"{customer_id[:8]}\u2026{customer_id[-4:]}"
         html = f"""
         <html><body style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E5E7EB;padding:24px;">
         <div style="max-width:560px;margin:0 auto;background:#111118;border:1px solid #1E1E2E;border-radius:12px;overflow:hidden;">
@@ -1136,12 +1209,14 @@ async def _send_resend_email(
           </div>
           <div style="padding:24px;">
             <p style="color:#9CA3AF;font-size:12px;margin-top:0;">
-              This is a <strong>test notification</strong> triggered from the FinShield Test Me simulator.
+              This is a <strong>test notification</strong> from the FinShield Test Me simulator.
               No real transaction was blocked.
             </p>
             <p>Dear <strong>{cardholder_name}</strong>,</p>
             <p>FinShield AI detected the following in your test transaction:</p>
             <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Customer ID</td>
+                  <td style="padding:8px 0;font-family:monospace;font-size:12px;border-bottom:1px solid #1E1E2E;">{cid_display}</td></tr>
               <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Decision</td>
                   <td style="padding:8px 0;font-weight:bold;color:{color};border-bottom:1px solid #1E1E2E;">{decision}</td></tr>
               <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Amount</td>
@@ -1156,7 +1231,7 @@ async def _send_resend_email(
                   <td style="padding:8px 0;font-family:monospace;">{ref}</td></tr>
             </table>
             <p style="color:#4B5563;font-size:11px;margin-top:24px;">
-              Sent by FinShield AI Test Simulator · This email confirms your email integration is working correctly.
+              Sent by FinShield AI Test Simulator · This email confirms your email integration is working.
             </p>
           </div>
         </div>
@@ -1167,7 +1242,7 @@ async def _send_resend_email(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
-                    "from": "FinShield AI <onboarding@resend.dev>",
+                    "from": from_email,
                     "to": [to],
                     "subject": f"[TEST] FinShield Alert: {decision} — {amount_str} at {merchant} | Ref {ref}",
                     "html": html,
@@ -1175,7 +1250,13 @@ async def _send_resend_email(
             )
         if resp.status_code in (200, 201):
             return "sent"
-        return f"failed:{resp.status_code} — {resp.text[:120]}"
+        # Capture the actual Resend error so it surfaces in the UI
+        try:
+            err_body = resp.json().get("message") or resp.text[:150]
+        except Exception:
+            err_body = resp.text[:150]
+        logger.warning("Resend rejected email to=%s status=%s err=%s", to, resp.status_code, err_body)
+        return f"failed:{resp.status_code}:{err_body[:100]}"
     except Exception as exc:
         logger.warning("Simulator Resend email error: %s", exc)
         return f"error:{str(exc)[:80]}"

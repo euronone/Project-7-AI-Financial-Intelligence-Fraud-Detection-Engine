@@ -2,9 +2,9 @@ name: Deploy to Staging
 
 on:
   push:
-    branches: [staging, development_2]
+    branches: [staging, development_2, main]
   pull_request:
-    branches: [staging]
+    branches: [staging, main]
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 

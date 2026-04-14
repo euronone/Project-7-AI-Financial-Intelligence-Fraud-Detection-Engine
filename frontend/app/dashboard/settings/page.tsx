@@ -450,6 +450,12 @@ export default function SettingsPage() {
   const [resendInput, setResendInput] = useState("");
   const [resendSaving, setResendSaving] = useState(false);
   const [resendSaved, setResendSaved] = useState(false);
+  const [brevoInput, setBrevoInput] = useState("");
+  const [brevoSaving, setBrevoSaving] = useState(false);
+  const [brevoSaved, setBrevoSaved] = useState(false);
+  const [fromEmailInput, setFromEmailInput] = useState("");
+  const [fromEmailSaving, setFromEmailSaving] = useState(false);
+  const [fromEmailSaved, setFromEmailSaved] = useState(false);
   const [twilioSidInput, setTwilioSidInput] = useState("");
   const [twilioTokenInput, setTwilioTokenInput] = useState("");
   const [twilioFromInput, setTwilioFromInput] = useState("");
@@ -550,6 +556,38 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveBrevoKey = async () => {
+    if (!token || !brevoInput.trim()) return;
+    setBrevoSaving(true);
+    setProviderError("");
+    try {
+      await _upsertCred("brevo", "brevo_api_key", brevoInput.trim());
+      setBrevoInput("");
+      setBrevoSaved(true);
+      setTimeout(() => setBrevoSaved(false), 4000);
+    } catch (e: unknown) {
+      setProviderError(e instanceof Error ? e.message : "Failed to save Brevo key");
+    } finally {
+      setBrevoSaving(false);
+    }
+  };
+
+  const handleSaveFromEmail = async () => {
+    if (!token || !fromEmailInput.trim()) return;
+    setFromEmailSaving(true);
+    setProviderError("");
+    try {
+      await _upsertCred("resend", "from_email", fromEmailInput.trim());
+      setFromEmailInput("");
+      setFromEmailSaved(true);
+      setTimeout(() => setFromEmailSaved(false), 4000);
+    } catch (e: unknown) {
+      setProviderError(e instanceof Error ? e.message : "Failed to save sender email");
+    } finally {
+      setFromEmailSaving(false);
+    }
+  };
+
   const handleSaveTwilioCreds = async () => {
     if (!token || !twilioSidInput.trim() || !twilioTokenInput.trim()) return;
     setTwilioSaving(true);
@@ -597,7 +635,6 @@ export default function SettingsPage() {
   };
 
   const SERVICE_PRESETS = [
-    { service: "resend",   keys: ["resend_api_key"],                         label: "Resend.com (Email)" },
     { service: "twilio",   keys: ["twilio_account_sid", "twilio_auth_token", "twilio_from_number"], label: "Twilio (SMS)" },
     { service: "stripe",   keys: ["stripe_secret_key"],                      label: "Stripe (Payments)" },
     { service: "openai",   keys: ["openai_api_key"],                         label: "OpenAI" },
@@ -1160,15 +1197,15 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* ── Email Provider (Resend) quick-save block ── */}
+              {/* ── Email Provider (Resend) — API Key + Sender Email ── */}
               <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-4">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Mail size={15} className="text-[#3B82F6]" />
-                    <span className="text-sm font-bold text-white">Email Provider — Resend API Key</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20">Required for email alerts</span>
+                    <span className="text-sm font-bold text-white">Email Provider — Resend</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#3B82F6]/10 text-[#3B82F6] border border-[#3B82F6]/20">Primary — 3,000 emails/month free</span>
                   </div>
-                  {credentials.some(c => c.service === "resend") ? (
+                  {credentials.some(c => c.service === "resend" && c.key_name === "resend_api_key") ? (
                     <span className="flex items-center gap-1 text-xs font-semibold text-[#00FF87]">
                       <CheckCircle2 size={12} /> Configured
                     </span>
@@ -1178,25 +1215,118 @@ export default function SettingsPage() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mb-3">
-                  Paste your <strong className="text-gray-300">Resend API key</strong> (starts with <span className="font-mono text-gray-400">re_</span>) below. Get a free key at <span className="text-[#3B82F6]">resend.com</span> — 3,000 emails/month on the free plan.
+
+                {/* Row 1 — API Key */}
+                <div className="mb-4">
+                  <label className="block text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-1.5">
+                    API Key <span className="text-[#EF4444]">*</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Starts with <span className="font-mono text-gray-400">re_</span>. Get a free key at <span className="text-[#3B82F6]">resend.com</span>.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={resendInput}
+                      onChange={(e) => setResendInput(e.target.value)}
+                      placeholder="re_••••••••••••••••••••••••"
+                      autoComplete="new-password"
+                      className="flex-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#3B82F6]/60 transition-colors"
+                    />
+                    <button
+                      onClick={handleSaveResendKey}
+                      disabled={resendSaving || !resendInput.trim()}
+                      className="flex items-center gap-2 text-sm bg-[#3B82F6] text-white font-bold px-5 py-2.5 rounded-xl hover:bg-[#2563EB] transition-all disabled:opacity-50"
+                    >
+                      {resendSaving ? <Loader2 size={13} className="animate-spin" /> : resendSaved ? <CheckCircle2 size={13} /> : <Save size={13} />}
+                      {resendSaving ? "Saving…" : resendSaved ? "Saved!" : "Save"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Row 2 — Sender Email (From:) */}
+                <div className="border-t border-[#1E1E2E] pt-4">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <label className="block text-[10px] font-mono uppercase tracking-wider text-gray-500">
+                      Sender Email — From: address
+                    </label>
+                    {credentials.some(c => c.service === "resend" && c.key_name === "from_email") ? (
+                      <span className="flex items-center gap-1 text-[10px] font-semibold text-[#00FF87]">
+                        <CheckCircle2 size={10} /> Set
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[10px] text-[#F59E0B]">
+                        <AlertTriangle size={10} /> Using test domain
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mb-1">
+                    The address fraud alerts are sent <strong className="text-gray-300">FROM</strong> (e.g. <span className="font-mono text-gray-400">alerts@yourbank.com</span>). Also used by Brevo.
+                  </p>
+                  <p className="text-xs text-[#F59E0B] mb-2">
+                    ⚠️ Without this, Resend uses <span className="font-mono">onboarding@resend.dev</span> — only delivers to your own Resend account inbox. Verify a domain first at <span className="text-[#3B82F6]">resend.com/domains</span>.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={fromEmailInput}
+                      onChange={(e) => setFromEmailInput(e.target.value)}
+                      placeholder="alerts@yourcompany.com"
+                      autoComplete="email"
+                      className="flex-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#3B82F6]/60 transition-colors"
+                    />
+                    <button
+                      onClick={handleSaveFromEmail}
+                      disabled={fromEmailSaving || !fromEmailInput.trim()}
+                      className="flex items-center gap-2 text-sm bg-[#3B82F6] text-white font-bold px-5 py-2.5 rounded-xl hover:bg-[#2563EB] transition-all disabled:opacity-50"
+                    >
+                      {fromEmailSaving ? <Loader2 size={13} className="animate-spin" /> : fromEmailSaved ? <CheckCircle2 size={13} /> : <Save size={13} />}
+                      {fromEmailSaving ? "Saving…" : fromEmailSaved ? "Saved!" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Email Provider (Brevo) — fallback ── */}
+              <div className="bg-[#111118] border border-[#1E1E2E] rounded-2xl p-5 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Mail size={15} className="text-[#0092CC]" />
+                    <span className="text-sm font-bold text-white">Email Provider — Brevo</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#0092CC]/10 text-[#0092CC] border border-[#0092CC]/20">Fallback — 300 emails/day free</span>
+                  </div>
+                  {credentials.some(c => c.service === "brevo") ? (
+                    <span className="flex items-center gap-1 text-xs font-semibold text-[#00FF87]">
+                      <CheckCircle2 size={12} /> Configured
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-gray-500">
+                      <AlertCircle size={12} /> Not configured
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mb-1">
+                  Paste your <strong className="text-gray-300">Brevo API key</strong> (starts with <span className="font-mono text-gray-400">xkeysib-</span>). Get one free at <span className="text-[#0092CC]">brevo.com</span> — 9,000 emails/month.
+                </p>
+                <p className="text-xs text-gray-600 mb-3">
+                  Used automatically when Resend is not configured. Uses the <strong className="text-gray-400">Sender Email (From:)</strong> saved in the Resend block above.
                 </p>
                 <div className="flex gap-2">
                   <input
                     type="password"
-                    value={resendInput}
-                    onChange={(e) => setResendInput(e.target.value)}
-                    placeholder="re_••••••••••••••••••••••••"
+                    value={brevoInput}
+                    onChange={(e) => setBrevoInput(e.target.value)}
+                    placeholder="xkeysib-••••••••••••••••••••••••"
                     autoComplete="new-password"
-                    className="flex-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#3B82F6]/60 transition-colors"
+                    className="flex-1 bg-[#0A0A0F] border border-[#1E1E2E] rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#0092CC]/60 transition-colors"
                   />
                   <button
-                    onClick={handleSaveResendKey}
-                    disabled={resendSaving || !resendInput.trim()}
-                    className="flex items-center gap-2 text-sm bg-[#3B82F6] text-white font-bold px-5 py-2.5 rounded-xl hover:bg-[#2563EB] transition-all disabled:opacity-50"
+                    onClick={handleSaveBrevoKey}
+                    disabled={brevoSaving || !brevoInput.trim()}
+                    className="flex items-center gap-2 text-sm bg-[#0092CC] text-white font-bold px-5 py-2.5 rounded-xl hover:bg-[#0078a8] transition-all disabled:opacity-50"
                   >
-                    {resendSaving ? <Loader2 size={13} className="animate-spin" /> : resendSaved ? <CheckCircle2 size={13} /> : <Save size={13} />}
-                    {resendSaving ? "Saving…" : resendSaved ? "Saved!" : "Save"}
+                    {brevoSaving ? <Loader2 size={13} className="animate-spin" /> : brevoSaved ? <CheckCircle2 size={13} /> : <Save size={13} />}
+                    {brevoSaving ? "Saving…" : brevoSaved ? "Saved!" : "Save"}
                   </button>
                 </div>
               </div>

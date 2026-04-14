@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  push:
+    branches: [main, development_2]
   pull_request:
-    branches: [main, develop]
+    branches: [main, development_2, develop]
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -31,12 +33,10 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Lint
-        run: poetry run ruff check backend/
-        working-directory: .
+        run: poetry run ruff check app/
 
       - name: Format check
-        run: poetry run ruff format --check backend/
-        working-directory: .
+        run: poetry run ruff format --check app/
 
       - name: Run tests
         run: poetry run pytest --cov=app --cov-report=xml

@@ -114,6 +114,37 @@ async def delete_credential(
     return CredentialDeleteResponse(deleted=result.rowcount > 0, id=credential_id)
 
 
+async def scan_any_cred_for_service(
+    db: AsyncSession,
+    tenant_id: str,
+    service: str,
+) -> str | None:
+    """
+    ISSUE-005: fallback scan — return the decrypted value of the FIRST credential
+    stored under `service` regardless of key_name.  Handles users who save their
+    Brevo/Resend key under a non-canonical key_name (e.g. "api_key" instead of
+    "brevo_api_key").  Callers should always try `get_decrypted` with the canonical
+    key_name first; this is the second-chance lookup.
+    """
+    result = await db.execute(
+        select(TenantCredential).where(
+            TenantCredential.tenant_id == tenant_id,
+            TenantCredential.service == service,
+        ).limit(1)
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        return None
+    try:
+        val = encryptor.decrypt(row.value_encrypted)
+        if val:
+            logger.debug("Cred resolved via service-scan | service=%s key_name=%s", service, row.key_name)
+            return val
+    except Exception as exc:
+        logger.warning("scan_any_cred_for_service decrypt error service=%s: %s", service, exc)
+    return None
+
+
 async def get_decrypted(
     db: AsyncSession,
     tenant_id: str,
@@ -237,9 +268,30 @@ async def _test_openai(service: str, key_name: str, api_key: str) -> CredentialT
                                     message=f"Connection error: {exc}")
 
 
+async def _test_brevo(service: str, key_name: str, api_key: str) -> CredentialTestResult:
+    """Live-test a Brevo (Sendinblue) API key by hitting the /account endpoint."""
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(
+                "https://api.brevo.com/v3/account",
+                headers={"api-key": api_key, "accept": "application/json"},
+            )
+        ms = int((time.monotonic() - start) * 1000)
+        if r.status_code == 200:
+            return CredentialTestResult(service=service, key_name=key_name, success=True,
+                                        message="Brevo API key is valid.", latency_ms=ms)
+        return CredentialTestResult(service=service, key_name=key_name, success=False,
+                                    message=f"Brevo returned HTTP {r.status_code}", latency_ms=ms)
+    except Exception as exc:
+        return CredentialTestResult(service=service, key_name=key_name, success=False,
+                                    message=f"Connection error: {exc}")
+
+
 # Map service name → tester function
 _TESTERS = {
     "resend": _test_resend,
+    "brevo":  _test_brevo,
     "twilio": _test_twilio,
     "stripe": _test_stripe,
     "openai": _test_openai,

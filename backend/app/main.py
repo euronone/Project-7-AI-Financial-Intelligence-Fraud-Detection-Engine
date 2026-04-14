@@ -7,12 +7,15 @@ import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.api.router import api_router
 from app.db.session import create_all_tables
 from app.streaming.websocket_manager import ws_manager
+from app.middleware.timeout import timeout_middleware
+from app.middleware.error_handler import validation_exception_handler
 
 settings = get_settings()
 logger = structlog.get_logger()
@@ -51,6 +54,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # ── Request timeout (30s default, 10 min for ML training) ────────────────
+    app.middleware("http")(timeout_middleware)
+
+    # ── Validation error handler (structured JSON with error_id) ─────────────
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
     # ── Routes ───────────────────────────────────────────────────────────────
     app.include_router(api_router)

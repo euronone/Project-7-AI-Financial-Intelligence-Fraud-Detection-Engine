@@ -44,8 +44,9 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",")]
 
-    # Email
+    # Email — Resend is primary; Brevo is a supported fallback provider
     RESEND_API_KEY: str = ""
+    BREVO_API_KEY: str = ""
     EMAIL_FROM: str = "noreply@finshield.ai"
     EMAIL_FROM_NAME: str = "FinShield AI"
 
