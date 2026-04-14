@@ -28,8 +28,6 @@ from app.config import get_settings  # noqa: E402
 # Clear cached settings so tests always use the env vars above.
 get_settings.cache_clear()
 
-import app.models  # noqa: F401, E402 — registers all ORM models with Base
-
 
 @pytest.fixture
 async def client():
@@ -37,8 +35,9 @@ async def client():
     HTTP test client backed by an in-process SQLite database.
 
     The FastAPI lifespan runs on context-manager entry, which calls
-    create_all_tables() (because APP_ENV=development).  No external
-    services are needed.
+    create_all_tables() (because APP_ENV=development).  All ORM models
+    are registered with Base when create_app() imports the routers.
+    No external services are needed.
     """
     from app.main import create_app
 
