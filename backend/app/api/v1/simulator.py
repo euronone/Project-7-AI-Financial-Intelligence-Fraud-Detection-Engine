@@ -1046,7 +1046,6 @@ async def _resolve_resend_key(*, db: AsyncSession, tenant_id: str) -> str:
     from app.core.encryption import encryptor
     from app.config import get_settings
     from app.models.user import Tenant as TenantModel
-    from app.models.credential import TenantCredential
 
     # 1. Check BYOK with canonical key_name
     try:
