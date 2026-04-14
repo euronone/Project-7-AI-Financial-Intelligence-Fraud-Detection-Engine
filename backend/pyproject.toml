@@ -3,6 +3,7 @@ name = "finshield-backend"
 version = "1.0.0"
 description = "FinShield AI — Fraud Detection Backend"
 authors = ["FinShield Team"]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
