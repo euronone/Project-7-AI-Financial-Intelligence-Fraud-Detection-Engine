@@ -1,7 +1,5 @@
 """Unit tests for application Settings / configuration."""
 
-import pytest
-
 from app.config import get_settings, Settings
 
 

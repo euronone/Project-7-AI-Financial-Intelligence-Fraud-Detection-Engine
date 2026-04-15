@@ -209,7 +209,8 @@ backend/app/ml/models/*.pytorch
 backend/app/ml/models/*.pt
 
 # Model artifacts and data
-models/
+# NOTE: bare 'models/' removed — it was silently excluding backend/app/models/*.py
+# ML binary artifacts are already covered by the specific glob patterns above.
 data/
 artifacts/
 

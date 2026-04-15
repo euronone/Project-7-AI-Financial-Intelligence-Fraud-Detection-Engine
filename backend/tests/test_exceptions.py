@@ -1,6 +1,5 @@
 """Unit tests for custom application exception classes."""
 
-import pytest
 from fastapi import status
 
 from app.core.exceptions import (

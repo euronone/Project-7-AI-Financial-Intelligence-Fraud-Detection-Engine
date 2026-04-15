@@ -101,7 +101,9 @@
       "Bash(powershell -Command \"Invoke-RestMethod 'http://localhost:8000/api/v1/health' -TimeoutSec 5\")",
       "Bash(powershell -Command \"Invoke-RestMethod 'http://localhost:3000' -TimeoutSec 5 -Method Head\")",
       "Bash(PYTHONPATH=. poetry run python -c \"from app.main import app; print\\('App imported OK'\\)\")",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(PYTHONPATH=. poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload)",
+      "Bash(echo \"Backend start initiated \\(PID: $!\\)\")"
     ],
     "additionalDirectories": [
       "\\tmp",
