@@ -1,7 +1,7 @@
 """Customer model."""
 import uuid
 from datetime import datetime, date, timezone
-from sqlalchemy import String, Boolean, DateTime, Date, Numeric, Integer, ForeignKey, JSON
+from sqlalchemy import String, DateTime, Date, Numeric, Integer, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 
