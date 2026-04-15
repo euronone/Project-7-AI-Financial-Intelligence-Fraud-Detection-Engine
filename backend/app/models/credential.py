@@ -1,4 +1,5 @@
 """TenantCredential model — stores encrypted BYOK API keys per institution."""
+
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, DateTime, ForeignKey, UniqueConstraint, Text
@@ -22,9 +23,7 @@ class TenantCredential(Base):
         UniqueConstraint("tenant_id", "service", "key_name", name="uq_tenant_service_key"),
     )
 
-    id: Mapped[str] = mapped_column(
-        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )

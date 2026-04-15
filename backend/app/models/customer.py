@@ -1,4 +1,5 @@
 """Customer model."""
+
 import uuid
 from datetime import datetime, date, timezone
 from sqlalchemy import String, DateTime, Date, Numeric, Integer, ForeignKey, JSON
@@ -10,7 +11,9 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id"), nullable=False, index=True
+    )
 
     # Identity
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -26,17 +29,27 @@ class Customer(Base):
     country_code: Mapped[str] = mapped_column(String(2), default="IN")
 
     # Account
-    account_type: Mapped[str] = mapped_column(String(20), default="personal")  # personal|business|merchant
+    account_type: Mapped[str] = mapped_column(
+        String(20), default="personal"
+    )  # personal|business|merchant
     account_opening_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    account_status: Mapped[str] = mapped_column(String(20), default="active")  # active|inactive|suspended|closed
+    account_status: Mapped[str] = mapped_column(
+        String(20), default="active"
+    )  # active|inactive|suspended|closed
 
     # KYC
-    kyc_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|verified|rejected|expired
-    kyc_verification_level: Mapped[str] = mapped_column(String(20), default="basic")  # basic|enhanced|full
+    kyc_status: Mapped[str] = mapped_column(
+        String(20), default="pending"
+    )  # pending|verified|rejected|expired
+    kyc_verification_level: Mapped[str] = mapped_column(
+        String(20), default="basic"
+    )  # basic|enhanced|full
 
     # Risk
     risk_score: Mapped[float] = mapped_column(Numeric(5, 4), default=0.0)
-    customer_tier: Mapped[str] = mapped_column(String(20), default="standard")  # standard|premium|vip
+    customer_tier: Mapped[str] = mapped_column(
+        String(20), default="standard"
+    )  # standard|premium|vip
 
     # Banking
     balance_amount: Mapped[float] = mapped_column(Numeric(18, 2), default=0.0)
@@ -45,5 +58,11 @@ class Customer(Base):
 
     # Misc
     extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

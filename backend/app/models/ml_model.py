@@ -1,4 +1,5 @@
 """ML model registry."""
+
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, DateTime, ForeignKey, Numeric, Integer, Boolean, JSON
@@ -10,12 +11,18 @@ class MLModel(Base):
     __tablename__ = "ml_models"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    tenant_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=True, index=True)  # None = global shared model
+    tenant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tenants.id"), nullable=True, index=True
+    )  # None = global shared model
 
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    model_type: Mapped[str] = mapped_column(String(30), default="ensemble")  # fraud_classifier|anomaly_detector|risk_scorer|ensemble
+    model_type: Mapped[str] = mapped_column(
+        String(30), default="ensemble"
+    )  # fraud_classifier|anomaly_detector|risk_scorer|ensemble
     version: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="training")  # training|validating|active|retired|failed
+    status: Mapped[str] = mapped_column(
+        String(20), default="training"
+    )  # training|validating|active|retired|failed
 
     # Performance metrics
     precision: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
@@ -31,4 +38,6 @@ class MLModel(Base):
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )

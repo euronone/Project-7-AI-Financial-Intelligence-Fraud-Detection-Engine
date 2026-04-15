@@ -1,4 +1,5 @@
 """Training Job model — tracks custom ML model training runs."""
+
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, Integer, Boolean, DateTime, Text, JSON
@@ -14,10 +15,12 @@ class TrainingJob(Base):
         queued → running → optimizing → evaluating → completed
                                                     → failed
     """
+
     __tablename__ = "training_jobs"
 
     id: Mapped[str] = mapped_column(
-        String(36), primary_key=True,
+        String(36),
+        primary_key=True,
         default=lambda: str(uuid.uuid4()),
     )
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)

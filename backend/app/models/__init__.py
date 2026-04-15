@@ -11,7 +11,16 @@ from app.models.training_job import TrainingJob
 from app.models.credential import TenantCredential
 
 __all__ = [
-    "User", "Tenant", "Customer", "Transaction",
-    "FraudAlert", "FraudRule", "MLModel", "InvestigationCase", "AuditLog",
-    "CustomerPaymentMethod", "TrainingJob", "TenantCredential",
+    "User",
+    "Tenant",
+    "Customer",
+    "Transaction",
+    "FraudAlert",
+    "FraudRule",
+    "MLModel",
+    "InvestigationCase",
+    "AuditLog",
+    "CustomerPaymentMethod",
+    "TrainingJob",
+    "TenantCredential",
 ]
