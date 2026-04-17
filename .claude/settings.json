@@ -103,7 +103,8 @@
       "Bash(PYTHONPATH=. poetry run python -c \"from app.main import app; print\\('App imported OK'\\)\")",
       "Bash(xargs grep:*)",
       "Bash(PYTHONPATH=. poetry run python -m uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload)",
-      "Bash(echo \"Backend start initiated \\(PID: $!\\)\")"
+      "Bash(echo \"Backend start initiated \\(PID: $!\\)\")",
+      "Bash(wc -l c:/Users/gsuni/OneDrive/Desktop/AI_Project/AI-Financial-Intelligence-Fraud/backend/tests/test_*.py)"
     ],
     "additionalDirectories": [
       "\\tmp",

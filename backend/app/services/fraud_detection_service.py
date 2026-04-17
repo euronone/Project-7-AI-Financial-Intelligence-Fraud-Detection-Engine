@@ -597,6 +597,8 @@ async def score_transaction(
             byok_twilio_from = await _get_cred(db, txn.tenant_id, "twilio", "twilio_from_number")
             # ISSUE-008: resolve verified sender address before the session closes
             byok_from_email = await _get_cred(db, txn.tenant_id, "resend", "from_email") or None
+            # Firebase FCM server key (optional push notifications)
+            byok_firebase = await _get_cred(db, txn.tenant_id, "firebase", "server_key") or None
 
             asyncio.create_task(
                 send_fraud_alert_notifications(
@@ -620,6 +622,7 @@ async def score_transaction(
                     override_twilio_token=byok_twilio_token,
                     override_twilio_from=byok_twilio_from,
                     override_from_email=byok_from_email,
+                    override_firebase_server_key=byok_firebase,
                     sms_enabled=sms_enabled,
                     email_customer_enabled=email_customer_on,
                     email_company_enabled=email_company_on,

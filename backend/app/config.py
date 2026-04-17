@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     ALERT_COMPANY_EMAIL: str = ""  # Where company fraud alerts are sent
     ALERT_SMS_ENABLED: bool = True  # Toggle Twilio SMS for fraud alerts
 
+    # Firebase Cloud Messaging (optional — push notifications for Pro/Advanced)
+    FIREBASE_SERVER_KEY: str = ""  # Legacy FCM HTTP server key (starts with AAAA...)
+
     # ML
     ML_MODEL_PATH: str = "app/ml/models"
     ML_FRAUD_MODEL_VERSION: str = "latest"

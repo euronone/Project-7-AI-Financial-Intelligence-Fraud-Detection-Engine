@@ -44,6 +44,7 @@ async def send_fraud_alert_notifications(
     override_twilio_token: Optional[str] = None,
     override_twilio_from: Optional[str] = None,
     override_from_email: Optional[str] = None,
+    override_firebase_server_key: Optional[str] = None,
     # Channel toggles — read from tenant settings, honoured here (ISSUE-003)
     sms_enabled: bool = True,
     email_customer_enabled: bool = True,
@@ -80,6 +81,11 @@ async def send_fraud_alert_notifications(
         "low": [],
     }
     channels = list(channels_by_severity.get(severity, []))
+
+    # Platform-level SMS kill-switch (ALERT_SMS_ENABLED env var)
+    if "sms" in channels and not getattr(settings, "ALERT_SMS_ENABLED", True):
+        channels.remove("sms")
+        results["sms_customer"] = "skipped:sms_disabled_by_platform"
 
     # ISSUE-003: honour tenant-level toggles
     if not sms_enabled and "sms" in channels:
@@ -217,6 +223,26 @@ async def send_fraud_alert_notifications(
         else:
             results["sms_customer"] = "skipped:no_key"
 
+    # ── Push Notification → Firebase FCM (critical/high) ────────────────────
+    # FCM is opt-in — only fires when a firebase server_key is configured.
+    # On Pro/Advanced plans, critical and high alerts trigger push.
+    if severity in ("critical", "high") and tenant_plan in ("pro", "advanced"):
+        firebase_key = override_firebase_server_key or getattr(settings, "FIREBASE_SERVER_KEY", "") or ""
+        if firebase_key:
+            results["push_fcm"] = await _send_fcm_push(
+                server_key=firebase_key,
+                title=f"FinShield: {decision} — {amount_str} at {merchant_str}",
+                body=f"Fraud score {fraud_score:.0%} · {severity.upper()} risk · Ref {ref}",
+                data={
+                    "alert_id": alert_id,
+                    "transaction_id": transaction_id,
+                    "severity": severity,
+                    "decision": decision,
+                },
+            )
+        else:
+            results["push_fcm"] = "skipped:no_firebase_key"
+
     results["in_app"] = "always_available"
     return results
 
@@ -283,6 +309,44 @@ async def _send_twilio_sms(*, sid: str, token: str, from_num: str, to: str, body
         return "sent" if resp.status_code in (200, 201) else f"failed:{resp.status_code}"
     except Exception as exc:
         logger.warning("Twilio SMS error: %s", exc)
+        return f"error:{str(exc)[:60]}"
+
+
+async def _send_fcm_push(
+    *, server_key: str, title: str, body: str, data: dict
+) -> str:
+    """
+    Send a push notification via Firebase Cloud Messaging (Legacy HTTP API).
+
+    Uses the /fcm/send endpoint with a topic broadcast so no device tokens are
+    needed at the platform level.  Institutions can subscribe their mobile app
+    to the topic 'finshield_fraud_alerts_{tenant_id}' to receive pushes.
+
+    For targeted per-device delivery, store FCM registration tokens in the
+    customer profile and pass them here.
+    """
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://fcm.googleapis.com/fcm/send",
+                headers={
+                    "Authorization": f"key={server_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "to": "/topics/finshield_fraud_alerts",
+                    "notification": {"title": title, "body": body},
+                    "data": data,
+                    "priority": "high",
+                },
+            )
+        if resp.status_code in (200, 201):
+            return "sent"
+        return f"failed:{resp.status_code}"
+    except Exception as exc:
+        logger.warning("FCM push error: %s", exc)
         return f"error:{str(exc)[:60]}"
 
 

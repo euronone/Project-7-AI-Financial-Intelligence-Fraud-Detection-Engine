@@ -406,14 +406,16 @@ async def predict_fraud(
             twilio_creds=twilio_creds,
         )
 
-    # ── 7. Resend email (if configured and decision warrants it) ────────
+    # ── 7. Email (Resend primary, Brevo fallback) if decision warrants it ──
     email_result = "skipped"
     if decision in ("BLOCK", "ALERT", "FLAG"):
-        # Resolve Resend API key and sender address from tenant credentials → env fallback
+        # Resolve email provider keys — Resend first, Brevo as fallback
         resend_key = await _resolve_resend_key(db=db, tenant_id=current_user.tenant_id)
+        brevo_key = await _resolve_brevo_key(db=db, tenant_id=current_user.tenant_id)
         from_email = await _resolve_from_email(db=db, tenant_id=current_user.tenant_id)
+        active_email_key = resend_key or brevo_key
 
-        if resend_key:
+        if active_email_key:
             # Collect all recipient emails: form email + company alert emails
             recipients: list[str] = []
             if body.email:
@@ -428,19 +430,34 @@ async def predict_fraud(
             if recipients:
                 per_recipient: list[dict] = []
                 for recipient in recipients:
-                    s = await _send_resend_email(
-                        api_key=resend_key,
-                        from_email=from_email,
-                        to=recipient,
-                        cardholder_name=body.cardholder_name,
-                        customer_id=resolved_customer_id or "N/A",
-                        amount=body.amount,
-                        merchant=body.merchant_name or _infer_merchant(body.purchase_type),
-                        decision=decision,
-                        score=final_score,
-                        alert_id=score_result.get("alert_id", "SIM"),
-                        triggered_rules=triggered_rules,
-                    )
+                    # Try Resend first; if not configured fall back to Brevo
+                    if resend_key:
+                        s = await _send_resend_email(
+                            api_key=resend_key,
+                            from_email=from_email,
+                            to=recipient,
+                            cardholder_name=body.cardholder_name,
+                            customer_id=resolved_customer_id or "N/A",
+                            amount=body.amount,
+                            merchant=body.merchant_name or _infer_merchant(body.purchase_type),
+                            decision=decision,
+                            score=final_score,
+                            alert_id=score_result.get("alert_id", "SIM"),
+                            triggered_rules=triggered_rules,
+                        )
+                    else:
+                        s = await _send_brevo_email(
+                            api_key=brevo_key,
+                            from_email=from_email,
+                            to=recipient,
+                            cardholder_name=body.cardholder_name,
+                            amount=body.amount,
+                            merchant=body.merchant_name or _infer_merchant(body.purchase_type),
+                            decision=decision,
+                            score=final_score,
+                            alert_id=score_result.get("alert_id", "SIM"),
+                            triggered_rules=triggered_rules,
+                        )
                     per_recipient.append({"to": recipient, "status": s})
                     logger.info(
                         "Simulator email to=%s status=%s decision=%s", recipient, s, decision
@@ -461,7 +478,7 @@ async def predict_fraud(
                 email_result = "skipped:no_recipients"
                 _email_recipients_detail = []
         else:
-            email_result = "skipped:no_resend_key"
+            email_result = "skipped:no_email_key"
             _email_recipients_detail = []
     else:
         _email_recipients_detail = []
@@ -1303,6 +1320,103 @@ async def _send_resend_email(
         return f"failed:{resp.status_code}:{err_body[:100]}"
     except Exception as exc:
         logger.warning("Simulator Resend email error: %s", exc)
+        return f"error:{str(exc)[:80]}"
+
+
+async def _send_brevo_email(
+    *,
+    api_key: str,
+    from_email: str,
+    to: str,
+    cardholder_name: str,
+    amount: float,
+    merchant: str,
+    decision: str,
+    score: float,
+    alert_id: str,
+    triggered_rules: list[str],
+) -> str:
+    """
+    Sends a fraud alert email via Brevo (formerly Sendinblue) for simulator transactions.
+    Used as fallback when no Resend key is configured.
+    Returns 'sent', 'skipped:no_key', or 'failed:<code>'.
+    """
+    if not api_key:
+        return "skipped:no_key"
+    try:
+        import httpx
+
+        amount_str = f"₹{amount:,.0f}"
+        ref = str(alert_id)[:8].upper()
+        rules_str = ", ".join(triggered_rules[:5]) if triggered_rules else "ML model"
+        color = {"BLOCK": "#EF4444", "ALERT": "#F97316", "FLAG": "#F59E0B"}.get(decision, "#6B7280")
+        action = (
+            "BLOCKED"
+            if decision == "BLOCK"
+            else "FLAGGED as suspicious"
+            if decision in ("ALERT", "FLAG")
+            else "reviewed"
+        )
+        html = f"""
+        <html><body style="font-family:Arial,sans-serif;background:#0A0A0F;color:#E5E7EB;padding:24px;">
+        <div style="max-width:560px;margin:0 auto;background:#111118;border:1px solid #1E1E2E;border-radius:12px;overflow:hidden;">
+          <div style="background:{color};padding:20px;text-align:center;">
+            <h1 style="margin:0;font-size:18px;color:#fff;">🧪 [TEST] FinShield — Transaction {action}</h1>
+          </div>
+          <div style="padding:24px;">
+            <p style="color:#9CA3AF;font-size:12px;margin-top:0;">
+              This is a <strong>test notification</strong> from the FinShield Test Me simulator.
+            </p>
+            <p>Dear <strong>{cardholder_name}</strong>,</p>
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Decision</td>
+                  <td style="padding:8px 0;font-weight:bold;color:{color};border-bottom:1px solid #1E1E2E;">{decision}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Amount</td>
+                  <td style="padding:8px 0;font-weight:bold;border-bottom:1px solid #1E1E2E;">{amount_str}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Merchant</td>
+                  <td style="padding:8px 0;border-bottom:1px solid #1E1E2E;">{merchant}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Fraud Score</td>
+                  <td style="padding:8px 0;color:{color};font-weight:bold;border-bottom:1px solid #1E1E2E;">{score:.0%}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;border-bottom:1px solid #1E1E2E;">Triggered Signals</td>
+                  <td style="padding:8px 0;border-bottom:1px solid #1E1E2E;">{rules_str}</td></tr>
+              <tr><td style="padding:8px 0;color:#9CA3AF;">Reference</td>
+                  <td style="padding:8px 0;font-family:monospace;">{ref}</td></tr>
+            </table>
+            <p style="color:#4B5563;font-size:11px;margin-top:24px;">
+              Sent via Brevo by FinShield AI Test Simulator.
+            </p>
+          </div>
+        </div>
+        </body></html>"""
+
+        # Brevo requires sender as an object — extract plain email from "Name <email>" format
+        sender_email = from_email
+        sender_name = "FinShield AI"
+        if "<" in from_email and ">" in from_email:
+            sender_name = from_email.split("<")[0].strip()
+            sender_email = from_email.split("<")[1].rstrip(">").strip()
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": api_key,
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                },
+                json={
+                    "sender": {"email": sender_email, "name": sender_name},
+                    "to": [{"email": to}],
+                    "subject": f"[TEST] FinShield Alert: {decision} — {amount_str} at {merchant} | Ref {ref}",
+                    "htmlContent": html,
+                },
+            )
+        if resp.status_code in (200, 201):
+            return "sent"
+        logger.warning("Brevo simulator email failed: status=%s", resp.status_code)
+        return f"failed:{resp.status_code}"
+    except Exception as exc:
+        logger.warning("Simulator Brevo email error: %s", exc)
         return f"error:{str(exc)[:80]}"
 
 

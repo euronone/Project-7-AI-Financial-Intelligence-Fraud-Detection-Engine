@@ -1,178 +1,322 @@
-name: Deploy to AWS ECS
+name: CD — Terraform + ECS Deploy + Rollback
 
 on:
-  push:
-    branches: [main, staging]
+  workflow_run:
+    workflows: ["CI — Lint · Test · Build · Push"]
+    types: [completed]
+    branches: [main, development_2]
+
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy"
+        description: "Target environment"
         required: true
         type: choice
-        options:
-          - staging
-          - production
+        options: [staging, production]
+      image_tag:
+        description: "Image tag to deploy (default: latest)"
+        required: false
+        default: latest
 
 env:
   AWS_REGION: us-east-1
-  ECR_REGISTRY_BACKEND: finshield-backend
-  ECR_REGISTRY_FRONTEND: finshield-frontend
+  TF_VERSION: "1.7.0"
 
 jobs:
-  build-push-ecr:
-    name: Build & Push to ECR
+  # ──────────────────────────────────────────────────────────────────
+  guard:
+    name: Guard — only deploy on CI success
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - run: echo "CI passed — proceeding with deployment"
+
+  # ──────────────────────────────────────────────────────────────────
+  terraform:
+    name: Terraform Plan + Apply
+    runs-on: ubuntu-latest
+    needs: guard
+    environment: ${{ github.event.inputs.environment || 'staging' }}
     outputs:
-      backend-image: ${{ steps.build-backend.outputs.image }}
-      frontend-image: ${{ steps.build-frontend.outputs.image }}
+      cluster_name:         ${{ steps.tf_output.outputs.cluster_name }}
+      backend_service_name: ${{ steps.tf_output.outputs.backend_service }}
+      frontend_service_name: ${{ steps.tf_output.outputs.frontend_service }}
+      alb_dns_name:         ${{ steps.tf_output.outputs.alb_dns }}
+    defaults:
+      run:
+        working-directory: terraform
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Get Git SHA (short)
-        id: git-sha
-        run: echo "short-sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Terraform Init
+        run: terraform init
 
-      - name: Build, tag, and push backend image to Amazon ECR
-        id: build-backend
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ steps.git-sha.outputs.short-sha }}
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:latest \
-            -f backend/Dockerfile \
-            ./backend
+          terraform plan \
+            -var="environment=${{ github.event.inputs.environment || 'staging' }}" \
+            -var="backend_image_tag=${{ github.event.inputs.image_tag || 'latest' }}" \
+            -var="frontend_image_tag=${{ github.event.inputs.image_tag || 'latest' }}" \
+            -var="github_repo=${{ github.repository }}" \
+            -var="acm_certificate_arn=${{ secrets.ACM_CERTIFICATE_ARN }}" \
+            -out=tfplan \
+            -no-color 2>&1 | tee plan.txt
 
-          docker push $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REGISTRY_BACKEND:latest
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/plan.txt', 'utf8').slice(0, 60000);
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan\n\`\`\`\n${plan}\n\`\`\``
+            });
 
-          echo "image=$ECR_REGISTRY/$ECR_REGISTRY_BACKEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        run: terraform apply -auto-approve tfplan
 
-      - name: Build, tag, and push frontend image to Amazon ECR
-        id: build-frontend
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ steps.git-sha.outputs.short-sha }}
+      - name: Capture Terraform outputs
+        id: tf_output
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:latest \
-            -f frontend/Dockerfile \
-            ./frontend
+          echo "cluster_name=$(terraform output -raw ecs_cluster_name)"     >> "$GITHUB_OUTPUT"
+          echo "backend_service=$(terraform output -raw backend_service_name)"  >> "$GITHUB_OUTPUT"
+          echo "frontend_service=$(terraform output -raw frontend_service_name)" >> "$GITHUB_OUTPUT"
+          echo "alb_dns=$(terraform output -raw alb_dns_name)"              >> "$GITHUB_OUTPUT"
 
-          docker push $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:latest
-
-          echo "image=$ECR_REGISTRY/$ECR_REGISTRY_FRONTEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-  deploy-ecs:
-    name: Deploy to ECS
+  # ──────────────────────────────────────────────────────────────────
+  deploy:
+    name: ECS Rolling Deploy
     runs-on: ubuntu-latest
-    needs: build-push-ecr
-    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+    needs: terraform
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    outputs:
+      previous_backend_task_def:  ${{ steps.snapshot.outputs.prev_backend }}
+      previous_frontend_task_def: ${{ steps.snapshot.outputs.prev_frontend }}
+      deploy_status: ${{ steps.deploy_result.outputs.status }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Download task definition (backend)
+      # ── Snapshot current task definition revisions for rollback ──
+      - name: Snapshot current task definitions
+        id: snapshot
         run: |
-          aws ecs describe-task-definition \
-            --task-definition finshield-backend-task \
-            --region ${{ env.AWS_REGION }} \
-            --query 'taskDefinition' > task-def-backend.json
+          CLUSTER="${{ needs.terraform.outputs.cluster_name }}"
+          BACKEND_SVC="${{ needs.terraform.outputs.backend_service_name }}"
+          FRONTEND_SVC="${{ needs.terraform.outputs.frontend_service_name }}"
 
-      - name: Update task definition with new image (backend)
-        id: task-def-backend
+          PREV_BACKEND=$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$BACKEND_SVC" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          PREV_FRONTEND=$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$FRONTEND_SVC" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          echo "prev_backend=$PREV_BACKEND"   >> "$GITHUB_OUTPUT"
+          echo "prev_frontend=$PREV_FRONTEND" >> "$GITHUB_OUTPUT"
+          echo "Snapshot — backend: $PREV_BACKEND  frontend: $PREV_FRONTEND"
+
+      # ── Register new task definitions with updated image tags ──
+      - name: Render new backend task definition
+        id: render_backend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: task-def-backend.json
-          container-name: finshield-backend
-          image: ${{ needs.build-push-ecr.outputs.backend-image }}
+          task-definition-family: finshield-staging-backend
+          container-name: backend
+          image: "${{ secrets.ECR_BACKEND_URL }}:${{ github.event.inputs.image_tag || 'latest' }}"
 
-      - name: Deploy backend to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def-backend.outputs.task-definition }}
-          service: finshield-backend-service
-          cluster: finshield-cluster
-          wait-for-service-stability: true
-
-      - name: Download task definition (frontend)
-        run: |
-          aws ecs describe-task-definition \
-            --task-definition finshield-frontend-task \
-            --region ${{ env.AWS_REGION }} \
-            --query 'taskDefinition' > task-def-frontend.json
-
-      - name: Update task definition with new image (frontend)
-        id: task-def-frontend
+      - name: Render new frontend task definition
+        id: render_frontend
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: task-def-frontend.json
-          container-name: finshield-frontend
-          image: ${{ needs.build-push-ecr.outputs.frontend-image }}
+          task-definition-family: finshield-staging-frontend
+          container-name: frontend
+          image: "${{ secrets.ECR_FRONTEND_URL }}:${{ github.event.inputs.image_tag || 'latest' }}"
 
-      - name: Deploy frontend to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      # ── Deploy backend ──
+      - name: Deploy backend service
+        id: deploy_backend
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ${{ steps.task-def-frontend.outputs.task-definition }}
-          service: finshield-frontend-service
-          cluster: finshield-cluster
+          task-definition: ${{ steps.render_backend.outputs.task-definition }}
+          service: ${{ needs.terraform.outputs.backend_service_name }}
+          cluster: ${{ needs.terraform.outputs.cluster_name }}
           wait-for-service-stability: true
+          wait-for-minutes: 8
 
-      - name: Verify ECS deployment health
+      # ── Deploy frontend ──
+      - name: Deploy frontend service
+        id: deploy_frontend
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render_frontend.outputs.task-definition }}
+          service: ${{ needs.terraform.outputs.frontend_service_name }}
+          cluster: ${{ needs.terraform.outputs.cluster_name }}
+          wait-for-service-stability: true
+          wait-for-minutes: 8
+
+      - name: Mark deploy result
+        id: deploy_result
+        if: always()
         run: |
-          echo "Checking ECS service health..."
-          aws ecs describe-services \
-            --cluster finshield-cluster \
-            --services finshield-backend-service finshield-frontend-service \
-            --region ${{ env.AWS_REGION }} \
-            --query 'services[*].{Name:serviceName,Status:status,RunningCount:runningCount,DesiredCount:desiredCount}'
+          if [[ "${{ steps.deploy_backend.outcome }}" == "success" && \
+                "${{ steps.deploy_frontend.outcome }}" == "success" ]]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          fi
 
-  verify-deployment:
-    name: Verify Deployment
+  # ──────────────────────────────────────────────────────────────────
+  health-check:
+    name: Post-deploy Health Check
     runs-on: ubuntu-latest
-    needs: deploy-ecs
+    needs: [terraform, deploy]
+    if: needs.deploy.outputs.deploy_status == 'success'
+    outputs:
+      health_ok: ${{ steps.check.outputs.ok }}
+
     steps:
-      - name: Check backend health
+      - name: Backend health check
+        id: check
         run: |
-          echo "Backend health check will be performed..."
-          # Replace with actual ALB/service endpoint
-          max_attempts=30
-          attempt=0
-          while [ $attempt -lt $max_attempts ]; do
-            health=$(curl -s -o /dev/null -w "%{http_code}" https://${{ secrets.BACKEND_ALB_ENDPOINT }}/api/v1/health || echo "000")
-            if [ "$health" = "200" ]; then
-              echo "✓ Backend health check passed"
+          ALB="${{ needs.terraform.outputs.alb_dns_name }}"
+          URL="http://${ALB}/api/v1/health"
+          echo "Polling $URL"
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $CODE"
+            if [[ "$CODE" == "200" ]]; then
+              echo "ok=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            attempt=$((attempt + 1))
-            echo "Attempt $attempt/$max_attempts: status=$health"
-            sleep 10
+            sleep 15
           done
-          echo "✗ Backend health check failed"
+          echo "ok=false" >> "$GITHUB_OUTPUT"
           exit 1
 
-      - name: Send deployment notification
-        if: success()
+  # ──────────────────────────────────────────────────────────────────
+  rollback:
+    name: Automatic Rollback
+    runs-on: ubuntu-latest
+    needs: [terraform, deploy, health-check]
+    if: |
+      always() && (
+        needs.deploy.outputs.deploy_status == 'failed' ||
+        needs.health-check.outputs.health_ok == 'false'
+      )
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback backend to previous revision
         run: |
-          echo "✓ Deployment completed successfully"
+          CLUSTER="${{ needs.terraform.outputs.cluster_name }}"
+          BACKEND_SVC="${{ needs.terraform.outputs.backend_service_name }}"
+          PREV_BACKEND="${{ needs.deploy.outputs.previous_backend_task_def }}"
+
+          if [[ -n "$PREV_BACKEND" && "$PREV_BACKEND" != "None" ]]; then
+            echo "Rolling back backend to: $PREV_BACKEND"
+            aws ecs update-service \
+              --cluster "$CLUSTER" \
+              --service "$BACKEND_SVC" \
+              --task-definition "$PREV_BACKEND" \
+              --force-new-deployment \
+              --region ${{ env.AWS_REGION }}
+          else
+            echo "No previous backend task definition found — cannot rollback"
+          fi
+
+      - name: Rollback frontend to previous revision
+        run: |
+          CLUSTER="${{ needs.terraform.outputs.cluster_name }}"
+          FRONTEND_SVC="${{ needs.terraform.outputs.frontend_service_name }}"
+          PREV_FRONTEND="${{ needs.deploy.outputs.previous_frontend_task_def }}"
+
+          if [[ -n "$PREV_FRONTEND" && "$PREV_FRONTEND" != "None" ]]; then
+            echo "Rolling back frontend to: $PREV_FRONTEND"
+            aws ecs update-service \
+              --cluster "$CLUSTER" \
+              --service "$FRONTEND_SVC" \
+              --task-definition "$PREV_FRONTEND" \
+              --force-new-deployment \
+              --region ${{ env.AWS_REGION }}
+          else
+            echo "No previous frontend task definition found — cannot rollback"
+          fi
+
+      - name: Create GitHub deployment failure annotation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.error(`Deployment FAILED and was rolled back.
+            Commit: ${{ github.sha }}
+            Previous backend task: ${{ needs.deploy.outputs.previous_backend_task_def }}
+            Previous frontend task: ${{ needs.deploy.outputs.previous_frontend_task_def }}
+            Check ECS console for details.`);
+
+  # ──────────────────────────────────────────────────────────────────
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [terraform, deploy, health-check]
+    if: always() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    steps:
+      - name: Post deployment summary
+        uses: actions/github-script@v7
+        env:
+          DEPLOY_STATUS: ${{ needs.deploy.outputs.deploy_status }}
+          HEALTH_OK:     ${{ needs.health-check.outputs.health_ok }}
+          ALB_DNS:       ${{ needs.terraform.outputs.alb_dns_name }}
+        with:
+          script: |
+            const status = process.env.DEPLOY_STATUS;
+            const health = process.env.HEALTH_OK;
+            const alb    = process.env.ALB_DNS;
+            const icon   = (status === 'success' && health === 'true') ? '✅' : '❌';
+            const msg    = `${icon} **FinShield AI Deployment**\n`
+              + `- SHA: \`${{ github.sha }}\`\n`
+              + `- Environment: staging\n`
+              + `- ALB: \`${alb}\`\n`
+              + `- Deploy: ${status}\n`
+              + `- Health: ${health}`;
+            core.notice(msg);

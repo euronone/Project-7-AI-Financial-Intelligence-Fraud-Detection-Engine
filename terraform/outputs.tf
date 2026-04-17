@@ -1,0 +1,10 @@
+output "ecr_backend_url"          { value = module.ecr.backend_repository_url }
+output "ecr_frontend_url"         { value = module.ecr.frontend_repository_url }
+output "ecs_cluster_name"         { value = module.ecs.cluster_name }
+output "ecs_cluster_arn"          { value = module.ecs.cluster_arn }
+output "backend_service_name"     { value = module.ecs.backend_service_name }
+output "frontend_service_name"    { value = module.ecs.frontend_service_name }
+output "alb_dns_name"             { value = module.ecs.alb_dns_name }
+output "ml_models_bucket"         { value = module.s3.bucket_name }
+output "github_actions_role_arn"  { value = module.iam.github_actions_role_arn }
+output "vpc_id"                   { value = module.vpc.vpc_id }

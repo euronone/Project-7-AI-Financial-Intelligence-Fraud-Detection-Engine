@@ -309,6 +309,104 @@ async def _test_openai(service: str, key_name: str, api_key: str) -> CredentialT
         )
 
 
+async def _test_firebase(service: str, key_name: str, value: str) -> CredentialTestResult:
+    """
+    Validate a Firebase credential.
+
+    Two credential shapes are supported:
+      - key_name='server_key'  (legacy FCM HTTP v1 — starts with 'AAAA')
+      - key_name='service_account_json' (current FCM HTTP v1 — JSON string)
+
+    For server_key we can probe the FCM legacy endpoint to confirm validity.
+    For service_account_json we validate that it parses as JSON and contains
+    the expected fields — a live OAuth2 token exchange would require additional
+    libraries that may not be installed.
+    """
+    import time as _time
+
+    start = _time.monotonic()
+
+    if key_name == "server_key":
+        # Legacy FCM — probe with a dry-run request (no actual message sent)
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                r = await client.post(
+                    "https://fcm.googleapis.com/fcm/send",
+                    headers={
+                        "Authorization": f"key={value}",
+                        "Content-Type": "application/json",
+                    },
+                    json={"registration_ids": ["dry_run_token_validation"]},
+                )
+            ms = int((_time.monotonic() - start) * 1000)
+            # 200 = key valid (even if token is bogus), 401/403 = key invalid
+            if r.status_code in (200, 400):
+                return CredentialTestResult(
+                    service=service,
+                    key_name=key_name,
+                    success=True,
+                    message="Firebase Server Key is valid.",
+                    latency_ms=ms,
+                )
+            return CredentialTestResult(
+                service=service,
+                key_name=key_name,
+                success=False,
+                message=f"Firebase returned HTTP {r.status_code} — key may be invalid or revoked.",
+                latency_ms=ms,
+            )
+        except Exception as exc:
+            return CredentialTestResult(
+                service=service, key_name=key_name, success=False, message=f"Connection error: {exc}"
+            )
+
+    if key_name == "service_account_json":
+        # Validate JSON structure — required fields per Google's service account schema
+        import json as _json
+
+        try:
+            sa = _json.loads(value)
+            required_fields = {"type", "project_id", "private_key_id", "private_key", "client_email"}
+            missing = required_fields - set(sa.keys())
+            if missing:
+                return CredentialTestResult(
+                    service=service,
+                    key_name=key_name,
+                    success=False,
+                    message=f"Service account JSON is missing required fields: {', '.join(sorted(missing))}",
+                )
+            if sa.get("type") != "service_account":
+                return CredentialTestResult(
+                    service=service,
+                    key_name=key_name,
+                    success=False,
+                    message="JSON 'type' field must be 'service_account'.",
+                )
+            ms = int((_time.monotonic() - start) * 1000)
+            return CredentialTestResult(
+                service=service,
+                key_name=key_name,
+                success=True,
+                message=f"Firebase service account JSON is valid (project: {sa.get('project_id')}).",
+                latency_ms=ms,
+            )
+        except _json.JSONDecodeError as exc:
+            return CredentialTestResult(
+                service=service,
+                key_name=key_name,
+                success=False,
+                message=f"Service account value is not valid JSON: {exc}",
+            )
+
+    # Unknown key_name — accept as stored
+    return CredentialTestResult(
+        service=service,
+        key_name=key_name,
+        success=True,
+        message="Firebase credential stored. Use 'server_key' or 'service_account_json' as key_name for live validation.",
+    )
+
+
 async def _test_brevo(service: str, key_name: str, api_key: str) -> CredentialTestResult:
     """Live-test a Brevo (Sendinblue) API key by hitting the /account endpoint."""
     start = time.monotonic()
@@ -347,4 +445,5 @@ _TESTERS = {
     "twilio": _test_twilio,
     "stripe": _test_stripe,
     "openai": _test_openai,
+    "firebase": _test_firebase,
 }
