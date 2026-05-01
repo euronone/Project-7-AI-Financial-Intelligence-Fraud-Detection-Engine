@@ -31,7 +31,7 @@ jobs:
           password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Build & push backend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./backend/Dockerfile
@@ -41,7 +41,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend-staging
 
       - name: Build & push frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
